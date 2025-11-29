@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -9,6 +10,14 @@ import (
 
 	"github.com/nhdewitt/raspimon/collector"
 	"github.com/nhdewitt/raspimon/metrics"
+)
+
+var mountCache = &collector.MountMap{
+	DeviceToMountpoint: make(map[string]collector.MountInfo),
+}
+
+const (
+	mountUpdateInterval = 30 * time.Second
 )
 
 func main() {
@@ -23,22 +32,39 @@ func main() {
 	}()
 
 	hostname, _ := os.Hostname()
-
 	metricsCh := make(chan metrics.Envelope, 100)
-
 	c := collector.New(hostname, metricsCh)
+
+	go collector.RunMountManager(ctx, mountCache, mountUpdateInterval)
+	time.Sleep(1 * time.Second)
+
+	diskCollector := collector.MakeDiskCollector(mountCache)
+	diskIOCollector := collector.MakeDiskIOCollector(mountCache)
+
+	go func() {
+		for {
+			select {
+			case envelope := <-metricsCh:
+				fmt.Printf("[%s] Collected metric: %s\n", envelope.Hostname, envelope.Data)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	go c.Run(ctx, 5*time.Second, collector.CollectCPU)
 	go c.Run(ctx, 10*time.Second, collector.CollectMemory)
-	go c.Run(ctx, 60*time.Second, collector.CollectDisk)
-	go c.Run(ctx, 60*time.Second, collectDiskIO)
-	go c.Run(ctx, 5*time.Second, collectNetwork)
-	go c.Run(ctx, 10*time.Second, collectTemperature)
-	go c.Run(ctx, 15*time.Second, collectProcesses)
-	go c.Run(ctx, 10*time.Second, collectThrottle)
-	go c.Run(ctx, 15*time.Second, collectClock)
-	go c.Run(ctx, 60*time.Second, collectVoltage)
-	go c.Run(ctx, 30*time.Second, collectWiFi)
-	go c.Run(ctx, 60*time.Second, collectGPU)
-	go c.Run(ctx, 300*time.Second, collectSystem)
+	go c.Run(ctx, 60*time.Second, diskCollector)
+	go c.Run(ctx, 5*time.Second, diskIOCollector)
+	/*
+		go c.Run(ctx, 5*time.Second, collectNetwork)
+		go c.Run(ctx, 10*time.Second, collectTemperature)
+		go c.Run(ctx, 15*time.Second, collectProcesses)
+		go c.Run(ctx, 10*time.Second, collectThrottle)
+		go c.Run(ctx, 15*time.Second, collectClock)
+		go c.Run(ctx, 60*time.Second, collectVoltage)
+		go c.Run(ctx, 30*time.Second, collectWiFi)
+		go c.Run(ctx, 60*time.Second, collectGPU)
+		go c.Run(ctx, 300*time.Second, collectSystem)
+	*/
 }

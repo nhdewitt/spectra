@@ -58,6 +58,10 @@ func (s *Sender) sendBatch() {
 		return
 	}
 
+	defer func() {
+		s.batch = s.batch[:0]
+	}()
+
 	data, err := json.Marshal(s.batch)
 	if err != nil {
 		log.Printf("error marshalling json: %v", err)
@@ -71,5 +75,8 @@ func (s *Sender) sendBatch() {
 	}
 	resp.Body.Close()
 
-	s.batch = s.batch[:0]
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("server returned non-success status code %d for batch of %d metrics", resp.StatusCode, len(s.batch))
+		return
+	}
 }

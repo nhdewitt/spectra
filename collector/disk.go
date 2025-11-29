@@ -1,11 +1,7 @@
 package collector
 
 import (
-	"bufio"
 	"context"
-	"fmt"
-	"os"
-	"strings"
 
 	"github.com/nhdewitt/raspimon/metrics"
 	"golang.org/x/sys/unix"
@@ -37,21 +33,18 @@ var localFilesystems = map[string]struct{}{
 	"ntfs":  {},
 }
 
-type mountInfo struct {
-	Device     string
-	Mountpoint string
-	FSType     string
+func MakeDiskCollector(cache *MountMap) CollectFunc {
+	return func(ctx context.Context) ([]metrics.Metric, error) {
+		return CollectDisk(ctx, cache)
+	}
 }
 
-func CollectDisk(ctx context.Context) ([]metrics.Metric, error) {
-	mounts, err := parseMounts()
-	if err != nil {
-		return nil, fmt.Errorf("parsing mounts: %w", err)
-	}
+func CollectDisk(ctx context.Context, cache *MountMap) ([]metrics.Metric, error) {
+	mountMap := loadMountMap(cache)
 
-	result := make([]metrics.Metric, 0, len(mounts))
+	result := make([]metrics.Metric, 0, len(mountMap))
 
-	for _, m := range mounts {
+	for _, m := range mountMap {
 		stat, err := statfs(m.Mountpoint)
 		if err != nil {
 			continue
@@ -63,46 +56,12 @@ func CollectDisk(ctx context.Context) ([]metrics.Metric, error) {
 	return result, nil
 }
 
-func parseMounts() ([]mountInfo, error) {
-	f, err := os.Open("/proc/mounts")
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+func loadMountMap(cache *MountMap) map[string]MountInfo {
+	cache.RWMutex.RLock()
+	mountMap := cache.DeviceToMountpoint
+	cache.RWMutex.RUnlock()
 
-	var mounts []mountInfo
-	scanner := bufio.NewScanner(f)
-
-	for scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) < 3 {
-			continue
-		}
-
-		m := mountInfo{
-			Device:     fields[0],
-			Mountpoint: fields[1],
-			FSType:     fields[2],
-		}
-
-		if shouldIgnore(m) {
-			continue
-		}
-
-		mounts = append(mounts, m)
-	}
-
-	return mounts, scanner.Err()
-}
-
-func shouldIgnore(m mountInfo) bool {
-	if _, ignored := ignoredFilesystems[m.FSType]; ignored {
-		return true
-	}
-	if strings.HasPrefix(m.Device, "/dev/loop") {
-		return true
-	}
-	return false
+	return mountMap
 }
 
 func statfs(path string) (unix.Statfs_t, error) {
@@ -111,7 +70,7 @@ func statfs(path string) (unix.Statfs_t, error) {
 	return stat, err
 }
 
-func buildDiskMetric(m mountInfo, stat unix.Statfs_t) metrics.DiskMetric {
+func buildDiskMetric(m MountInfo, stat unix.Statfs_t) metrics.DiskMetric {
 	bsize := uint64(stat.Bsize)
 
 	total := (stat.Blocks * bsize) / bytesPerMB

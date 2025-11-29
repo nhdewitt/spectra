@@ -7,12 +7,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nhdewitt/raspimon/metrics"
 )
 
-// Package-level state for delta calculation
-var lastCPURawData map[string]CPURaw
+var (
+	// Package-level state for delta calculation
+	lastCPURawData map[string]CPURaw
+	lastCPURunTime time.Time
+)
 
 type CPURaw struct {
 	User      uint64
@@ -48,14 +52,18 @@ func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
 		return nil, fmt.Errorf("parsing /proc/stat: %w", err)
 	}
 
+	now := time.Now()
+
 	// First sample - store and skip
 	if len(lastCPURawData) == 0 {
 		lastCPURawData = currentRaw
+		lastCPURunTime = now
 		return nil, nil
 	}
 
 	deltaMap := calculateDelta(currentRaw, lastCPURawData)
 	lastCPURawData = currentRaw
+	lastCPURunTime = now
 
 	usage := percent(deltaMap["cpu"].Used, deltaMap["cpu"].Total)
 	coreUsage := calcCoreUsage(deltaMap)
@@ -139,21 +147,21 @@ func parseCPULine(line string) (CPURaw, error) {
 		return CPURaw{}, fmt.Errorf("insufficient fields: %d", len(fields))
 	}
 
-	parse := func(s string) uint64 {
-		v, _ := strconv.ParseUint(s, 10, 64)
+	parse := func(index int) uint64 {
+		v, _ := strconv.ParseUint(fields[index], 10, 64)
 		return v
 	}
 
 	return CPURaw{
-		User:    parse(fields[1]),
-		Nice:    parse(fields[2]),
-		System:  parse(fields[3]),
-		Idle:    parse(fields[4]),
-		IOWait:  parse(fields[5]),
-		IRQ:     parse(fields[6]),
-		SoftIRQ: parse(fields[7]),
-		Steal:   parse(fields[8]),
-		Guest:   parse(fields[9]),
+		User:    parse(1),
+		Nice:    parse(2),
+		System:  parse(3),
+		Idle:    parse(4),
+		IOWait:  parse(5),
+		IRQ:     parse(6),
+		SoftIRQ: parse(7),
+		Steal:   parse(8),
+		Guest:   parse(9),
 	}, nil
 }
 
