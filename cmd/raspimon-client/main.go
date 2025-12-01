@@ -10,6 +10,7 @@ import (
 
 	"github.com/nhdewitt/raspimon/collector"
 	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/raspimon/sender"
 )
 
 var mountCache = &collector.MountMap{
@@ -28,12 +29,14 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
+		fmt.Println("\nReceived termination signal. Shutting down...")
 		cancel()
 	}()
 
 	hostname, _ := os.Hostname()
 	metricsCh := make(chan metrics.Envelope, 100)
 	c := collector.New(hostname, metricsCh)
+	s := sender.New("http://10.1.0.23:8080/metrics", metricsCh)
 
 	go collector.RunMountManager(ctx, mountCache, mountUpdateInterval)
 	time.Sleep(1 * time.Second)
@@ -41,16 +44,7 @@ func main() {
 	diskCollector := collector.MakeDiskCollector(mountCache)
 	diskIOCollector := collector.MakeDiskIOCollector(mountCache)
 
-	go func() {
-		for {
-			select {
-			case envelope := <-metricsCh:
-				fmt.Printf("[%s] Collected metric: %s\n", envelope.Hostname, envelope.Data)
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	go s.Run(ctx)
 
 	go c.Run(ctx, 5*time.Second, collector.CollectCPU)
 	go c.Run(ctx, 10*time.Second, collector.CollectMemory)
@@ -67,4 +61,7 @@ func main() {
 		go c.Run(ctx, 60*time.Second, collectGPU)
 		go c.Run(ctx, 300*time.Second, collectSystem)
 	*/
+
+	<-ctx.Done()
+	fmt.Println("Main application exiting.")
 }
