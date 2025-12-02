@@ -22,6 +22,11 @@ const (
 )
 
 func main() {
+	serverURL := os.Getenv("RASPIMON_SERVER")
+	if serverURL == "" {
+		serverURL = "http://127.0.0.1:8080/metrics"
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -36,7 +41,7 @@ func main() {
 	hostname, _ := os.Hostname()
 	metricsCh := make(chan metrics.Envelope, 100)
 	c := collector.New(hostname, metricsCh)
-	s := sender.New("http://10.1.0.23:8080/metrics", metricsCh)
+	s := sender.New(serverURL, metricsCh)
 
 	go collector.RunMountManager(ctx, mountCache, mountUpdateInterval)
 	time.Sleep(1 * time.Second)

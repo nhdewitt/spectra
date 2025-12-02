@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -21,42 +23,49 @@ type RawEnvelope struct {
 }
 
 func metricsHandler(w http.ResponseWriter, r *http.Request) {
-	var rawEnvelopes []RawEnvelope
-
-	err := json.NewDecoder(r.Body).Decode(&rawEnvelopes)
-	if err != nil {
-		log.Printf("Error decoding batch: %v", err)
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r.Body); err != nil {
+		http.Error(w, "Failed to read body", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("--- Received Batch of %d Metrics ---", len(rawEnvelopes))
-	for _, env := range rawEnvelopes {
-		var metric metrics.Metric
-
-		switch env.Type {
-		case "cpu":
-			metric = &metrics.CPUMetric{}
-		case "memory":
-			metric = &metrics.MemoryMetric{}
-		case "disk":
-			metric = &metrics.DiskMetric{}
-		case "disk_io":
-			metric = &metrics.DiskIOMetric{}
-		default:
-			log.Printf("Warning: Unknown metric type received: %s", env.Type)
-			continue
-		}
-
-		if err := json.Unmarshal(env.Data, metric); err != nil {
-			log.Printf("Error unmarshaling type %s data: %v", env.Type, err)
-			continue
-		}
-
-		fmt.Printf(" [%s] %s: %v\n", env.Timestamp.Format("15:04:05"), env.Type, env.Data)
-	}
-
 	w.WriteHeader(http.StatusAccepted)
+
+	go func() {
+		var rawEnvelopes []RawEnvelope
+
+		if err := json.Unmarshal(buf.Bytes(), &rawEnvelopes); err != nil {
+			log.Printf("ERROR: Asynchronous decoding failure: %v", err)
+			return
+		}
+
+		log.Printf("--- Received Batch of %d Metrics ---", len(rawEnvelopes))
+
+		for _, env := range rawEnvelopes {
+			var metric metrics.Metric
+
+			switch env.Type {
+			case "cpu":
+				metric = &metrics.CPUMetric{}
+			case "memory":
+				metric = &metrics.MemoryMetric{}
+			case "disk":
+				metric = &metrics.DiskMetric{}
+			case "disk_io":
+				metric = &metrics.DiskIOMetric{}
+			default:
+				log.Printf("Warning: Unknown metric type received: %s", env.Type)
+				continue
+			}
+
+			if err := json.Unmarshal(env.Data, metric); err != nil {
+				log.Printf("Error unmarshaling type %s data: %v", env.Type, err)
+				continue
+			}
+
+			fmt.Printf(" [%s] %s: %v\n", env.Timestamp.Format("15:04:05"), env.Type, metric)
+		}
+	}()
 }
 
 func main() {
