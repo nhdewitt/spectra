@@ -52,13 +52,11 @@ func parseMounts() ([]MountInfo, error) {
 }
 
 func shouldIgnore(m MountInfo) bool {
-	if _, ignored := ignoredFilesystems[m.FSType]; ignored {
-		return true
-	}
-	if strings.HasPrefix(m.Device, "/dev/loop") {
-		return true
-	}
-	return false
+	_, isFSTypeIgnored := ignoredFilesystems[m.FSType]
+
+	return isFSTypeIgnored || strings.HasPrefix(m.Device, "/dev/loop") ||
+		strings.HasPrefix(m.Mountpoint, "/mnt/wsl/") ||
+		strings.HasPrefix(m.Mountpoint, "/Docker/")
 }
 
 func RunMountManager(ctx context.Context, cache *MountMap, interval time.Duration) {

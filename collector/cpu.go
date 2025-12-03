@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -47,7 +48,7 @@ type CPUDelta struct {
 }
 
 func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
-	currentRaw, err := parseProcStat()
+	cur, err := parseProcStat()
 	if err != nil {
 		return nil, fmt.Errorf("parsing /proc/stat: %w", err)
 	}
@@ -56,13 +57,18 @@ func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
 
 	// First sample - store and skip
 	if len(lastCPURawData) == 0 {
-		lastCPURawData = currentRaw
+		lastCPURawData = cur
 		lastCPURunTime = now
 		return nil, nil
 	}
 
-	deltaMap := calculateDelta(currentRaw, lastCPURawData)
-	lastCPURawData = currentRaw
+	deltaMap, ok := calculateDelta(cur, lastCPURawData)
+	if !ok {
+		lastCPURawData = nil
+		lastCPURunTime = now
+		return nil, nil
+	}
+	lastCPURawData = cur
 	lastCPURunTime = now
 
 	usage := percent(deltaMap["cpu"].Used, deltaMap["cpu"].Total)
@@ -84,33 +90,39 @@ func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
 
 // calculateDelta takes the current and previous raw maps and returns a map containing
 // the delta for each key (cpu, cpu0, ...)
-func calculateDelta(current, previous map[string]CPURaw) map[string]CPUDelta {
+func calculateDelta(current, previous map[string]CPURaw) (map[string]CPUDelta, bool) {
 	deltaMap := make(map[string]CPUDelta)
 
-	for key, currentRaw := range current {
-		previousRaw, ok := previous[key]
+	for key, cur := range current {
+		prev, ok := previous[key]
 		if !ok {
-			continue
+			return nil, false
+		}
+
+		if cur.User < prev.User || cur.Nice < prev.Nice || cur.System < prev.System || cur.Idle < prev.Idle || cur.IOWait < prev.IOWait ||
+			cur.IRQ < prev.IRQ || cur.SoftIRQ < prev.SoftIRQ || cur.Steal < prev.Steal {
+			return nil, false
 		}
 
 		delta := CPUDelta{}
 
-		delta.User = currentRaw.User - previousRaw.User
-		delta.Nice = currentRaw.Nice - previousRaw.Nice
-		delta.System = currentRaw.System - previousRaw.System
-		delta.Idle = currentRaw.Idle - previousRaw.Idle
-		delta.IOWait = currentRaw.IOWait - previousRaw.IOWait
-		delta.IRQ = currentRaw.IRQ - previousRaw.IRQ
-		delta.SoftIRQ = currentRaw.SoftIRQ - previousRaw.SoftIRQ
-		delta.Steal = currentRaw.Steal - previousRaw.Steal
-		delta.Guest = currentRaw.Guest - previousRaw.Guest
-		delta.Total = delta.User + delta.Nice + delta.System + delta.Idle + delta.IOWait + delta.IRQ + delta.SoftIRQ + delta.Steal + delta.Guest
+		delta.User = cur.User - prev.User
+		delta.Nice = cur.Nice - prev.Nice
+		delta.System = cur.System - prev.System
+		delta.Idle = cur.Idle - prev.Idle
+		delta.IOWait = cur.IOWait - prev.IOWait
+		delta.IRQ = cur.IRQ - prev.IRQ
+		delta.SoftIRQ = cur.SoftIRQ - prev.SoftIRQ
+		delta.Steal = cur.Steal - prev.Steal
+		delta.Guest = cur.Guest - prev.Guest
+		delta.GuestNice = cur.GuestNice - prev.GuestNice
+		delta.Total = delta.User + delta.Nice + delta.System + delta.Idle + delta.IOWait + delta.IRQ + delta.SoftIRQ + delta.Steal
 		delta.Used = delta.Total - (delta.Idle + delta.IOWait)
 
 		deltaMap[key] = delta
 	}
 
-	return deltaMap
+	return deltaMap, true
 }
 
 func parseProcStat() (map[string]CPURaw, error) {
@@ -143,25 +155,30 @@ func parseProcStat() (map[string]CPURaw, error) {
 
 func parseCPULine(line string) (CPURaw, error) {
 	fields := strings.Fields(line)
-	if len(fields) < 10 {
+	if len(fields) < 11 {
 		return CPURaw{}, fmt.Errorf("insufficient fields: %d", len(fields))
 	}
 
 	parse := func(index int) uint64 {
-		v, _ := strconv.ParseUint(fields[index], 10, 64)
+		v, err := strconv.ParseUint(fields[index], 10, 64)
+		if err != nil {
+			log.Printf("error parsing /proc/stat field[%d] = %q: %v", index, fields[index], err)
+			return 0
+		}
 		return v
 	}
 
 	return CPURaw{
-		User:    parse(1),
-		Nice:    parse(2),
-		System:  parse(3),
-		Idle:    parse(4),
-		IOWait:  parse(5),
-		IRQ:     parse(6),
-		SoftIRQ: parse(7),
-		Steal:   parse(8),
-		Guest:   parse(9),
+		User:      parse(1),
+		Nice:      parse(2),
+		System:    parse(3),
+		Idle:      parse(4),
+		IOWait:    parse(5),
+		IRQ:       parse(6),
+		SoftIRQ:   parse(7),
+		Steal:     parse(8),
+		Guest:     parse(9),
+		GuestNice: parse(10),
 	}, nil
 }
 
@@ -171,7 +188,7 @@ func calcCoreUsage(deltaMap map[string]CPUDelta) []float64 {
 
 	for i := range numCores {
 		coreKey := fmt.Sprintf("cpu%d", i)
-		if delta, ok := deltaMap[coreKey]; ok {
+		if delta, ok := deltaMap[coreKey]; ok && delta.Total > 0 {
 			usage[i] = percent(delta.Used, delta.Total)
 		}
 	}
