@@ -1,3 +1,6 @@
 .vscode/
 *.test
 collector.*
+*.exe
+raspimon-client
+raspimon-server

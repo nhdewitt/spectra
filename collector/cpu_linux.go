@@ -1,14 +1,16 @@
+//go:build !windows
+
 package collector
 
 import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/nhdewitt/raspimon/metrics"
 )
@@ -16,36 +18,7 @@ import (
 var (
 	// Package-level state for delta calculation
 	lastCPURawData map[string]CPURaw
-	lastCPURunTime time.Time
 )
-
-type CPURaw struct {
-	User      uint64
-	Nice      uint64
-	System    uint64
-	Idle      uint64
-	IOWait    uint64
-	IRQ       uint64
-	SoftIRQ   uint64
-	Steal     uint64
-	Guest     uint64
-	GuestNice uint64
-}
-
-type CPUDelta struct {
-	User      uint64
-	Nice      uint64
-	System    uint64
-	Idle      uint64
-	IOWait    uint64
-	IRQ       uint64
-	SoftIRQ   uint64
-	Steal     uint64
-	Guest     uint64
-	GuestNice uint64
-	Total     uint64 // Sum of all time
-	Used      uint64 // Total - Idle - IOWait
-}
 
 func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
 	cur, err := parseProcStat()
@@ -53,23 +26,18 @@ func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
 		return nil, fmt.Errorf("parsing /proc/stat: %w", err)
 	}
 
-	now := time.Now()
-
 	// First sample - store and skip
 	if len(lastCPURawData) == 0 {
 		lastCPURawData = cur
-		lastCPURunTime = now
 		return nil, nil
 	}
 
 	deltaMap, ok := calculateDelta(cur, lastCPURawData)
 	if !ok {
 		lastCPURawData = nil
-		lastCPURunTime = now
 		return nil, nil
 	}
 	lastCPURawData = cur
-	lastCPURunTime = now
 
 	usage := percent(deltaMap["cpu"].Used, deltaMap["cpu"].Total)
 	coreUsage := calcCoreUsage(deltaMap)
@@ -116,6 +84,8 @@ func calculateDelta(current, previous map[string]CPURaw) (map[string]CPUDelta, b
 		delta.Steal = cur.Steal - prev.Steal
 		delta.Guest = cur.Guest - prev.Guest
 		delta.GuestNice = cur.GuestNice - prev.GuestNice
+		// Note: Guest and GuestNice are already included in User and Nice by the kernel,
+		// so we don't add them to Total (that would double-count).
 		delta.Total = delta.User + delta.Nice + delta.System + delta.Idle + delta.IOWait + delta.IRQ + delta.SoftIRQ + delta.Steal
 		delta.Used = delta.Total - (delta.Idle + delta.IOWait)
 
@@ -132,8 +102,12 @@ func parseProcStat() (map[string]CPURaw, error) {
 	}
 	defer f.Close()
 
+	return parseProcStatFrom(f)
+}
+
+func parseProcStatFrom(r io.Reader) (map[string]CPURaw, error) {
 	result := make(map[string]CPURaw)
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(r)
 
 	for scanner.Scan() {
 		line := scanner.Text()

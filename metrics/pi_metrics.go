@@ -4,8 +4,8 @@ type CPUMetric struct {
 	Usage     float64   `json:"usage"`
 	CoreUsage []float64 `json:"cores"`
 	LoadAvg1  float64   `json:"load_1m"`
-	LoadAvg5  float64   `json:"load_5m"`
-	LoadAvg15 float64   `json:"load_15m"`
+	LoadAvg5  float64   `json:"load_5m,omitempty"`
+	LoadAvg15 float64   `json:"load_15m,omitempty"`
 }
 
 type MemoryMetric struct {
@@ -27,9 +27,9 @@ type DiskMetric struct {
 	Used        uint64  `json:"disk_used"`
 	Available   uint64  `json:"disk_available"`
 	UsedPct     float64 `json:"disk_used_pct"`
-	InodesTotal uint64  `json:"inodes_total"`
-	InodesUsed  uint64  `json:"inodes_used"`
-	InodesPct   float64 `json:"inodes_pct"`
+	InodesTotal uint64  `json:"inodes_total,omitempty"`
+	InodesUsed  uint64  `json:"inodes_used,omitempty"`
+	InodesPct   float64 `json:"inodes_pct,omitempty"`
 }
 
 type NetworkMetric struct {
@@ -76,27 +76,27 @@ type ProcessMetric struct {
 }
 
 type ThrottleMetric struct {
-	Undervoltage          bool `json:"undervoltage"`
-	ArmFreqCapped         bool `json:"arm_freq_capped"`
-	Throttled             bool `json:"throttled"`
-	SoftTempLimit         bool `json:"soft_temp_limit"`
-	UndervoltageOccurred  bool `json:"undervoltage_occurred"`
-	FreqCapOccurred       bool `json:"freq_cap_occurred"`
-	ThrottledOccurred     bool `json:"throttled_occurred"`
-	SoftTempLimitOccurred bool `json:"soft_temp_occurred"`
+	Undervoltage          bool `json:"undervoltage,omitempty"`
+	ArmFreqCapped         bool `json:"arm_freq_capped,omitempty"`
+	Throttled             bool `json:"throttled,omitempty"`
+	SoftTempLimit         bool `json:"soft_temp_limit,omitempty"`
+	UndervoltageOccurred  bool `json:"undervoltage_occurred,omitempty"`
+	FreqCapOccurred       bool `json:"freq_cap_occurred,omitempty"`
+	ThrottledOccurred     bool `json:"throttled_occurred,omitempty"`
+	SoftTempLimitOccurred bool `json:"soft_temp_occurred,omitempty"`
 }
 
 type ClockMetric struct {
-	ArmFreq  uint64 `json:"arm_freq_hz"`
-	CoreFreq uint64 `json:"core_freq_hz"`
-	GPUFreq  uint64 `json:"gpu_freq_hz"`
+	ArmFreq  uint64 `json:"arm_freq_hz,omitempty"`
+	CoreFreq uint64 `json:"core_freq_hz,omitempty"`
+	GPUFreq  uint64 `json:"gpu_freq_hz,omitempty"`
 }
 
 type VoltageMetric struct {
-	Core   float64 `json:"core_volts"`
-	SDRamC float64 `json:"sdram_c_volts"`
-	SDRamI float64 `json:"sdram_i_volts"`
-	SDRamP float64 `json:"sdram_p_volts"`
+	Core   float64 `json:"core_volts,omitempty"`
+	SDRamC float64 `json:"sdram_c_volts,omitempty"`
+	SDRamI float64 `json:"sdram_i_volts,omitempty"`
+	SDRamP float64 `json:"sdram_p_volts,omitempty"`
 }
 
 type WiFiMetric struct {
@@ -108,6 +108,6 @@ type WiFiMetric struct {
 }
 
 type GPUMetric struct {
-	MemoryTotal uint64 `json:"gpu_mem_total"`
-	MemoryUsed  uint64 `json:"gpu_mem_used"`
+	MemoryTotal uint64 `json:"gpu_mem_total,omitempty"`
+	MemoryUsed  uint64 `json:"gpu_mem_used,omitempty"`
 }
