@@ -1,4 +1,3 @@
-//go: build windows
 //go:build windows
 // +build windows
 
@@ -23,31 +22,31 @@ func makeCPUTimesStat(user, system, idle float64, count int) []cpu.TimesStat {
 
 	// Aggregate CPU (idx 0)
 	stats[0] = cpu.TimesStat{
-		User: user * float64(count),
-		System: system * float64(count),
-		Idle: idle * float64(count),
-		Nice: 0.0,
-		Iowait: 0.0,
-		Irq: 0.0,
-		Softirq: 0.0,
-		Steal: 0.0,
-		Guest: 0.0,
+		User:      user * float64(count),
+		System:    system * float64(count),
+		Idle:      idle * float64(count),
+		Nice:      0.0,
+		Iowait:    0.0,
+		Irq:       0.0,
+		Softirq:   0.0,
+		Steal:     0.0,
+		Guest:     0.0,
 		GuestNice: 0.0,
 	}
 
 	// Individual Cores (idx 1-count)
-	for i := range count {
+	for i := 1; i <= count; i++ {
 		stats[i] = cpu.TimesStat{
-			CPU: fmt.Sprintf("cpu%d", i-1),
-			User: user,
-			System: system,
-			Idle: idle,
-			Nice: 0.0,
-			Iowait: 0.0,
-			Irq: 0.0,
-			Softirq: 0.0,
-			Steal: 0.0,
-			Guest: 0.0,
+			CPU:       fmt.Sprintf("cpu%d", i-1),
+			User:      user,
+			System:    system,
+			Idle:      idle,
+			Nice:      0.0,
+			Iowait:    0.0,
+			Irq:       0.0,
+			Softirq:   0.0,
+			Steal:     0.0,
+			Guest:     0.0,
 			GuestNice: 0.0,
 		}
 	}
@@ -105,10 +104,10 @@ func TestCalculateDeltaWindows_Logic(t *testing.T) {
 	overall, perCore := calculateDeltaWindows(t1, t0)
 
 	expectedCoreUsage := []float64{
-		(0.5 / 1.0) * 100,	// Core 0: 50%
-		(1.0 / 1.0) * 100,	// Core 1: 100%
-		(0.0 / 1.0) * 100,	// Core 2: 0%
-		(0.75 / 1.0) * 100,	// Core 3: 75%
+		(0.5 / 1.0) * 100,  // Core 0: 50%
+		(1.0 / 1.0) * 100,  // Core 1: 100%
+		(0.0 / 1.0) * 100,  // Core 2: 0%
+		(0.75 / 1.0) * 100, // Core 3: 75%
 	}
 
 	// Aggregate Expected:

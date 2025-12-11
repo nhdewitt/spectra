@@ -1,5 +1,5 @@
-//go:build linux
-// +build linux
+//go:build !windows
+// +build !windows
 
 package collector
 
@@ -47,13 +47,13 @@ var localFilesystems = map[string]struct{}{
 	"ntfs":  {},
 }
 
-func MakeDiskCollector(cache *MountMap) CollectFunc {
+func MakeDiskCollector(cache *DriveCache) CollectFunc {
 	return func(ctx context.Context) ([]metrics.Metric, error) {
 		return CollectDisk(ctx, cache)
 	}
 }
 
-func CollectDisk(ctx context.Context, cache *MountMap) ([]metrics.Metric, error) {
+func CollectDisk(ctx context.Context, cache *DriveCache) ([]metrics.Metric, error) {
 	mountMap := loadMountMap(cache)
 
 	result := make([]metrics.Metric, 0, len(mountMap))
@@ -70,7 +70,7 @@ func CollectDisk(ctx context.Context, cache *MountMap) ([]metrics.Metric, error)
 	return result, nil
 }
 
-func loadMountMap(cache *MountMap) map[string]MountInfo {
+func loadMountMap(cache *DriveCache) map[string]MountInfo {
 	cache.RWMutex.RLock()
 	mountMap := cache.DeviceToMountpoint
 	cache.RWMutex.RUnlock()

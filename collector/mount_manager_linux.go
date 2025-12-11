@@ -1,5 +1,5 @@
-//go:build linux
-// +build linux
+//go:build !windows
+// +build !windows
 
 package collector
 
@@ -62,7 +62,7 @@ func shouldIgnore(m MountInfo) bool {
 		strings.HasPrefix(m.Mountpoint, "/Docker/")
 }
 
-func RunMountManager(ctx context.Context, cache *MountMap, interval time.Duration) {
+func RunMountManager(ctx context.Context, cache *DriveCache, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -79,7 +79,7 @@ func RunMountManager(ctx context.Context, cache *MountMap, interval time.Duratio
 	}
 }
 
-func updateCache(cache *MountMap) {
+func updateCache(cache *DriveCache) {
 	currentMounts, err := parseMounts()
 	if err != nil {
 		fmt.Printf("Error updating mount cache: %v\n", err)

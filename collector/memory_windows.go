@@ -12,7 +12,7 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-func CollectMemory_Windows(ctx context.Context) ([]metrics.Metric, error) {
+func CollectMemory(ctx context.Context) ([]metrics.Metric, error) {
 	v, err := mem.VirtualMemoryWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get virtual memory stats: %w", err)

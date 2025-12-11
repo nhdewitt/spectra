@@ -13,10 +13,6 @@ import (
 	"github.com/nhdewitt/raspimon/sender"
 )
 
-var mountCache = &collector.MountMap{
-	DeviceToMountpoint: make(map[string]collector.MountInfo),
-}
-
 const (
 	mountUpdateInterval = 30 * time.Second
 )
@@ -43,11 +39,12 @@ func main() {
 	c := collector.New(hostname, metricsCh)
 	s := sender.New(serverURL, metricsCh)
 
-	go collector.RunMountManager(ctx, mountCache, mountUpdateInterval)
+	driveCache := collector.NewDriveCache()
+	go collector.RunMountManager(ctx, driveCache, mountUpdateInterval)
 	time.Sleep(1 * time.Second)
 
-	diskCollector := collector.MakeDiskCollector(mountCache)
-	diskIOCollector := collector.MakeDiskIOCollector(mountCache)
+	diskCollector := collector.MakeDiskCollector(driveCache)
+	diskIOCollector := collector.MakeDiskIOCollector(driveCache)
 
 	go s.Run(ctx)
 

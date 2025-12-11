@@ -1,5 +1,5 @@
-//go:build linux
-// +build linux
+//go:build !windows
+// +build !windows
 
 package collector
 
@@ -44,13 +44,13 @@ type DiskIODelta struct {
 	WriteTime    uint64
 }
 
-func MakeDiskIOCollector(cache *MountMap) CollectFunc {
+func MakeDiskIOCollector(cache *DriveCache) CollectFunc {
 	return func(ctx context.Context) ([]metrics.Metric, error) {
 		return CollectDiskIO(ctx, cache)
 	}
 }
 
-func CollectDiskIO(ctx context.Context, cache *MountMap) ([]metrics.Metric, error) {
+func CollectDiskIO(ctx context.Context, cache *DriveCache) ([]metrics.Metric, error) {
 	mountMap := loadMountMap(cache)
 
 	currentRaw, err := parseProcDiskstats(mountMap)

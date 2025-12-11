@@ -1,5 +1,3 @@
-//go:build linux
-
 package collector
 
 import (
@@ -14,9 +12,6 @@ type Collector struct {
 	hostname string
 	out      chan<- metrics.Envelope
 }
-
-// CollectFunc is any function that produces a metric
-type CollectFunc func(context.Context) ([]metrics.Metric, error)
 
 func New(hostname string, out chan<- metrics.Envelope) *Collector {
 	return &Collector{
@@ -56,7 +51,7 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, collect Col
 			metricsSlice, err := collect(ctx)
 			if err != nil {
 				log.Printf("collection error: %v", err)
-				return
+				continue
 			}
 			for _, m := range metricsSlice {
 				c.send(ctx, m)

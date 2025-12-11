@@ -1,3 +1,6 @@
+//go:build !windows
+// +build !windows
+
 package collector
 
 import (
@@ -8,8 +11,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func setupMountCache(b *testing.B) *MountMap {
-	cache := &MountMap{
+func setupMountCache(b *testing.B) *DriveCache {
+	cache := &DriveCache{
 		DeviceToMountpoint: make(map[string]MountInfo),
 	}
 
