@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 	"github.com/shirou/gopsutil/load"
 	"github.com/shirou/gopsutil/v3/cpu"
 )

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 )
 
 const bytesPerSector float64 = 512.0

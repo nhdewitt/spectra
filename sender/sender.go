@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 )
 
 type Sender struct {

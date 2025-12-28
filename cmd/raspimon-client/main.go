@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nhdewitt/raspimon/collector"
-	"github.com/nhdewitt/raspimon/metrics"
-	"github.com/nhdewitt/raspimon/sender"
+	"github.com/nhdewitt/spectra/collector"
+	"github.com/nhdewitt/spectra/metrics"
+	"github.com/nhdewitt/spectra/sender"
 )
 
 const (
@@ -18,7 +18,7 @@ const (
 )
 
 func main() {
-	serverURL := os.Getenv("RASPIMON_SERVER")
+	serverURL := os.Getenv("SPECTRA_SERVER")
 	if serverURL == "" {
 		serverURL = "http://127.0.0.1:8080/metrics"
 	}

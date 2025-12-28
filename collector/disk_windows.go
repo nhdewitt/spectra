@@ -9,8 +9,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/nhdewitt/raspimon/metrics"
-	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/nhdewitt/spectra/metrics"
 )
 
 var monitoredFilesystems = map[string]struct{}{

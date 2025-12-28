@@ -7,7 +7,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 	"golang.org/x/sys/unix"
 )
 

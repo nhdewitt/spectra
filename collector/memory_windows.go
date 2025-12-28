@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
