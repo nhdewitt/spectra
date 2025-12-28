@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 	"github.com/yusufpapurcu/wmi"
 )
 

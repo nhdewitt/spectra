@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 )
 
 func TestParseNetWirelessFrom(t *testing.T) {

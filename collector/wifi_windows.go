@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 )
 
 var (

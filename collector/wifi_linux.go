@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 )
 
 type metadataFetcher func(ctx context.Context, iface string) (string, float64)

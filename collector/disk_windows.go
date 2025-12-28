@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/nhdewitt/spectra/metrics"
+	"github.com/shirou/gopsutil/disk"
 )
 
 var monitoredFilesystems = map[string]struct{}{

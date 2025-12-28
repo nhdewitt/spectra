@@ -3,7 +3,7 @@ package collector
 import (
 	"context"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 )
 
 // MountMap filters Linux drives for DiskIO collection

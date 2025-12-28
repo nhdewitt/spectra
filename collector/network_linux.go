@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 )
 
 // NetworkRaw holds the cumulative counters from /proc/net/dev

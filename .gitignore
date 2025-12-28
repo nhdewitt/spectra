@@ -2,5 +2,5 @@
 *.test
 collector.*
 *.exe
-raspimon-client
-raspimon-server
+spectra-client
+spectra-server

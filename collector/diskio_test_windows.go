@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/nhdewitt/raspimon/metrics"
+	"github.com/nhdewitt/spectra/metrics"
 )
 
 func TestFormatDeviceName(t *testing.T) {
