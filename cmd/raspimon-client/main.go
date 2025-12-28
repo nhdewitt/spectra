@@ -52,14 +52,14 @@ func main() {
 	go c.Run(ctx, 10*time.Second, collector.CollectMemory)
 	go c.Run(ctx, 60*time.Second, diskCollector)
 	go c.Run(ctx, 5*time.Second, diskIOCollector)
+	go c.Run(ctx, 5*time.Second, collector.CollectNetwork)
+	go c.Run(ctx, 30*time.Second, collector.CollectWiFi)
 	/*
-		go c.Run(ctx, 5*time.Second, collectNetwork)
 		go c.Run(ctx, 10*time.Second, collectTemperature)
 		go c.Run(ctx, 15*time.Second, collectProcesses)
 		go c.Run(ctx, 10*time.Second, collectThrottle)
 		go c.Run(ctx, 15*time.Second, collectClock)
 		go c.Run(ctx, 60*time.Second, collectVoltage)
-		go c.Run(ctx, 30*time.Second, collectWiFi)
 		go c.Run(ctx, 60*time.Second, collectGPU)
 		go c.Run(ctx, 300*time.Second, collectSystem)
 	*/

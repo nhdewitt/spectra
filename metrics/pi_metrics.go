@@ -100,6 +100,7 @@ type VoltageMetric struct {
 }
 
 type WiFiMetric struct {
+	Interface   string  `json:"interface"`
 	SSID        string  `json:"ssid"`
 	SignalLevel int     `json:"signal_dbm"`
 	LinkQuality int     `json:"link_quality"`

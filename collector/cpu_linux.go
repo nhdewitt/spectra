@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -133,14 +132,7 @@ func parseCPULine(line string) (CPURaw, error) {
 		return CPURaw{}, fmt.Errorf("insufficient fields: %d", len(fields))
 	}
 
-	parse := func(index int) uint64 {
-		v, err := strconv.ParseUint(fields[index], 10, 64)
-		if err != nil {
-			log.Printf("error parsing /proc/stat field[%d] = %q: %v", index, fields[index], err)
-			return 0
-		}
-		return v
-	}
+	parse := makeUintParser(fields, "/proc/stat")
 
 	return CPURaw{
 		User:      parse(1),

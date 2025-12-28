@@ -53,6 +53,10 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 				metric = &metrics.DiskMetric{}
 			case "disk_io":
 				metric = &metrics.DiskIOMetric{}
+			case "network":
+				metric = &metrics.NetworkMetric{}
+			case "wifi":
+				metric = &metrics.WiFiMetric{}
 			default:
 				log.Printf("Warning: Unknown metric type received: %s", env.Type)
 				continue

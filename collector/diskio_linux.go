@@ -104,10 +104,6 @@ func buildDiskIOMetric(device string, curr, prev DiskIORaw, elapsed float64) met
 	}
 }
 
-func rate(delta uint64, seconds float64) uint64 {
-	return uint64(float64(delta) / seconds)
-}
-
 func parseProcDiskstats(mountMap map[string]MountInfo) (map[string]DiskIORaw, error) {
 	f, err := os.Open("/proc/diskstats")
 	if err != nil {
