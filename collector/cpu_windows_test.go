@@ -1,59 +1,34 @@
 //go:build windows
-// +build windows
 
 package collector
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/nhdewitt/spectra/metrics"
-	"github.com/shirou/gopsutil/v3/cpu"
 )
 
 const epsilon = 0.001
 
-// Helper function to create a clean TimesStat slice for testing
-func makeCPUTimesStat(user, system, idle float64, count int) []cpu.TimesStat {
-	stats := make([]cpu.TimesStat, count+1)
+// Helper to create native Windows structs for testing.
+// IMPORTANT: Simulates Windows behavior where KernelTime INCLUDES IdleTime.
+func makeMockTimes(user, system, idle int64, count int) []systemProcessorPerformanceInfo {
+	stats := make([]systemProcessorPerformanceInfo, count)
 
-	// Aggregate CPU (idx 0)
-	stats[0] = cpu.TimesStat{
-		User:      user * float64(count),
-		System:    system * float64(count),
-		Idle:      idle * float64(count),
-		Nice:      0.0,
-		Iowait:    0.0,
-		Irq:       0.0,
-		Softirq:   0.0,
-		Steal:     0.0,
-		Guest:     0.0,
-		GuestNice: 0.0,
-	}
-
-	// Individual Cores (idx 1-count)
-	for i := 1; i <= count; i++ {
-		stats[i] = cpu.TimesStat{
-			CPU:       fmt.Sprintf("cpu%d", i-1),
-			User:      user,
-			System:    system,
-			Idle:      idle,
-			Nice:      0.0,
-			Iowait:    0.0,
-			Irq:       0.0,
-			Softirq:   0.0,
-			Steal:     0.0,
-			Guest:     0.0,
-			GuestNice: 0.0,
+	for i := 0; i < count; i++ {
+		stats[i] = systemProcessorPerformanceInfo{
+			UserTime: user,
+			// The Windows Trap: KernelTime includes IdleTime
+			KernelTime: system + idle,
+			IdleTime:   idle,
 		}
 	}
 	return stats
 }
 
-// Helper to check float percentage equality
 func approxEqual_Windows(a, b float64) bool {
 	return math.Abs(a-b) < epsilon
 }
@@ -62,58 +37,62 @@ func TestCalculateDeltaWindows_Logic(t *testing.T) {
 	// 4-core system
 	numCores := 4
 
-	// Sample 1: Baseline
-	// all cores idle for 100 seconds total
-	t0 := makeCPUTimesStat(0, 0, 100, numCores)
+	// Sample 1: Baseline (T0)
+	// All cores idle for 100 ticks
+	// User=0, System=0, Idle=100 -> Kernel=100
+	t0 := makeMockTimes(0, 0, 100, numCores)
 
-	// Sample 2: 1 sec interval
-	// Core 0: 50% used
-	t1_c0 := cpu.TimesStat{User: 0.5, Idle: 0.5}
-	// Core 1: 100% used
-	t1_c1 := cpu.TimesStat{User: 1.0, Idle: 0.0}
-	// Core 2: 0% used
-	t1_c2 := cpu.TimesStat{User: 0.0, Idle: 1.0}
-	// Core 3: 75% used
-	t1_c3 := cpu.TimesStat{User: 0.5, System: 0.25, Idle: 0.25}
+	// Sample 2: Update (T1)
+	// We start with a copy of T0 and add ticks to simulate usage
+	t1 := makeMockTimes(0, 0, 100, numCores)
 
-	t1 := make([]cpu.TimesStat, numCores+1)
-	t1[1] = t0[1]
-	t1[2] = t0[2]
-	t1[3] = t0[3]
-	t1[4] = t0[4]
+	// --- Core 0: 50% Used ---
+	// 50 User, 50 Idle
+	// Delta Total = 100
+	t1[0].UserTime += 50
+	t1[0].IdleTime += 50
+	t1[0].KernelTime += 50 // (System 0 + Idle 50)
 
-	// Apply deltas to T1 (simulates second call)
-	t1[1].User += t1_c0.User
-	t1[1].Idle += t1_c0.Idle
-	t1[2].User += t1_c1.User
-	t1[2].Idle += t1_c1.Idle
-	t1[3].User += t1_c2.User
-	t1[3].Idle += t1_c2.Idle
-	t1[4].User += t1_c3.User
-	t1[4].System += t1_c3.System
-	t1[4].Idle += t1_c3.Idle
+	// --- Core 1: 100% Used ---
+	// 100 User, 0 Idle
+	// Delta Total = 100
+	t1[1].UserTime += 100
+	t1[1].IdleTime += 0
+	t1[1].KernelTime += 0 // (System 0 + Idle 0)
 
-	// Recalculate aggregate in T1
-	t1_agg_user := t1[1].User + t1[2].User + t1[3].User + t1[4].User
-	t1_agg_system := t1[1].System + t1[2].System + t1[3].System + t1[4].System
-	t1_agg_idle := t1[1].Idle + t1[2].Idle + t1[3].Idle + t1[4].Idle
-	t1[0].User = t1_agg_user
-	t1[0].System = t1_agg_system
-	t1[0].Idle = t1_agg_idle
+	// --- Core 2: 0% Used ---
+	// 0 User, 100 Idle
+	// Delta Total = 100
+	t1[2].UserTime += 0
+	t1[2].IdleTime += 100
+	t1[2].KernelTime += 100 // (System 0 + Idle 100)
 
-	overall, perCore := calculateDeltaWindows(t1, t0)
+	// --- Core 3: 75% Used ---
+	// 50 User, 25 System, 25 Idle
+	// Delta Total = 100
+	t1[3].UserTime += 50
+	t1[3].IdleTime += 25
+	t1[3].KernelTime += 50 // (System 25 + Idle 25)
+
+	// Run the calculation
+	overall, perCore := calculateDeltas(t1, t0)
 
 	expectedCoreUsage := []float64{
-		(0.5 / 1.0) * 100,  // Core 0: 50%
-		(1.0 / 1.0) * 100,  // Core 1: 100%
-		(0.0 / 1.0) * 100,  // Core 2: 0%
-		(0.75 / 1.0) * 100, // Core 3: 75%
+		50.0,  // Core 0
+		100.0, // Core 1
+		0.0,   // Core 2
+		75.0,  // Core 3
 	}
 
-	// Aggregate Expected:
-	// Total aggregate time delta is 4 seconds
-	// Total aggregate used time delta is (0.5 + 1.0 + 0.0 + 0.75) = 2.25 seconds
-	// Overall Usage = (2.25 / 4.0) * 100 = 56.25%
+	// Aggregate Calculation:
+	// Total Deltas across all cores = 400 ticks
+	// Used Deltas:
+	// C0: 50
+	// C1: 100
+	// C2: 0
+	// C3: 75 (50 user + 25 system)
+	// Total Used = 225
+	// Overall = 225 / 400 = 56.25%
 	expectedOverallUsage := 56.25
 
 	if !approxEqual_Windows(overall, expectedOverallUsage) {
@@ -132,25 +111,26 @@ func TestCalculateDeltaWindows_Logic(t *testing.T) {
 }
 
 func TestCollectCPUWindows_StateManagement(t *testing.T) {
+	// Reset package-level state
 	lastCPUTimes = nil
 	ctx := context.Background()
 
-	// First call (baseline)
-	// Should return nil metrics and nil error
+	// 1. First call (Baseline)
+	// Should return nil because we need two data points to calc %
 	metrics1, err := CollectCPU(ctx)
 	if err != nil {
 		t.Fatalf("First call failed: %v", err)
 	}
 	if metrics1 != nil {
-		t.Error("First call should return nil (baseline)")
+		t.Error("First call should return nil (baseline population only)")
 	}
 	if len(lastCPUTimes) == 0 {
 		t.Fatal("lastCPUTimes should have been populated after first call")
 	}
 
-	// Second call
-	// Simulate a time gap and core usage increase for a valid result
-	time.Sleep(10 * time.Millisecond)
+	// 2. Second call
+	// Sleep briefly to ensure non-zero time deltas (prevents divide by zero)
+	time.Sleep(50 * time.Millisecond)
 
 	metrics2, err := CollectCPU(ctx)
 	if err != nil {
@@ -160,14 +140,22 @@ func TestCollectCPUWindows_StateManagement(t *testing.T) {
 		t.Fatal("Second call expected metrics, got nil")
 	}
 	if len(metrics2) != 1 {
-		t.Fatalf("Expected 1 metric, got %d", len(metrics2))
+		t.Fatalf("Expected 1 metric struct, got %d", len(metrics2))
 	}
 
+	// 3. Validation
 	cpuMetric, ok := metrics2[0].(metrics.CPUMetric)
 	if !ok {
 		t.Fatal("Returned metric is not CPUMetric type")
 	}
+
+	// Sanity check range
 	if cpuMetric.Usage < 0 || cpuMetric.Usage > 100 {
 		t.Errorf("Usage percentage %.2f is out of expected range (0-100)", cpuMetric.Usage)
+	}
+
+	// Ensure we got core data (assuming the test runner machine has at least 1 core)
+	if len(cpuMetric.CoreUsage) == 0 {
+		t.Error("Expected per-core usage data, got empty slice")
 	}
 }

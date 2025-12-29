@@ -6,83 +6,203 @@ package collector
 import (
 	"context"
 	"fmt"
+	"math"
+	"sync"
+	"syscall"
+	"time"
+	"unsafe"
 
 	"github.com/nhdewitt/spectra/metrics"
-	"github.com/shirou/gopsutil/load"
-	"github.com/shirou/gopsutil/v3/cpu"
 )
 
-// Package-level state for delta calculation
-var lastCPUTimes []cpu.TimesStat
+var (
+	ntdll                        = syscall.NewLazyDLL("ntdll.dll")
+	kernel32                     = syscall.NewLazyDLL("kernel32.dll")
+	procNtQuerySystemInformation = ntdll.NewProc("NtQuerySystemInformation")
+	procGetNativeSystemInfo      = kernel32.NewProc("GetNativeSystemInfo")
+)
+
+const (
+	systemProcessorPerformanceInformation = 8
+)
+
+// Raw Windows structure for per-core CPU times
+type systemProcessorPerformanceInfo struct {
+	IdleTime       int64
+	KernelTime     int64
+	UserTime       int64
+	DpcTime        int64
+	InterruptTime  int64
+	InterruptCount uint32
+	_              uint32 // Padding
+}
+
+type loadAverages struct {
+	sync.RWMutex
+	lastUpdate time.Time
+	Load1      float64
+	Load5      float64
+	Load15     float64
+}
+
+// Update calculates the new load average based on the current CPU usage and time elapsed.
+func (la *loadAverages) Update(cpuPercent float64) {
+	numCPU := float64(getProcessorCount())
+	currentLoad := (cpuPercent / 100.0) * numCPU
+
+	la.Lock()
+	defer la.Unlock()
+
+	now := time.Now()
+
+	// First run
+	if la.lastUpdate.IsZero() {
+		la.Load1 = currentLoad
+		la.Load5 = currentLoad
+		la.Load15 = currentLoad
+		la.lastUpdate = now
+		return
+	}
+
+	timeDelta := now.Sub(la.lastUpdate).Seconds()
+	la.lastUpdate = now
+
+	decay1 := math.Exp(-timeDelta / 60.0)
+	decay5 := math.Exp(-timeDelta / 300.0)
+	decay15 := math.Exp(-timeDelta / 900.0)
+
+	la.Load1 = la.Load1*decay1 + currentLoad*(1-decay1)
+	la.Load5 = la.Load5*decay5 + currentLoad*(1-decay5)
+	la.Load15 = la.Load15*decay15 + currentLoad*(1-decay15)
+}
+
+var (
+	// Package-level state for delta calculation
+	lastCPUTimes []systemProcessorPerformanceInfo
+	loadAvg      *loadAverages
+	loadAvgOnce  sync.Once
+)
+
+func getLoadAverages() *loadAverages {
+	loadAvgOnce.Do(func() {
+		loadAvg = &loadAverages{}
+	})
+	return loadAvg
+}
 
 // CollectCPU collects CPU metrics for Windows.
 func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
-	// Get raw CPU times
-	currentTimes, err := cpu.TimesWithContext(ctx, true)
+	currentTimes, err := getSystemProcessPerformanceInfo()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get CPU times: %w", err)
+		return nil, fmt.Errorf("failed to query CPU info: %w", err)
 	}
 
-	// First run - baseline check
-	if len(lastCPUTimes) == 0 {
+	// First Run
+	if len(lastCPUTimes) == 0 || len(lastCPUTimes) != len(currentTimes) {
 		lastCPUTimes = currentTimes
 		return nil, nil
 	}
 
-	// Calculate usage deltas
-	overallPercent, coreUsage := calculateDeltaWindows(currentTimes, lastCPUTimes)
-
-	// Calculate load averages
-	loadAvg, err := load.AvgWithContext(ctx)
-	if err != nil {
-		loadAvg = &load.AvgStat{}
-	}
+	overallPct, corePcts := calculateDeltas(currentTimes, lastCPUTimes)
 
 	// Update baseline
 	lastCPUTimes = currentTimes
 
-	// Populate struct
+	la := getLoadAverages()
+	la.Update(overallPct)
+	load1, load5, load15 := GetLoadAverages()
+
 	metric := metrics.CPUMetric{
-		Usage:     overallPercent,
-		CoreUsage: coreUsage,
-		LoadAvg1:  loadAvg.Load1,
-		LoadAvg5:  0.0,
-		LoadAvg15: 0.0,
+		Usage:     overallPct,
+		CoreUsage: corePcts,
+		LoadAvg1:  load1,
+		LoadAvg5:  load5,
+		LoadAvg15: load15,
 	}
 
 	return []metrics.Metric{metric}, nil
 }
 
-func calculateDeltaWindows(current, last []cpu.TimesStat) (overall float64, perCore []float64) {
-	numCores := len(current) - 1
-	perCore = make([]float64, 0, numCores)
+func getSystemProcessPerformanceInfo() ([]systemProcessorPerformanceInfo, error) {
+	numCores := getProcessorCount()
 
-	for i, cur := range current {
-		if i >= len(last) {
-			continue
-		}
-		delta := CPUDeltaWindows{}
+	result := make([]systemProcessorPerformanceInfo, numCores)
 
-		delta.User = cur.User - last[i].User
-		delta.Nice = cur.Nice - last[i].Nice
-		delta.System = cur.System - last[i].System
-		delta.Idle = cur.Idle - last[i].Idle
-		delta.IOWait = cur.Iowait - last[i].Iowait
-		delta.IRQ = cur.Irq - last[i].Irq
-		delta.SoftIRQ = cur.Softirq - last[i].Softirq
-		delta.Steal = cur.Steal - last[i].Steal
-		delta.Guest = cur.Guest - last[i].Guest
-		delta.GuestNice = cur.GuestNice - last[i].GuestNice
-		// Don't add Guest and GuestNice to total (see cpu.go)
-		delta.Total = delta.User + delta.Nice + delta.System + delta.Idle + delta.IOWait + delta.IRQ + delta.SoftIRQ + delta.Steal
-		delta.Used = delta.Total - (delta.Idle + delta.IOWait)
+	bufferSize := uintptr(len(result)) * unsafe.Sizeof(result[0])
+	var returnLength uint32
 
-		if i == 0 {
-			overall = percent(delta.Used, delta.Total)
-		} else {
-			perCore = append(perCore, percent(delta.Used, delta.Total))
+	ret, _, _ := procNtQuerySystemInformation.Call(
+		uintptr(systemProcessorPerformanceInformation),
+		uintptr(unsafe.Pointer(&result[0])),
+		bufferSize,
+		uintptr(unsafe.Pointer(&returnLength)),
+	)
+	if ret != 0 {
+		return nil, fmt.Errorf("NtQuerySystemInformation failed with status 0x%x", ret)
+	}
+
+	return result, nil
+}
+
+func calculateDeltas(current, last []systemProcessorPerformanceInfo) (float64, []float64) {
+	var totalSystemUsed, totalSystemTime float64
+	perCore := make([]float64, len(current))
+
+	for i := range current {
+		c := current[i]
+		l := last[i]
+
+		// Raw Deltas
+		deltaIdle := float64(c.IdleTime - l.IdleTime)
+		deltaKernel := float64(c.KernelTime - l.KernelTime)
+		deltaUser := float64(c.UserTime - l.UserTime)
+
+		// Total active time = (Kernel - Idle) + User
+		// Total elapsed time = Kernel + User
+
+		deltaTotal := deltaKernel + deltaUser
+		deltaUsed := deltaTotal - deltaIdle
+
+		if deltaTotal > 0 {
+			corePct := (deltaUsed / deltaTotal) * 100.0
+			perCore[i] = corePct
+
+			totalSystemUsed += deltaUsed
+			totalSystemTime += deltaTotal
 		}
 	}
 
+	overall := 0.0
+	if totalSystemTime > 0 {
+		overall = (totalSystemUsed / totalSystemTime) * 100.0
+	}
+
 	return overall, perCore
+}
+
+func getProcessorCount() int {
+	var info systemInfo
+	procGetNativeSystemInfo.Call(uintptr(unsafe.Pointer(&info)))
+	return int(info.NumberOfProcessors)
+}
+
+type systemInfo struct {
+	ProcessorArchitecture     uint16
+	Reserved                  uint16
+	PageSize                  uint32
+	MinimumApplicationAddress uintptr
+	MaximumApplicationAddress uintptr
+	ActiveProcessorMask       uintptr
+	NumberOfProcessors        uint32
+	ProcessorType             uint32
+	AllocationGranularity     uint32
+	ProcessorLevel            uint16
+	ProcessorRevision         uint16
+}
+
+func GetLoadAverages() (load1, load5, load15 float64) {
+	la := getLoadAverages()
+	la.RLock()
+	defer la.RUnlock()
+	return la.Load1, la.Load5, la.Load15
 }

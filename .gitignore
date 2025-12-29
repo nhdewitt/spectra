@@ -2,5 +2,4 @@
 *.test
 collector.*
 *.exe
-spectra-client
-spectra-server
+.env

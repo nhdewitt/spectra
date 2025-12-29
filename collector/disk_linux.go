@@ -87,9 +87,9 @@ func statfs(path string) (unix.Statfs_t, error) {
 func buildDiskMetric(m MountInfo, stat unix.Statfs_t) metrics.DiskMetric {
 	bsize := uint64(stat.Bsize)
 
-	total := (stat.Blocks * bsize) / bytesPerMB
-	available := (stat.Bavail * bsize) / bytesPerMB
-	used := ((stat.Blocks - stat.Bfree) * bsize) / bytesPerMB
+	total := stat.Blocks * bsize
+	available := stat.Bavail * bsize
+	used := (stat.Blocks - stat.Bfree) * bsize
 	inodesUsed := stat.Files - stat.Ffree
 
 	return metrics.DiskMetric{

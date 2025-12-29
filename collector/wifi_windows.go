@@ -86,10 +86,10 @@ func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
 	var negotiatedVersion uint32
 
 	ret, _, _ := wlanOpenHandle.Call(
-		wlanApiVersion, // [in] DWORD dwClientVersion (2)
-		0,              // [in] PVOID (0)
-		uintptr(unsafe.Pointer(&negotiatedVersion)), // [out] PDWORD (result)
-		uintptr(unsafe.Pointer(&handle)),            // [out] PHANDLE (handle)
+		wlanApiVersion, 								// [in] DWORD dwClientVersion (2)
+		0,              								// [in] PVOID (0)
+		uintptr(unsafe.Pointer(&negotiatedVersion)), 	// [out] PDWORD (result)
+		uintptr(unsafe.Pointer(&handle)),            	// [out] PHANDLE (handle)
 	)
 	if ret != 0 {
 		return nil, fmt.Errorf("WlanOpenHandle failed: %d", ret)
@@ -107,9 +107,10 @@ func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
 	}
 
 	// Verify pointer
-	if ifaceList != nil {
-		defer wlanFreeMemory.Call(uintptr(unsafe.Pointer(ifaceList)))
+	if ifaceList == nil {
+		return nil, nil
 	}
+	defer wlanFreeMemory.Call(uintptr(unsafe.Pointer(ifaceList)))
 
 	numIfaces := int(ifaceList.NumberOfItems)
 	firstItem := uintptr(unsafe.Pointer(&ifaceList.InterfaceInfo[0]))

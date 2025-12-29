@@ -15,9 +15,8 @@ import (
 )
 
 const (
-	// CollectDiskIO runs every 5 seconds
 	timeDelta              float64 = 5.0
-	IOCTL_DISK_PERFORMANCE         = 0x70020
+	IOCTL_DISK_PERFORMANCE uint32  = 0x70020
 )
 
 type diskPerformance struct {
