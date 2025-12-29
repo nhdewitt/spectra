@@ -75,7 +75,7 @@ func TestCalculateDeltaWindows_Logic(t *testing.T) {
 	t1[3].KernelTime += 50 // (System 25 + Idle 25)
 
 	// Run the calculation
-	overall, perCore := calculateDeltas(t1, t0)
+	overall, perCore := calculateCPUDeltas(t1, t0)
 
 	expectedCoreUsage := []float64{
 		50.0,  // Core 0

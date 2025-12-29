@@ -1,5 +1,4 @@
-//go build !windows
-
+// go build !windows
 package collector
 
 import (
@@ -189,19 +188,19 @@ func TestCalculateDelta(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := calculateDelta(tt.current, tt.previous)
+			got, ok := calculateCPUDeltas(tt.current, tt.previous)
 			if ok != tt.wantOK {
-				t.Fatalf("calculateDelta() ok = %v, want %v", ok, tt.wantOK)
+				t.Fatalf("calculateCPUDeltas() ok = %v, want %v", ok, tt.wantOK)
 			}
 			if !ok {
 				return
 			}
 			delta, exists := got[tt.wantKey]
 			if !exists {
-				t.Fatalf("calculateDelta() missing key %q", tt.wantKey)
+				t.Fatalf("calculateCPUDeltas() missing key %q", tt.wantKey)
 			}
 			if delta != tt.want {
-				t.Errorf("calculateDelta()[%q] = %+v, want %+v", tt.wantKey, delta, tt.want)
+				t.Errorf("calculateCPUDeltas()[%q] = %+v, want %+v", tt.wantKey, delta, tt.want)
 			}
 		})
 	}
@@ -216,7 +215,7 @@ func TestCalculateDelta_MissingPreviousKey(t *testing.T) {
 		"cpu": {User: 50},
 	}
 
-	got, ok := calculateDelta(current, previous)
+	got, ok := calculateCPUDeltas(current, previous)
 
 	if ok {
 		t.Error("expected ok=-false when previous key is missing")
@@ -319,7 +318,7 @@ func BenchmarkCalculateDelta(b *testing.B) {
 	}
 
 	for b.Loop() {
-		_, _ = calculateDelta(current, previous)
+		_, _ = calculateCPUDeltas(current, previous)
 	}
 }
 
@@ -726,7 +725,7 @@ func TestCalculateDelta_CounterRegression(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := calculateDelta(tt.current, tt.previous)
+			got, ok := calculateCPUDeltas(tt.current, tt.previous)
 			if ok {
 				t.Error("expected ok=false when counter decreased")
 			}
@@ -845,7 +844,7 @@ func TestProcStatFromDeltas(t *testing.T) {
 			prev := parseTestFile(t, tt.files[0])
 			cur := parseTestFile(t, tt.files[1])
 
-			deltaMap, ok := calculateDelta(cur, prev)
+			deltaMap, ok := calculateCPUDeltas(cur, prev)
 			if ok != tt.wantOK {
 				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
 			}

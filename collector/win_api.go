@@ -6,7 +6,7 @@ import "syscall"
 
 // --- DLL Handles ---
 var (
-	ntdll    = syscall.NewLazyDLL("ntdll.go")
+	ntdll    = syscall.NewLazyDLL("ntdll.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 	wlanapi  = syscall.NewLazyDLL("wlanapi.dll")
 )

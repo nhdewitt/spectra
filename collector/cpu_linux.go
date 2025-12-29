@@ -14,10 +14,8 @@ import (
 	"github.com/nhdewitt/spectra/metrics"
 )
 
-var (
-	// Package-level state for delta calculation
-	lastCPURawData map[string]CPURaw
-)
+// Package-level state for delta calculation
+var lastCPURawData map[string]CPURaw
 
 func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
 	cur, err := parseProcStat()
@@ -31,7 +29,7 @@ func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
 		return nil, nil
 	}
 
-	deltaMap, ok := calculateDelta(cur, lastCPURawData)
+	deltaMap, ok := calculateCPUDeltas(cur, lastCPURawData)
 	if !ok {
 		lastCPURawData = nil
 		return nil, nil
@@ -55,9 +53,9 @@ func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
 	}}, nil
 }
 
-// calculateDelta takes the current and previous raw maps and returns a map containing
+// calculateCPUDeltas takes the current and previous raw maps and returns a map containing
 // the delta for each key (cpu, cpu0, ...)
-func calculateDelta(current, previous map[string]CPURaw) (map[string]CPUDelta, bool) {
+func calculateCPUDeltas(current, previous map[string]CPURaw) (map[string]CPUDelta, bool) {
 	deltaMap := make(map[string]CPUDelta)
 
 	for key, cur := range current {

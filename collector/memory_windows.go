@@ -6,31 +6,32 @@ package collector
 import (
 	"context"
 	"fmt"
-	"log"
+	"unsafe"
 
 	"github.com/nhdewitt/spectra/metrics"
-	"github.com/shirou/gopsutil/v3/mem"
 )
 
 func CollectMemory(ctx context.Context) ([]metrics.Metric, error) {
-	v, err := mem.VirtualMemoryWithContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get virtual memory stats: %w", err)
+	var memStatus memoryStatusEx
+	memStatus.Length = uint32(unsafe.Sizeof(memStatus))
+
+	ret, _, _ := procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memStatus)))
+	if ret == 0 {
+		return nil, fmt.Errorf("GlobalMemoryStatusEx failed")
 	}
 
-	s, err := mem.SwapMemoryWithContext(ctx)
-	if err != nil {
-		log.Printf("Failed to get swap memory stats: %v", err)
-		s = &mem.SwapMemoryStat{}
+	usedPhys := memStatus.TotalPhys - memStatus.AvailPhys
+	swapUsed := memStatus.TotalPageFile - memStatus.AvailPageFile
+
+	result := metrics.MemoryMetric{
+		Total:     memStatus.TotalPhys,
+		Used:      usedPhys,
+		Available: memStatus.AvailPhys,
+		UsedPct:   percent(usedPhys, memStatus.TotalPhys),
+		SwapTotal: memStatus.TotalPageFile,
+		SwapUsed:  swapUsed,
+		SwapPct:   percent(swapUsed, memStatus.TotalPageFile),
 	}
 
-	return []metrics.Metric{metrics.MemoryMetric{
-		Total:     v.Total,
-		Used:      v.Used,
-		Available: v.Available,
-		UsedPct:   percent(v.Used, v.Total),
-		SwapTotal: s.Total,
-		SwapUsed:  s.Used,
-		SwapPct:   percent(s.Used, s.Total),
-	}}, nil
+	return []metrics.Metric{result}, nil
 }

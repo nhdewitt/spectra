@@ -90,7 +90,7 @@ func CollectCPU(ctx context.Context) ([]metrics.Metric, error) {
 		return nil, nil
 	}
 
-	overallPct, corePcts := calculateDeltas(currentTimes, lastCPUTimes)
+	overallPct, corePcts := calculateCPUDeltas(currentTimes, lastCPUTimes)
 
 	// Update baseline
 	lastCPUTimes = currentTimes
@@ -129,7 +129,7 @@ func getSystemProcessorPerformanceInfo() ([]systemProcessorPerformanceInfo, erro
 	return result, nil
 }
 
-func calculateDeltas(current, last []systemProcessorPerformanceInfo) (float64, []float64) {
+func calculateCPUDeltas(current, last []systemProcessorPerformanceInfo) (float64, []float64) {
 	var totalSystemUsed, totalSystemTime float64
 	perCore := make([]float64, len(current))
 
