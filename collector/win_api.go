@@ -18,6 +18,13 @@ var (
 	procNtQuerySystemInformation = ntdll.NewProc("NtQuerySystemInformation")
 	procGetNativeSystemInfo      = kernel32.NewProc("GetNativeSystemInfo")
 
+	// Filesystem/Disk usage
+
+	procGetLogicalDrives     = kernel32.NewProc("GetLogicalDrives")
+	procGetDriveType         = kernel32.NewProc("GetDriveTypeW")
+	procGetVolumeInformation = kernel32.NewProc("GetVolumeInformationW")
+	procGetDiskFreeSpaceEx   = kernel32.NewProc("GetDiskFreeSpaceExW")
+
 	// Memory
 	procGlobalMemoryStatusEx = kernel32.NewProc("GlobalMemoryStatusEx")
 
@@ -34,6 +41,18 @@ const (
 	// CPU/System
 
 	systemProcessorPerformanceInformation = 8
+
+	// Disk
+
+	// Drive Types
+
+	driveUnknown   = 0
+	driveNoRootDir = 1
+	driveRemovable = 2
+	driveFixed     = 3
+	driveRemote    = 4
+	driveCdrom     = 5
+	driveRamdisk   = 6
 
 	// Disk IO
 

@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"syscall"
+	"unsafe"
 
 	"github.com/nhdewitt/spectra/metrics"
-	"github.com/shirou/gopsutil/disk"
 )
 
 var monitoredFilesystems = map[string]struct{}{
@@ -22,40 +23,88 @@ var monitoredFilesystems = map[string]struct{}{
 }
 
 func CollectDisk(ctx context.Context) ([]metrics.Metric, error) {
-	// Get all partitions
-	partitions, err := disk.PartitionsWithContext(ctx, false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get disk partitions: %w", err)
+	// Get bitmask of all available drives
+	ret, _, _ := procGetLogicalDrives.Call()
+	driveMask := uint32(ret)
+
+	if driveMask == 0 {
+		return nil, fmt.Errorf("GetLogicalDrives failed")
 	}
 
-	result := make([]metrics.Metric, 0, len(partitions))
+	var result []metrics.Metric
 
-	// Iterate through partitions and collect usage
-	for _, p := range partitions {
-		// Ignore network paths and temporary filesystems
-		if strings.HasPrefix(p.Mountpoint, "\\\\") || p.Fstype == "CDFS" || p.Fstype == "UDF" {
+	for i := range 26 {
+		if driveMask&(1<<i) == 0 {
 			continue
 		}
 
-		fsTypeUpper := strings.ToUpper(p.Fstype)
-		if _, ok := monitoredFilesystems[fsTypeUpper]; !ok {
+		// Construct path
+		rootPath := string(rune('A'+i)) + ":\\"
+		rootPathPtr, _ := syscall.UTF16PtrFromString(rootPath)
+
+		// Check drive type - only fixed+removable
+		typeRet, _, _ := procGetDriveType.Call(uintptr(unsafe.Pointer(rootPathPtr)))
+		driveType := uint32(typeRet)
+
+		if driveType != driveFixed && driveType != driveRemovable {
 			continue
 		}
 
-		usage, err := disk.UsageWithContext(ctx, p.Mountpoint)
-		if err != nil {
-			log.Printf("Warning: failed to get usage for %s: %v", p.Mountpoint, err)
+		// Get fs name
+		var volNameBuf [256]uint16
+		var fsNameBuf [256]uint16
+
+		ret, _, _ := procGetVolumeInformation.Call(
+			uintptr(unsafe.Pointer(rootPathPtr)),
+			uintptr(unsafe.Pointer(&volNameBuf[0])),
+			uintptr(len(volNameBuf)),
+			0,
+			0,
+			0,
+			uintptr(unsafe.Pointer(&fsNameBuf[0])),
+			uintptr(len(fsNameBuf)),
+		)
+		if ret == 0 {
+			continue
+		}
+
+		fsName := strings.ToUpper(syscall.UTF16ToString(fsNameBuf[:]))
+
+		if _, ok := monitoredFilesystems[fsName]; !ok {
+			continue
+		}
+
+		var freeBytesAvailable, totalNumberOfBytes, totalNumberOfFreeBytes uint64
+
+		ret, _, _ = procGetDiskFreeSpaceEx.Call(
+			uintptr(unsafe.Pointer(rootPathPtr)),
+			uintptr(unsafe.Pointer(&freeBytesAvailable)),
+			uintptr(unsafe.Pointer(&totalNumberOfBytes)),
+			uintptr(unsafe.Pointer(&totalNumberOfFreeBytes)),
+		)
+		if ret == 0 {
+			log.Printf("Warning: Failed to get space for %s", rootPath)
+			continue
+		}
+
+		usedBytes := totalNumberOfBytes - freeBytesAvailable
+
+		// Get Volume Label
+		volLabel := syscall.UTF16ToString(volNameBuf[:])
+		deviceName := volLabel
+		if deviceName == "" {
+			deviceName = strings.TrimSuffix(rootPath, "\\") // Fallback
 		}
 
 		result = append(result, metrics.DiskMetric{
-			Device:     p.Device,
-			Mountpoint: p.Mountpoint,
-			Filesystem: p.Fstype,
+			Device:     deviceName,
+			Mountpoint: rootPath,
+			Filesystem: fsName,
 			Type:       "local",
-			Total:      usage.Total,
-			Used:       usage.Used,
-			Available:  usage.Free,
-			UsedPct:    percent(usage.Used, usage.Total),
+			Total:      totalNumberOfBytes,
+			Used:       usedBytes,
+			Available:  freeBytesAvailable,
+			UsedPct:    percent(usedBytes, totalNumberOfBytes),
 		})
 	}
 
