@@ -9,36 +9,18 @@ import (
 	"log"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/nhdewitt/spectra/metrics"
 )
-
-const (
-	timeDelta              float64 = 5.0
-	IOCTL_DISK_PERFORMANCE uint32  = 0x70020
-)
-
-type diskPerformance struct {
-	BytesRead           int64
-	BytesWritten        int64
-	ReadTime            int64
-	WriteTime           int64
-	IdleTime            int64
-	ReadCount           uint32
-	WriteCount          uint32
-	QueueDepth          uint32
-	SplitCount          uint32
-	QueryTime           int64
-	StorageDeviceNumber uint32
-	StorageManagerName  [8]uint16
-}
 
 // perfGetter allows mocking getDrivePerformance in tests
 type perfGetter func(driveIndex uint32) (diskPerformance, error)
 
 var (
 	lastDiskPerf map[uint32]diskPerformance
+	lastDiskTime time.Time
 	// getDrivePerf is the function used to get performance data (mockable)
 	getDrivePerf perfGetter = getDrivePerformance
 )
@@ -64,9 +46,20 @@ func CollectDiskIO(ctx context.Context, driveCache *DriveCache) ([]metrics.Metri
 		currentPerf[idx] = perf
 	}
 
+	now := time.Now()
+
 	// Baseline
 	if lastDiskPerf == nil {
 		lastDiskPerf = currentPerf
+		lastDiskTime = now
+		return nil, nil
+	}
+
+	secondsElapsed := now.Sub(lastDiskTime).Seconds()
+	if secondsElapsed <= 0 {
+		log.Printf("Warning: Invalid time delta (%f seconds). Now: %v, Last: %v", secondsElapsed, now, lastDiskTime)
+		lastDiskPerf = currentPerf
+		lastDiskTime = now
 		return nil, nil
 	}
 
@@ -83,20 +76,26 @@ func CollectDiskIO(ctx context.Context, driveCache *DriveCache) ([]metrics.Metri
 
 		readBytesDelta := float64(curr.BytesRead - prev.BytesRead)
 		writeBytesDelta := float64(curr.BytesWritten - prev.BytesWritten)
+		readOpsDelta := float64(curr.ReadCount - prev.ReadCount)
+		writeOpsDelta := float64(curr.WriteCount - prev.WriteCount)
+
+		readTimeDelta := uint64(curr.ReadTime - prev.ReadTime)
+		writeTimeDelta := uint64(curr.WriteTime - prev.WriteTime)
 
 		result = append(result, metrics.DiskIOMetric{
 			Device:     deviceName,
-			ReadBytes:  uint64(readBytesDelta / timeDelta),
-			WriteBytes: uint64(writeBytesDelta / timeDelta),
-			ReadOps:    uint64(float64(curr.ReadCount-prev.ReadCount) / timeDelta),
-			WriteOps:   uint64(float64(curr.WriteCount-prev.WriteCount) / timeDelta),
-			ReadTime:   uint64(curr.ReadTime - prev.ReadTime),
-			WriteTime:  uint64(curr.WriteTime - prev.WriteTime),
+			ReadBytes:  uint64(readBytesDelta / secondsElapsed),
+			WriteBytes: uint64(writeBytesDelta / secondsElapsed),
+			ReadOps:    uint64(readOpsDelta / secondsElapsed),
+			WriteOps:   uint64(writeOpsDelta / secondsElapsed),
+			ReadTime:   readTimeDelta,
+			WriteTime:  writeTimeDelta,
 			InProgress: uint64(curr.QueueDepth),
 		})
 	}
 
 	lastDiskPerf = currentPerf
+	lastDiskTime = now
 	return result, nil
 }
 
@@ -123,7 +122,7 @@ func getDrivePerformance(driveIndex uint32) (diskPerformance, error) {
 
 	err = syscall.DeviceIoControl(
 		handle,
-		IOCTL_DISK_PERFORMANCE,
+		ioctlDiskPerformance,
 		nil,
 		0,
 		(*byte)(unsafe.Pointer(&perf)),

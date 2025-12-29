@@ -35,6 +35,12 @@ const (
 
 	systemProcessorPerformanceInformation = 8
 
+	// Disk IO
+
+	// IOCTL_DISK_PERFORMANCE: 0x70020
+	// ControlCode(DeviceType: 7 (Disk), Function: 8, Method: 0 (Buffered), Access: 0 (Any))
+	ioctlDiskPerformance = 0x70020
+
 	// WLAN
 
 	// WLAN_API_VERSION_2_0 is for Windows Vista+
@@ -73,6 +79,22 @@ type systemInfo struct {
 	AllocationGranularity     uint32
 	ProcessorLevel            uint16
 	ProcessorRevision         uint16
+}
+
+// Disk IO: Disk Performance
+type diskPerformance struct {
+	BytesRead           int64
+	BytesWritten        int64
+	ReadTime            int64
+	WriteTime           int64
+	IdleTime            int64
+	ReadCount           uint32
+	WriteCount          uint32
+	QueueDepth          uint32
+	SplitCount          uint32
+	QueryTime           int64
+	StorageDeviceNumber uint32
+	StorageManagerName  [8]uint16
 }
 
 // Memory: RAM and Pagefile
