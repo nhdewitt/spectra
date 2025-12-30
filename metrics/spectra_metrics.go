@@ -40,6 +40,11 @@ type NetworkMetric struct {
 	PacketsSent uint64 `json:"packets_sent"`
 	ErrorsRcvd  uint64 `json:"errors_rcvd"`
 	ErrorsSent  uint64 `json:"errors_sent"`
+	DropsRcvd   uint64 `json:"drops_rcvd"`
+	DropsSent   uint64 `json:"drops_sent"`
+	Speed       uint64 `json:"speed"`
+	MAC         string `json:"mac_address"`
+	MTU         uint32 `json:"mtu"`
 }
 
 type TemperatureMetric struct {

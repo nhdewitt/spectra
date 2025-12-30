@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,11 @@ type NetworkRaw struct {
 	BytesSent   uint64 // fields[9]
 	PacketsSent uint64 // fields[10]
 	ErrorsSent  uint64 // fields[11]
+	DropsRcvd   uint64 // fields[4]
+	DropsSent   uint64 // fields[12]
+	MAC         string
+	Speed       uint64
+	MTU         uint32
 }
 
 var (
@@ -92,6 +98,11 @@ func CollectNetwork(ctx context.Context) ([]metrics.Metric, error) {
 			PacketsSent: rate(curr.PacketsSent-prev.PacketsSent, elapsed),
 			ErrorsRcvd:  curr.ErrorsRcvd - prev.ErrorsRcvd,
 			ErrorsSent:  curr.ErrorsSent - prev.ErrorsSent,
+			DropsSent:   curr.DropsSent - prev.DropsSent,
+			DropsRcvd:   curr.DropsRcvd - prev.DropsRcvd,
+			Speed:       curr.Speed,
+			MAC:         curr.MAC,
+			MTU:         curr.MTU,
 		}
 
 		results = append(results, metric)
@@ -149,8 +160,8 @@ func parseNetDevFrom(r io.Reader) (map[string]NetworkRaw, error) {
 		parse := makeUintParser(values, "/proc/net/dev:"+iface)
 
 		// /proc/net/dev standard:
-		// 0: bytes_in, 1: packets_in, 2: errs_in
-		// 8: bytes_out, 9: packets_out, 10: errs_out
+		// 0: bytes_in, 1: packets_in, 2: errs_in 3: drops_in
+		// 8: bytes_out, 9: packets_out, 10: errs_out 11: drops_out
 
 		if len(values) < 16 {
 			continue
@@ -159,10 +170,16 @@ func parseNetDevFrom(r io.Reader) (map[string]NetworkRaw, error) {
 		raw.BytesRcvd = parse(0)
 		raw.PacketsRcvd = parse(1)
 		raw.ErrorsRcvd = parse(2)
+		raw.DropsRcvd = parse(3)
 
 		raw.BytesSent = parse(8)
 		raw.PacketsSent = parse(9)
 		raw.ErrorsSent = parse(10)
+		raw.DropsSent = parse(11)
+
+		raw.MAC = getLinuxMAC(iface)
+		raw.MTU = getLinuxMTU(iface)
+		raw.Speed = getLinuxLinkSpeed(iface)
 
 		result[iface] = raw
 	}
@@ -177,4 +194,44 @@ func shouldIgnoreInterface(name string) bool {
 		}
 	}
 	return false
+}
+
+func getLinuxMAC(ifaceName string) string {
+	path := "/sys/class/net/" + ifaceName + "/address"
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(data))
+}
+
+func getLinuxMTU(ifaceName string) uint32 {
+	path := "/sys/class/net/" + ifaceName + "/mtu"
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	val, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 32)
+	if err != nil {
+		return 0
+	}
+
+	return uint32(val)
+}
+
+func getLinuxLinkSpeed(ifaceName string) uint64 {
+	path := "/sys/class/net/" + ifaceName + "/speed"
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+
+	valStr := strings.TrimSpace(string(data))
+	speedMbit, err := strconv.ParseUint(valStr, 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return speedMbit * 1_000_000
 }

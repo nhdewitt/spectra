@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"syscall"
 	"unsafe"
 
 	"github.com/nhdewitt/spectra/metrics"
+	"golang.org/x/sys/windows"
 )
 
 var monitoredFilesystems = map[string]struct{}{
@@ -40,7 +40,7 @@ func CollectDisk(ctx context.Context) ([]metrics.Metric, error) {
 
 		// Construct path
 		rootPath := string(rune('A'+i)) + ":\\"
-		rootPathPtr, _ := syscall.UTF16PtrFromString(rootPath)
+		rootPathPtr, _ := windows.UTF16PtrFromString(rootPath)
 
 		// Check drive type - only fixed+removable
 		typeRet, _, _ := procGetDriveType.Call(uintptr(unsafe.Pointer(rootPathPtr)))
@@ -68,7 +68,7 @@ func CollectDisk(ctx context.Context) ([]metrics.Metric, error) {
 			continue
 		}
 
-		fsName := strings.ToUpper(syscall.UTF16ToString(fsNameBuf[:]))
+		fsName := strings.ToUpper(windows.UTF16ToString(fsNameBuf[:]))
 
 		if _, ok := monitoredFilesystems[fsName]; !ok {
 			continue
@@ -90,7 +90,7 @@ func CollectDisk(ctx context.Context) ([]metrics.Metric, error) {
 		usedBytes := totalNumberOfBytes - freeBytesAvailable
 
 		// Get Volume Label
-		volLabel := syscall.UTF16ToString(volNameBuf[:])
+		volLabel := windows.UTF16ToString(volNameBuf[:])
 		deviceName := volLabel
 		if deviceName == "" {
 			deviceName = strings.TrimSuffix(rootPath, "\\") // Fallback

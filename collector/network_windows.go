@@ -4,127 +4,151 @@ package collector
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"net"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/nhdewitt/spectra/metrics"
-	"github.com/yusufpapurcu/wmi"
+	"golang.org/x/sys/windows"
 )
 
 var (
-	lastWMIStats   map[string]Win32_PerfRawData_Tcpip_NetworkInterface
-	lastWMITime    time.Time
-	wmiErrorLogged bool
+	lastNetStats map[uint32]interfaceState
+	lastNetTime  time.Time
 )
 
-type Win32_NetworkAdapter struct {
-	Name            string
-	NetEnabled      bool
-	PhysicalAdapter bool
+var ignoredNetworkKeywords = []string{
+	"Filter", "Npcap", "QoS", "Virtual Switch", "Pseudo-Interface",
+	"Miniport", "Kernel Debug", "Teredo", "IP-HTTPS", "6to4",
 }
 
-type Win32_PerfRawData_Tcpip_NetworkInterface struct {
-	Name                  string
-	BytesReceivedPerSec   uint64
-	BytesSentPerSec       uint64
-	PacketsReceivedPerSec uint64
-	PacketsSentPerSec     uint64
-	PacketsReceivedErrors uint64
-	PacketsOutboundErrors uint64
+type interfaceState struct {
+	raw  mibIfRow2
+	name string
 }
 
 func CollectNetwork(ctx context.Context) ([]metrics.Metric, error) {
-	var configDst []Win32_NetworkAdapter
-
-	filterQuery := `SELECT Name, PhysicalAdapter, NetEnabled
-					FROM Win32_NetworkAdapter
-					WHERE PhysicalAdapter = TRUE AND NetEnabled = TRUE`
-
-	err := wmi.Query(filterQuery, &configDst)
-	if err != nil {
-		if !wmiErrorLogged {
-			log.Printf("WARNING: WMI Network Filter query failed: %v", err)
-			wmiErrorLogged = true
-		}
-		return nil, nil
+	var tablePtr *mibIfTable2
+	ret, _, _ := procGetIfTable2.Call(uintptr(unsafe.Pointer(&tablePtr)))
+	if ret != 0 {
+		return nil, fmt.Errorf("GetIfTable2 failed with error code %d", ret)
 	}
-
-	allowedNames := make(map[string]bool)
-	for _, adapter := range configDst {
-		allowedNames[adapter.Name] = true
-
-		fixedName := strings.ReplaceAll(adapter.Name, "(", "[")
-		fixedName = strings.ReplaceAll(fixedName, ")", "]")
-		allowedNames[fixedName] = true
-	}
-
-	var statsDst []Win32_PerfRawData_Tcpip_NetworkInterface
-
-	statsQuery := `SELECT Name, BytesReceivedPersec, BytesSentPersec,
-				   PacketsReceivedPersec, PacketsSentPerSec,
-				   PacketsReceivedErrors, PacketsOutboundErrors
-				   FROM Win32_PerfRawData_Tcpip_NetworkInterface`
-
-	err = wmi.Query(statsQuery, &statsDst)
-	if err != nil {
-		if !wmiErrorLogged {
-			log.Printf("WARNING: WMI Network Stats query failed: %v", err)
-			wmiErrorLogged = true
-		}
-		return nil, nil
-	}
-
-	if wmiErrorLogged {
-		wmiErrorLogged = false
-	}
+	defer procFreeMibTable.Call(uintptr(unsafe.Pointer(tablePtr)))
 
 	now := time.Now()
+	currentStats := make(map[uint32]interfaceState)
 
-	currentStats := make(map[string]Win32_PerfRawData_Tcpip_NetworkInterface)
-	for _, s := range statsDst {
-		currentStats[s.Name] = s
-	}
+	start := &tablePtr.Table[0]
+	rows := unsafe.Slice(start, tablePtr.NumEntries)
 
-	if len(lastWMIStats) == 0 {
-		lastWMIStats = currentStats
-		lastWMITime = now
-		return nil, nil
-	}
+	for i := range rows {
+		rowPtr := &rows[i]
 
-	elapsed := now.Sub(lastWMITime).Seconds()
-	if elapsed <= 0 {
-		lastWMIStats = nil
-		return nil, nil
-	}
-
-	var results []metrics.Metric
-
-	for name, curr := range currentStats {
-		if !allowedNames[name] {
+		// Filter up interfaces (IfOperStatusUp = 1) and ignore lo (IfTypeSoftwareLoopback = 24)
+		if rowPtr.OperStatus != 1 || rowPtr.Type == 24 {
 			continue
 		}
 
-		prev, ok := lastWMIStats[name]
+		// Ignore empty data (e.g. virtual adapters)
+		if rowPtr.InOctets == 0 && rowPtr.OutOctets == 0 {
+			continue
+		}
+
+		name := windows.UTF16ToString(rowPtr.Description[:])
+		if name == "" {
+			name = windows.UTF16ToString(rowPtr.Alias[:])
+		}
+
+		if isIgnoredInterface(name) {
+			continue
+		}
+
+		currentStats[rowPtr.InterfaceIndex] = interfaceState{
+			raw:  *rowPtr,
+			name: name,
+		}
+	}
+
+	// Baseline
+	if lastNetStats == nil {
+		lastNetStats = currentStats
+		lastNetTime = now
+		return nil, nil
+	}
+
+	// Time Delta Calculation
+	secondsElapsed := validateTimeDelta(now, lastNetTime, "network")
+	if secondsElapsed == 0 {
+		lastNetStats = currentStats
+		lastNetTime = now
+		return nil, nil
+	}
+
+	var result []metrics.Metric
+
+	for idx, curr := range currentStats {
+		prev, ok := lastNetStats[idx]
 		if !ok {
 			continue
 		}
 
-		metric := metrics.NetworkMetric{
-			Interface:   name,
-			BytesRcvd:   rate(curr.BytesReceivedPerSec-prev.BytesReceivedPerSec, elapsed),
-			BytesSent:   rate(curr.PacketsReceivedPerSec-prev.PacketsReceivedPerSec, elapsed),
-			PacketsRcvd: rate(curr.PacketsReceivedPerSec-prev.PacketsReceivedPerSec, elapsed),
-			PacketsSent: rate(curr.PacketsSentPerSec-prev.PacketsSentPerSec, elapsed),
-			ErrorsRcvd:  curr.PacketsReceivedErrors - prev.PacketsReceivedErrors,
-			ErrorsSent:  curr.PacketsOutboundErrors - prev.PacketsOutboundErrors,
+		// Calculate Deltas
+		rxDelta := float64(curr.raw.InOctets - prev.raw.InOctets)
+		txDelta := float64(curr.raw.OutOctets - prev.raw.OutOctets)
+		rxPackets := float64(curr.raw.InUcastPkts - prev.raw.InUcastPkts)
+		txPackets := float64(curr.raw.OutUcastPkts - prev.raw.OutUcastPkts)
+
+		errsIn := curr.raw.InErrors - prev.raw.InErrors
+		errsOut := curr.raw.OutErrors - prev.raw.OutErrors
+		dropIn := curr.raw.InDiscards - prev.raw.InDiscards
+		dropOut := curr.raw.OutDiscards - prev.raw.OutDiscards
+
+		speed := curr.raw.ReceiveLinkSpeed
+		// Guard against -1 overflow
+		if speed == ^uint64(0) {
+			speed = 0
 		}
 
-		results = append(results, metric)
+		result = append(result, metrics.NetworkMetric{
+			Interface:   curr.name,
+			BytesRcvd:   uint64(rxDelta / secondsElapsed),
+			BytesSent:   uint64(txDelta / secondsElapsed),
+			PacketsRcvd: uint64(rxPackets / secondsElapsed),
+			PacketsSent: uint64(txPackets / secondsElapsed),
+			ErrorsRcvd:  errsIn,
+			ErrorsSent:  errsOut,
+			DropsRcvd:   dropIn,
+			DropsSent:   dropOut,
+			MAC:         formatMAC(curr.raw.PhysicalAddress, curr.raw.PhysicalAddressLength),
+			Speed:       speed,
+			MTU:         curr.raw.Mtu,
+		})
 	}
 
-	lastWMIStats = currentStats
-	lastWMITime = now
+	lastNetStats = currentStats
+	lastNetTime = now
+	return result, nil
+}
 
-	return results, nil
+func isIgnoredInterface(name string) bool {
+	if strings.HasSuffix(name, "-0000") {
+		return true
+	}
+
+	for _, keyword := range ignoredNetworkKeywords {
+		if strings.Contains(name, keyword) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func formatMAC(macArr [32]byte, length uint32) string {
+	if length == 0 || length > 32 {
+		return ""
+	}
+	return net.HardwareAddr(macArr[:length]).String()
 }

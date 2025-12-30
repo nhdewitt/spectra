@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"syscall"
 	"time"
 	"unsafe"
 
 	"github.com/nhdewitt/spectra/metrics"
+	"golang.org/x/sys/windows"
 )
 
 // perfGetter allows mocking getDrivePerformance in tests
@@ -55,9 +55,9 @@ func CollectDiskIO(ctx context.Context, driveCache *DriveCache) ([]metrics.Metri
 		return nil, nil
 	}
 
-	secondsElapsed := now.Sub(lastDiskTime).Seconds()
-	if secondsElapsed <= 0 {
-		log.Printf("Warning: Invalid time delta (%f seconds). Now: %v, Last: %v", secondsElapsed, now, lastDiskTime)
+	// Time Delta Calculation
+	secondsElapsed := validateTimeDelta(now, lastNetTime, "disk_io")
+	if secondsElapsed == 0 {
 		lastDiskPerf = currentPerf
 		lastDiskTime = now
 		return nil, nil
@@ -101,26 +101,26 @@ func CollectDiskIO(ctx context.Context, driveCache *DriveCache) ([]metrics.Metri
 
 func getDrivePerformance(driveIndex uint32) (diskPerformance, error) {
 	path := fmt.Sprintf(`\\.\PhysicalDrive%d`, driveIndex)
-	pathPtr, _ := syscall.UTF16PtrFromString(path)
+	pathPtr, _ := windows.UTF16PtrFromString(path)
 
-	handle, err := syscall.CreateFile(
+	handle, err := windows.CreateFile(
 		pathPtr,
 		0,
-		syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
 		nil,
-		syscall.OPEN_EXISTING,
+		windows.OPEN_EXISTING,
 		0,
 		0,
 	)
 	if err != nil {
 		return diskPerformance{}, fmt.Errorf("CreateFile failed: %w", err)
 	}
-	defer syscall.CloseHandle(handle)
+	defer windows.CloseHandle(handle)
 
 	var perf diskPerformance
 	var bytesReturned uint32
 
-	err = syscall.DeviceIoControl(
+	err = windows.DeviceIoControl(
 		handle,
 		ioctlDiskPerformance,
 		nil,
@@ -137,12 +137,21 @@ func getDrivePerformance(driveIndex uint32) (diskPerformance, error) {
 	return perf, nil
 }
 
-func formatDeviceName(idx uint32, driveInfo Win32_DiskDrive, letterMap map[uint32][]string) string {
-	if letters, ok := letterMap[idx]; ok && len(letters) > 0 {
-		return strings.Join(letters, ", ")
+func formatDeviceName(idx uint32, driveInfo DiskInfo, letterMap map[uint32][]string) string {
+	letters := ""
+	if l, ok := letterMap[idx]; ok && len(l) > 0 {
+		letters = strings.Join(l, ", ")
 	}
+
 	if driveInfo.Model != "" {
+		if letters != "" {
+			return fmt.Sprintf("%s (%s)", driveInfo.Model, letters)
+		}
 		return driveInfo.Model
+	}
+
+	if letters != "" {
+		return letters
 	}
 	return fmt.Sprintf("PhysicalDrive%d", idx)
 }

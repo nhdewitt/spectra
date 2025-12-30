@@ -4,66 +4,28 @@
 package collector
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/nhdewitt/spectra/metrics"
-	"github.com/yusufpapurcu/wmi"
+	"golang.org/x/sys/windows"
 )
-
-var ignoredInterfaceTypes = map[string]struct{}{
-	"USB":  {},
-	"1394": {},
-}
-
-func queryPhysicalDrives() ([]Win32_DiskDrive, error) {
-	var drives []Win32_DiskDrive
-	query := "SELECT DeviceID, InterfaceType, MediaType, Model, Index FROM Win32_DiskDrive"
-	err := wmi.Query(query, &drives)
-	if err != nil {
-		return nil, fmt.Errorf("WMI query failed: %w", err)
-	}
-	return drives, nil
-}
-
-func filterDrives(drives []Win32_DiskDrive) []Win32_DiskDrive {
-	allowed := make([]Win32_DiskDrive, 0, len(drives))
-	for _, d := range drives {
-		if _, ok := ignoredInterfaceTypes[d.InterfaceType]; ok {
-			continue
-		}
-
-		if strings.Contains(strings.ToLower(d.Model), "virtual") {
-			continue
-		}
-		allowed = append(allowed, d)
-	}
-	return allowed
-}
-
-func createDriveIndexMap(drives []Win32_DiskDrive) map[uint32]Win32_DiskDrive {
-	m := make(map[uint32]Win32_DiskDrive)
-	for _, d := range drives {
-		m[d.Index] = d
-	}
-	return m
-}
 
 func RunMountManager(ctx context.Context, cache *DriveCache, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	updateDriveCache(cache)
+	updateDriveCacheNative(cache)
 
 	for {
 		select {
 		case <-ticker.C:
-			updateDriveCache(cache)
+			updateDriveCacheNative(cache)
 		case <-ctx.Done():
 			log.Println("Mount Manager stopped.")
 			return
@@ -71,100 +33,182 @@ func RunMountManager(ctx context.Context, cache *DriveCache, interval time.Durat
 	}
 }
 
-func updateDriveCache(cache *DriveCache) {
-	drives, err := queryPhysicalDrives()
-	if err != nil {
-		log.Printf("WARNING: Error querying drives: %v", err)
-		return
+func updateDriveCacheNative(cache *DriveCache) {
+	allDrives := scanPhysicalDrives()
+
+	allowedMap := make(map[uint32]DiskInfo)
+	for _, d := range allDrives {
+		if d.InterfaceType == BusTypeUsb || d.InterfaceType == BusType1394 {
+			continue
+		}
+
+		if strings.Contains(strings.ToLower(d.Model), "virtual") {
+			continue
+		}
+
+		allowedMap[d.Index] = d
 	}
 
-	allowed := filterDrives(drives)
-	newMap := createDriveIndexMap(allowed)
-
-	letterMap, err := buildDriveLetterMap()
-	if err != nil {
-		log.Printf("WARNING: Error building drive letter map: %v", err)
-	}
+	letterMap := mapDriveLettersToPhysicalDisks(allowedMap)
 
 	cache.RWMutex.Lock()
-	cache.AllowedDrives = newMap
+	defer cache.RWMutex.Unlock()
+
+	cache.AllowedDrives = allowedMap
 	cache.DriveLetterMap = letterMap
-	cache.RWMutex.Unlock()
 }
 
-// buildDriveLetterMap creates a mapping from physical drive index to drive letters
-func buildDriveLetterMap() (map[uint32][]string, error) {
-	// Physical drive to partition mappings
-	var driveToPartition []Win32_DiskDriveToDiskPartition
-	err := wmi.Query("SELECT Antecedent, Dependent FROM Win32_DiskDriveToDiskPartition", &driveToPartition)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query drive to disk partition: %w", err)
-	}
+func scanPhysicalDrives() []DiskInfo {
+	var drives []DiskInfo
 
-	// Partition to logical disk mappings
-	var partitionToLogical []Win32_LogicalDiskToPartition
-	err = wmi.Query("SELECT Antecedent, Dependent FROM Win32_LogicalDiskToPartition", &partitionToLogical)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query partition to logical: %w", err)
-	}
+	for i := uint32(0); i < 64; i++ {
+		path := fmt.Sprintf(`\\.\PhysicalDrive%d`, i)
+		pathPtr, _ := windows.UTF16PtrFromString(path)
 
-	// Partition -> drive letter map
-	partitionToLetter := make(map[string]string)
-	for _, p := range partitionToLogical {
-		letter := extractDriveLetter(p.Dependent)
-		partition := extractPartitionName(p.Antecedent)
-		if letter != "" && partition != "" {
-			partitionToLetter[partition] = letter
+		handle, err := windows.CreateFile(
+			pathPtr,
+			0,
+			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
+			nil,
+			windows.OPEN_EXISTING,
+			0,
+			0,
+		)
+		if err != nil {
+			continue
 		}
-	}
 
-	// Physical drive -> drive letter map
-	result := make(map[uint32][]string)
-	for _, d := range driveToPartition {
-		driveIndex := extractDriveIndex(d.Antecedent)
-		partition := extractPartitionName(d.Dependent)
+		info, err := getStorageProperty(handle, i)
+		windows.CloseHandle(handle)
 
-		if driveIndex >= 0 && partition != "" {
-			if letter, ok := partitionToLetter[partition]; ok {
-				result[uint32(driveIndex)] = append(result[uint32(driveIndex)], letter)
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// extractDriveLetter extracts the drive letter from the WMI query.
-func extractDriveLetter(wmiPath string) string {
-	re := regexp.MustCompile(`DeviceID="([A-Z]:)"`)
-	matches := re.FindStringSubmatch(wmiPath)
-	if len(matches) >= 2 {
-		return matches[1]
-	}
-	return ""
-}
-
-// extractPartitionName extracts the partition name from the WMI query.
-func extractPartitionName(wmiPath string) string {
-	re := regexp.MustCompile(`DeviceID="(Disk #\d+, Partition #\d+)"`)
-	matches := re.FindStringSubmatch(wmiPath)
-	if len(matches) >= 2 {
-		return matches[1]
-	}
-	return ""
-}
-
-// extractDriveIndex extracts the drive index from the WMI query.
-func extractDriveIndex(wmiPath string) int {
-	re := regexp.MustCompile(`PHYSICALDRIVE(\d+)`)
-	matches := re.FindStringSubmatch(strings.ToUpper(wmiPath))
-	if len(matches) >= 2 {
-		idx, err := strconv.Atoi(matches[1])
 		if err == nil {
-			return idx
+			drives = append(drives, info)
 		}
 	}
-	return -1
+
+	return drives
+}
+
+func getStorageProperty(handle windows.Handle, index uint32) (DiskInfo, error) {
+	var query storagePropertyQuery
+	query.PropertyId = storageDeviceProperty
+	query.QueryType = propertyStandardQuery
+
+	buf := make([]byte, 1024)
+	var bytesReturned uint32
+
+	err := windows.DeviceIoControl(
+		handle,
+		ioctlStorageQueryProperty,
+		(*byte)(unsafe.Pointer(&query)),
+		uint32(unsafe.Sizeof(query)),
+		(*byte)(unsafe.Pointer(&buf[0])),
+		uint32(len(buf)),
+		&bytesReturned,
+		nil,
+	)
+	if err != nil {
+		return DiskInfo{}, err
+	}
+
+	header := (*storageDeviceDescriptor)(unsafe.Pointer(&buf[0]))
+
+	model := ""
+	if header.ProductIdOffset > 0 && header.ProductIdOffset < bytesReturned {
+		model = extractString(buf, header.ProductIdOffset)
+	}
+
+	model = strings.TrimSpace(model)
+	if model == "" {
+		model = fmt.Sprintf("PhysicalDrive%d", index)
+	}
+
+	return DiskInfo{
+		DeviceID:      fmt.Sprintf(`\\.\PHYSICALDRIVE%d`, index),
+		Index:         index,
+		Model:         model,
+		InterfaceType: BusType(header.BusType),
+	}, nil
+}
+
+// extractString reads a null-terminated string from a raw buffer at offset
+func extractString(buf []byte, offset uint32) string {
+	if offset >= uint32(len(buf)) {
+		return ""
+	}
+
+	end := bytes.IndexByte(buf[offset:], 0)
+	if end == -1 {
+		return string(buf[offset:])
+	}
+
+	return string(buf[offset : offset+uint32(end)])
+}
+
+func mapDriveLettersToPhysicalDisks(physicalDrives map[uint32]DiskInfo) map[uint32][]string {
+	result := make(map[uint32][]string)
+
+	ret, _, _ := procGetLogicalDrives.Call()
+	mask := uint32(ret)
+
+	for i := range 26 {
+		if mask&(1<<i) == 0 {
+			continue
+		}
+		letter := string(rune('A'+i)) + ":"
+		diskNum, err := getPhysicalDiskNumber(letter)
+		if err != nil {
+			continue
+		}
+
+		if _, ok := physicalDrives[diskNum]; ok {
+			result[diskNum] = append(result[diskNum], letter)
+		}
+	}
+
+	return result
+}
+
+func getPhysicalDiskNumber(driveLetter string) (uint32, error) {
+	path := fmt.Sprintf(`\\.\%s`, driveLetter)
+	pathPtr, _ := windows.UTF16PtrFromString(path)
+
+	handle, err := windows.CreateFile(
+		pathPtr,
+		0,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
+		nil,
+		windows.OPEN_EXISTING,
+		0,
+		0,
+	)
+	if err != nil {
+		return 0, nil
+	}
+	defer windows.CloseHandle(handle)
+
+	var extents volumeDiskExtents
+	var bytesReturned uint32
+
+	err = windows.DeviceIoControl(
+		handle,
+		ioctlVolumeGetVolumeDiskExtents,
+		nil,
+		0,
+		(*byte)(unsafe.Pointer(&extents)),
+		uint32(unsafe.Sizeof(extents)),
+		&bytesReturned,
+		nil,
+	)
+	if err != nil {
+		return 0, nil
+	}
+
+	if extents.NumberOfDiskExtents > 0 {
+		return extents.Extents[0].DiskNumber, nil
+	}
+
+	return 0, fmt.Errorf("no extents found")
 }
 
 func MakeDiskCollector(cache *DriveCache) CollectFunc {

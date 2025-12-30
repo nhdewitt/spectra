@@ -3,6 +3,7 @@ package collector
 import (
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/nhdewitt/spectra/metrics"
 	"golang.org/x/exp/constraints"
@@ -44,4 +45,17 @@ func makeUintParser(fields []string, source string) func(int) uint64 {
 		}
 		return v
 	}
+}
+
+// validateTimeDelta calulates seconds elapsed.
+// If valid (>0), it returns the delta.
+// If invalid (<=0), it logs a warning and returns 0.
+func validateTimeDelta(now, last time.Time, source string) float64 {
+	delta := now.Sub(last).Seconds()
+	if delta <= 0 {
+		log.Printf("Warning [%s]: Invalid time delta (%f sec). Clock skew? Now: %v, Last: %v", source, delta, now, last)
+		return 0
+	}
+
+	return delta
 }

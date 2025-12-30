@@ -6,35 +6,26 @@ import (
 	"sync"
 )
 
-type Win32_DiskDrive struct {
-	DeviceID      string
-	InterfaceType string
-	MediaType     string
-	Model         string
+// BusType represents the hardware interface (USB, SATA, NVMe, etc.)
+type BusType uint32
+
+// DiskInfo represents a phsyical disk detected on the system
+type DiskInfo struct {
+	DeviceID      string // "\\.\PHYSICALDRIVE0"
 	Index         uint32
-}
-
-// Win32_DiskDriveToDiskPartition associates physical drives to partitions
-type Win32_DiskDriveToDiskPartition struct {
-	Antecedent string // PhysicalDrive reference
-	Dependent  string // Partition reference
-}
-
-// Win32_LogicalDiskToPartition associates partitions to drive letters
-type Win32_LogicalDiskToPartition struct {
-	Antecedent string // Partition reference
-	Dependent  string // LogicalDisk reference (includes drive letter)
+	Model         string  // "Samsung SSD 970 EVO"
+	InterfaceType BusType // BusTypeNvme (17)
 }
 
 type DriveCache struct {
 	sync.RWMutex
-	AllowedDrives  map[uint32]Win32_DiskDrive
+	AllowedDrives  map[uint32]DiskInfo
 	DriveLetterMap map[uint32][]string // ["C:", "D:", ...]
 }
 
 func NewDriveCache() *DriveCache {
 	return &DriveCache{
-		AllowedDrives:  make(map[uint32]Win32_DiskDrive),
+		AllowedDrives:  make(map[uint32]DiskInfo),
 		DriveLetterMap: make(map[uint32][]string),
 	}
 }

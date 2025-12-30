@@ -5,10 +5,10 @@ package collector
 import (
 	"context"
 	"fmt"
-	"syscall"
 	"unsafe"
 
 	"github.com/nhdewitt/spectra/metrics"
+	"golang.org/x/sys/windows"
 )
 
 func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
@@ -42,15 +42,13 @@ func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
 	}
 	defer wlanFreeMemory.Call(uintptr(unsafe.Pointer(ifaceList)))
 
-	numIfaces := int(ifaceList.NumberOfItems)
-	firstItem := uintptr(unsafe.Pointer(&ifaceList.InterfaceInfo[0]))
-	itemSize := unsafe.Sizeof(ifaceList.InterfaceInfo[0])
+	start := &ifaceList.InterfaceInfo[0]
+	ifaces := unsafe.Slice(start, ifaceList.NumberOfItems)
 
 	var results []metrics.Metric
 
-	for i := range numIfaces {
-		itemAddr := firstItem + uintptr(i)*itemSize
-		info := (*WLAN_INTERFACE_INFO)(unsafe.Pointer(itemAddr))
+	for i := range ifaces {
+		info := &ifaces[i]
 
 		// Check if connected (wlan_interface_state_connected)
 		if info.IsState != 1 {
@@ -77,10 +75,11 @@ func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
 		if ret != 0 {
 			continue
 		}
-		defer wlanFreeMemory.Call(uintptr(unsafe.Pointer(connAttr)))
 
 		ssid := parseDot11SSID(connAttr.wlanAssociationAttributes.dot11Ssid)
 		quality := int(connAttr.wlanAssociationAttributes.wlanSignalQuality)
+
+		wlanFreeMemory.Call(uintptr(unsafe.Pointer(connAttr)))
 
 		var rssiPtr *int32
 		var rssi int
@@ -105,27 +104,40 @@ func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
 			rssi = (quality / 2) - 100
 		}
 
-		var channelPtr *uint32
+		var freqPtr *uint32
 		var frequency float64
 
 		ret, _, _ = wlanQueryInterface.Call(
 			handle,
 			uintptr(unsafe.Pointer(&info.InterfaceGuid)),
-			uintptr(wlanIntfOpcodeChannelNumber),
+			uintptr(wlanIntfOpcodeChannelFrequency),
 			0,
 			uintptr(unsafe.Pointer(&dataSize)),
-			uintptr(unsafe.Pointer(&channelPtr)),
+			uintptr(unsafe.Pointer(&freqPtr)),
 			0,
 		)
 
-		if ret == 0 && channelPtr != nil {
-			channel := *channelPtr
-			wlanFreeMemory.Call(uintptr(unsafe.Pointer(channelPtr)))
+		if ret == 0 && freqPtr != nil {
+			freqKHz := *freqPtr
+			frequency = float64(freqKHz) / 1_000_000.0
+			wlanFreeMemory.Call(uintptr(unsafe.Pointer(freqPtr)))
+		} else {
+			var channelPtr *uint32
+			ret, _, _ = wlanQueryInterface.Call(
+				handle,
+				uintptr(unsafe.Pointer(&info.InterfaceGuid)),
+				uintptr(wlanIntfOpcodeChannelNumber),
+				0,
+				uintptr(unsafe.Pointer(&dataSize)),
+				uintptr(unsafe.Pointer(&channelPtr)),
+				0,
+			)
 
-			if channel > 14 {
-				frequency = 5.0
-			} else {
-				frequency = 2.4
+			if ret == 0 && channelPtr != nil {
+				channel := *channelPtr
+				wlanFreeMemory.Call(uintptr(unsafe.Pointer(channelPtr)))
+
+				frequency = channelToFrequency(channel)
 			}
 		}
 
@@ -142,7 +154,7 @@ func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
 }
 
 func utf16ToString(w []uint16) string {
-	return syscall.UTF16ToString(w)
+	return windows.UTF16ToString(w)
 }
 
 func parseDot11SSID(ssid DOT11_SSID) string {
@@ -150,4 +162,27 @@ func parseDot11SSID(ssid DOT11_SSID) string {
 		return ""
 	}
 	return string(ssid.ucSSID[:ssid.uSSIDLength])
+}
+
+// channelToFrequency converts a channel number to its center frequency in GHz.
+// Based on IEEE 802.11 formulas.
+func channelToFrequency(channel uint32) float64 {
+	var mhz int
+	switch {
+	// 2.4GHz: 2407 + (5 * Channel) MHz
+	case channel >= 1 && channel <= 13:
+		mhz = 2407 + (5 * int(channel))
+	// Japan
+	case channel == 14:
+		return 2.484
+	// 5GHz: 5000 + (5 * Channel) MHz
+	case channel >= 32 && channel <= 177:
+		mhz = 5000 + (5 * int(channel))
+	// 6GHz (avoiding overlapping numbers w/ 2.4): 5950 + (5 * Channel) MHz
+	case channel > 177:
+		mhz = 5950 + (5 * int(channel))
+	default:
+		return 0.0
+	}
+	return float64(mhz) / 1000.0
 }

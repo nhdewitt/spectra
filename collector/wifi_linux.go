@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -16,6 +17,11 @@ import (
 )
 
 type metadataFetcher func(ctx context.Context, iface string) (string, float64)
+
+var (
+	reSSID = regexp.MustCompile(`SSID: (.+)`)
+	reFreq = regexp.MustCompile(`freq: (\d+)`)
+)
 
 func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
 	return parseNetWireless(ctx, getWiFiMetadata)
@@ -67,6 +73,10 @@ func parseNetWirelessFrom(ctx context.Context, r io.Reader, fetcher metadataFetc
 
 		ssid, freq := fetcher(ctx, iface)
 
+		if ssid == "" {
+			continue
+		}
+
 		metric := metrics.WiFiMetric{
 			Interface:   iface,
 			SignalLevel: int(sigLevel),
@@ -88,18 +98,28 @@ func parseFloat(s string) (float64, error) {
 
 // getWiFiMetadata calls `iwgetid` to fetch SSID and Frequency
 func getWiFiMetadata(ctx context.Context, iface string) (string, float64) {
-	// iwgetid -r (SSID)
-	out, _ := exec.CommandContext(ctx, "iwgetid", "-r", iface).Output()
-	ssid := strings.TrimSpace(string(out))
+	// iw dev <interface> link
+	out, err := exec.CommandContext(ctx, "iw", "dev", iface, "link").Output()
+	if err != nil {
+		return "", 0.0
+	}
 
-	// iwgetid -f (Frequency)
-	out, _ = exec.CommandContext(ctx, "iwgetid", "-f", iface).Output()
-	freqStr := string(out)
-
+	output := string(out)
+	var ssid string
 	var freq float64
-	if parts := strings.Split(freqStr, ":"); len(parts) > 1 {
-		val := strings.Fields(parts[1])[0]
-		freq, _ = strconv.ParseFloat(val, 64)
+
+	// Parse SSID
+	if match := reSSID.FindStringSubmatch(output); len(match) > 1 {
+		ssid = match[1]
+	}
+
+	// Parse frequency
+	if match := reFreq.FindStringSubmatch(output); len(match) > 1 {
+		val, err := strconv.ParseFloat(match[1], 64)
+		if err != nil {
+			return "", 0.0
+		}
+		freq = val / 1000.0
 	}
 
 	return ssid, freq
