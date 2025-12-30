@@ -78,6 +78,8 @@ func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
 
 		ssid := parseDot11SSID(connAttr.wlanAssociationAttributes.dot11Ssid)
 		quality := int(connAttr.wlanAssociationAttributes.wlanSignalQuality)
+		txRateKbps := connAttr.wlanAssociationAttributes.ulTxRate
+		bitRate := float64(txRateKbps) / 1000.0
 
 		wlanFreeMemory.Call(uintptr(unsafe.Pointer(connAttr)))
 
@@ -147,6 +149,7 @@ func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
 			SignalLevel: rssi,
 			LinkQuality: quality,
 			Frequency:   frequency,
+			BitRate:     bitRate,
 		})
 	}
 

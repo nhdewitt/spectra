@@ -16,11 +16,12 @@ import (
 	"github.com/nhdewitt/spectra/metrics"
 )
 
-type metadataFetcher func(ctx context.Context, iface string) (string, float64)
+type metadataFetcher func(ctx context.Context, iface string) (string, float64, float64)
 
 var (
-	reSSID = regexp.MustCompile(`SSID: (.+)`)
-	reFreq = regexp.MustCompile(`freq: (\d+)`)
+	reSSID    = regexp.MustCompile(`SSID: (.+)`)
+	reFreq    = regexp.MustCompile(`freq: (\d+)`)
+	reBitRate = regexp.MustCompile(`tx bitrate: ([\d.]+)`)
 )
 
 func CollectWiFi(ctx context.Context) ([]metrics.Metric, error) {
@@ -71,7 +72,7 @@ func parseNetWirelessFrom(ctx context.Context, r io.Reader, fetcher metadataFetc
 			return nil, err
 		}
 
-		ssid, freq := fetcher(ctx, iface)
+		ssid, freq, bitrate := fetcher(ctx, iface)
 
 		if ssid == "" {
 			continue
@@ -83,6 +84,7 @@ func parseNetWirelessFrom(ctx context.Context, r io.Reader, fetcher metadataFetc
 			LinkQuality: int(linkQual),
 			SSID:        ssid,
 			Frequency:   freq,
+			BitRate:     bitrate,
 		}
 
 		results = append(results, metric)
@@ -97,16 +99,14 @@ func parseFloat(s string) (float64, error) {
 }
 
 // getWiFiMetadata calls `iwgetid` to fetch SSID and Frequency
-func getWiFiMetadata(ctx context.Context, iface string) (string, float64) {
+func getWiFiMetadata(ctx context.Context, iface string) (ssid string, freq, bitrate float64) {
 	// iw dev <interface> link
 	out, err := exec.CommandContext(ctx, "iw", "dev", iface, "link").Output()
 	if err != nil {
-		return "", 0.0
+		return "", 0.0, 0.0
 	}
 
 	output := string(out)
-	var ssid string
-	var freq float64
 
 	// Parse SSID
 	if match := reSSID.FindStringSubmatch(output); len(match) > 1 {
@@ -117,10 +117,19 @@ func getWiFiMetadata(ctx context.Context, iface string) (string, float64) {
 	if match := reFreq.FindStringSubmatch(output); len(match) > 1 {
 		val, err := strconv.ParseFloat(match[1], 64)
 		if err != nil {
-			return "", 0.0
+			return ssid, 0.0, 0.0
 		}
 		freq = val / 1000.0
 	}
 
-	return ssid, freq
+	// Parse Bitrate
+	if match := reBitRate.FindStringSubmatch(output); len(match) > 1 {
+		val, err := strconv.ParseFloat(match[1], 64)
+		if err != nil {
+			return ssid, freq, 0.0
+		}
+		bitrate = val
+	}
+
+	return ssid, freq, bitrate
 }
