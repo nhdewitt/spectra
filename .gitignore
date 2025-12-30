@@ -3,3 +3,4 @@
 collector.*
 *.exe
 .env
+*.armv6

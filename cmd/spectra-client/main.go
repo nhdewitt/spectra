@@ -54,16 +54,19 @@ func main() {
 	go c.Run(ctx, 5*time.Second, diskIOCollector)
 	go c.Run(ctx, 5*time.Second, collector.CollectNetwork)
 	go c.Run(ctx, 30*time.Second, collector.CollectWiFi)
+	go c.Run(ctx, 15*time.Second, collector.CollectPiClocks)
+	go c.Run(ctx, 10*time.Second, collector.CollectPiThrottle)
+	go c.Run(ctx, 60*time.Second, collector.CollectPiVoltage)
+	go c.Run(ctx, 60*time.Second, collector.CollectPiGPU)
 	/*
 		go c.Run(ctx, 10*time.Second, collectTemperature)
 		go c.Run(ctx, 15*time.Second, collectProcesses)
-		go c.Run(ctx, 10*time.Second, collectThrottle)
-		go c.Run(ctx, 15*time.Second, collectClock)
-		go c.Run(ctx, 60*time.Second, collectVoltage)
-		go c.Run(ctx, 60*time.Second, collectGPU)
 		go c.Run(ctx, 300*time.Second, collectSystem)
 	*/
 
 	<-ctx.Done()
 	fmt.Println("Main application exiting.")
+	cancel()
+
+	time.Sleep(1 * time.Second)
 }

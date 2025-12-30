@@ -57,6 +57,14 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 				metric = &metrics.NetworkMetric{}
 			case "wifi":
 				metric = &metrics.WiFiMetric{}
+			case "clock":
+				metric = &metrics.ClockMetric{}
+			case "voltage":
+				metric = &metrics.VoltageMetric{}
+			case "throttle":
+				metric = &metrics.ThrottleMetric{}
+			case "gpu":
+				metric = &metrics.GPUMetric{}
 			default:
 				log.Printf("Warning: Unknown metric type received: %s", env.Type)
 				continue
