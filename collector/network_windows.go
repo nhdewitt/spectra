@@ -121,7 +121,7 @@ func CollectNetwork(ctx context.Context) ([]metrics.Metric, error) {
 			ErrorsSent:  errsOut,
 			DropsRcvd:   dropIn,
 			DropsSent:   dropOut,
-			MAC:         formatMAC(curr.raw.PhysicalAddress, curr.raw.PhysicalAddressLength),
+			MAC:         strings.ToUpper(formatMAC(curr.raw.PhysicalAddress, curr.raw.PhysicalAddressLength)),
 			Speed:       speed,
 			MTU:         curr.raw.Mtu,
 		})

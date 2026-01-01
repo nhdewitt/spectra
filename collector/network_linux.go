@@ -177,7 +177,7 @@ func parseNetDevFrom(r io.Reader) (map[string]NetworkRaw, error) {
 		raw.ErrorsSent = parse(10)
 		raw.DropsSent = parse(11)
 
-		raw.MAC = getLinuxMAC(iface)
+		raw.MAC = strings.ToUpper(getLinuxMAC(iface))
 		raw.MTU = getLinuxMTU(iface)
 		raw.Speed = getLinuxLinkSpeed(iface)
 
