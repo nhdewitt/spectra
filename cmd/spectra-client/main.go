@@ -58,11 +58,9 @@ func main() {
 	go c.Run(ctx, 10*time.Second, collector.CollectPiThrottle)
 	go c.Run(ctx, 60*time.Second, collector.CollectPiVoltage)
 	go c.Run(ctx, 60*time.Second, collector.CollectPiGPU)
-	/*
-		go c.Run(ctx, 10*time.Second, collectTemperature)
-		go c.Run(ctx, 15*time.Second, collectProcesses)
-		go c.Run(ctx, 300*time.Second, collectSystem)
-	*/
+	go c.Run(ctx, 10*time.Second, collector.CollectTemperature)
+	go c.Run(ctx, 15*time.Second, collector.CollectProcesses)
+	go c.Run(ctx, 300*time.Second, collector.CollectSystem)
 
 	<-ctx.Done()
 	fmt.Println("Main application exiting.")

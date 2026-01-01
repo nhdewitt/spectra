@@ -3,9 +3,7 @@
 package collector
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -21,8 +19,8 @@ func CollectPiClocks(ctx context.Context) ([]metrics.Metric, error) {
 	armFreq := getCPUScalingFreq()
 
 	// VideoCore Frequencies (Core & 3D)
-	coreFreq := getVcgencmdFreq(ctx, "core")
-	gpuFreq := getVcgencmdFreq(ctx, "v3d")
+	coreFreq, _ := parseFreq(ctx, "core")
+	gpuFreq, _ := parseFreq(ctx, "v3d")
 
 	if armFreq == 0 && coreFreq == 0 && gpuFreq == 0 {
 		return nil, nil
@@ -37,49 +35,11 @@ func CollectPiClocks(ctx context.Context) ([]metrics.Metric, error) {
 	}, nil
 }
 
-// getCPUScalingFreq reads the current CPU frequency from sysfs.
-// Returns Hz.
-func getCPUScalingFreq() uint64 {
-	data, err := os.ReadFile("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
-	if err != nil {
-		return 0
-	}
-
-	val, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
-	if err != nil {
-		return 0
-	}
-
-	return val * 1000
-}
-
-// getVcgencmdFreq shells out to `vcgencmd measure_clock <block>`
-func getVcgencmdFreq(ctx context.Context, block string) uint64 {
-	out, err := exec.CommandContext(ctx, "vcgencmd", "measure_clock", block).Output()
-	if err != nil {
-		return 0
-	}
-
-	// Parse output ("frequency(1)=400000000")
-	parts := bytes.Split(out, []byte("="))
-	if len(parts) != 2 {
-		return 0
-	}
-
-	valStr := string(bytes.TrimSpace(parts[1]))
-	val, err := strconv.ParseUint(valStr, 10, 64)
-	if err != nil {
-		return 0
-	}
-
-	return val
-}
-
 func CollectPiVoltage(ctx context.Context) ([]metrics.Metric, error) {
-	core, _ := getVcgencmdVolts(ctx, "core")
-	sdramC, _ := getVcgencmdVolts(ctx, "sdram_c")
-	sdramI, _ := getVcgencmdVolts(ctx, "sdram_i")
-	sdramP, _ := getVcgencmdVolts(ctx, "sdram_p")
+	core, _ := parseVolts(ctx, "core")
+	sdramC, _ := parseVolts(ctx, "sdram_c")
+	sdramI, _ := parseVolts(ctx, "sdram_i")
+	sdramP, _ := parseVolts(ctx, "sdram_p")
 
 	if core == 0 && sdramC == 0 {
 		return nil, nil
@@ -95,36 +55,13 @@ func CollectPiVoltage(ctx context.Context) ([]metrics.Metric, error) {
 	}, nil
 }
 
-func getVcgencmdVolts(ctx context.Context, block string) (float64, error) {
-	out, err := exec.CommandContext(ctx, "vcgencmd", "measure_volts", block).Output()
-	if err != nil {
-		return 0, err
-	}
-
-	// Parse output ("volt=1.2000V")
-	s := strings.TrimSpace(string(out))
-	if idx := strings.Index(s, "="); idx != -1 {
-		s = s[idx+1:]
-	}
-	s = strings.TrimSuffix(s, "V")
-
-	return strconv.ParseFloat(s, 64)
-}
-
 func CollectPiThrottle(ctx context.Context) ([]metrics.Metric, error) {
-	out, err := exec.CommandContext(ctx, "vcgencmd", "get_throttled").Output()
+	valStr, err := execVcgencmd(ctx, "get_throttled")
 	if err != nil {
 		return nil, nil
 	}
 
-	// Parse output ("throttled=0x50005")
-	s := strings.TrimSpace(string(out))
-	if idx := strings.Index(s, "="); idx != -1 {
-		s = s[idx+1:]
-	}
-
-	// Parse Hex
-	val, err := strconv.ParseUint(s, 0, 32)
+	val, err := strconv.ParseUint(valStr, 0, 32)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +94,7 @@ func CollectPiThrottle(ctx context.Context) ([]metrics.Metric, error) {
 }
 
 func CollectPiGPU(ctx context.Context) ([]metrics.Metric, error) {
-	totalBytes, err := getVcgencmdMem(ctx, "gpu")
+	totalBytes, err := parseMem(ctx, "gpu")
 	if err != nil {
 		return nil, nil
 	}
@@ -170,20 +107,48 @@ func CollectPiGPU(ctx context.Context) ([]metrics.Metric, error) {
 	}, nil
 }
 
-func getVcgencmdMem(ctx context.Context, memType string) (uint64, error) {
-	out, err := exec.CommandContext(ctx, "vcgencmd", "get_mem", memType).Output()
+// getCPUScalingFreq reads the current CPU frequency from sysfs.
+// Returns Hz.
+func getCPUScalingFreq() uint64 {
+	data, err := os.ReadFile("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
+	if err != nil {
+		return 0
+	}
+
+	val, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return val * 1000
+}
+
+func parseFreq(ctx context.Context, block string) (uint64, error) {
+	valStr, err := execVcgencmd(ctx, "measure_clock", block)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseUint(valStr, 10, 64)
+}
+
+func parseVolts(ctx context.Context, block string) (float64, error) {
+	valStr, err := execVcgencmd(ctx, "measure_volts", block)
+	if err != nil {
+		return 0, err
+	}
+	valStr = strings.TrimSuffix(valStr, "V")
+	return strconv.ParseFloat(valStr, 64)
+}
+
+func parseMem(ctx context.Context, memType string) (uint64, error) {
+	valStr, err := execVcgencmd(ctx, "get_mem", memType)
 	if err != nil {
 		return 0, err
 	}
 
-	// Parse ("gpu=64M")
-	s := strings.TrimSpace(string(out))
-	parts := strings.Split(s, "=")
-	if len(parts) != 2 {
-		return 0, fmt.Errorf("invalid format")
+	if len(valStr) == 0 {
+		return 0, nil
 	}
-
-	valStr := parts[1]
 
 	unit := valStr[len(valStr)-1]
 	numStr := valStr[:len(valStr)-1]
@@ -203,4 +168,18 @@ func getVcgencmdMem(ctx context.Context, memType string) (uint64, error) {
 	default:
 		return val, nil
 	}
+}
+
+// execVcgencmd runs the command and returns the value part of "key=value"
+func execVcgencmd(ctx context.Context, args ...string) (string, error) {
+	out, err := exec.CommandContext(ctx, "vcgencmd", args...).Output()
+	if err != nil {
+		return "", err
+	}
+
+	s := strings.TrimSpace(string(out))
+	if idx := strings.Index(s, "="); idx != -1 {
+		return s[idx+1:], nil
+	}
+	return s, nil
 }
