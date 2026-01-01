@@ -4,7 +4,6 @@ package collector
 
 import (
 	"context"
-	"log"
 	"strings"
 
 	"github.com/nhdewitt/spectra/metrics"
@@ -26,7 +25,6 @@ func CollectTemperature(ctx context.Context) ([]metrics.Metric, error) {
 
 	err := wmi.QueryNamespace(q, &dst, `root\wmi`)
 	if err != nil {
-		log.Printf("WMI Error: %v", err)
 		return nil, nil
 	}
 

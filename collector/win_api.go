@@ -37,6 +37,10 @@ var (
 	procGetIfTable2  = iphlpapi.NewProc("GetIfTable2")
 	procFreeMibTable = iphlpapi.NewProc("FreeMibTable")
 
+	// System
+
+	procGetTickCount64 = kernel32.NewProc("GetTickCount64")
+
 	// WLAN
 
 	wlanOpenHandle     = wlanapi.NewProc("WlanOpenHandle")
