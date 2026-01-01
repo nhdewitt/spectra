@@ -4,6 +4,7 @@ package collector
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	"github.com/nhdewitt/spectra/metrics"
@@ -21,10 +22,11 @@ type MSAcpi_ThermalZoneTemperature struct {
 func CollectTemperature(ctx context.Context) ([]metrics.Metric, error) {
 	var dst []MSAcpi_ThermalZoneTemperature
 
-	q := wmi.CreateQuery(&dst, "WHERE Active='True'")
+	q := wmi.CreateQuery(&dst, "")
 
 	err := wmi.QueryNamespace(q, &dst, `root\wmi`)
 	if err != nil {
+		log.Printf("WMI Error: %v", err)
 		return nil, nil
 	}
 
