@@ -40,6 +40,22 @@ func (c *Collector) send(ctx context.Context, m metrics.Metric) {
 
 // Run executes a collection function at the specified interval
 func (c *Collector) Run(ctx context.Context, interval time.Duration, collect CollectFunc) {
+	collectAndSend := func() {
+		data, err := collect(ctx)
+		if err != nil {
+			log.Printf("collection failed: %v", err)
+			return
+		}
+
+		for _, m := range data {
+			c.send(ctx, m)
+		}
+	}
+
+	// Collect Baseline
+	collectAndSend()
+
+	// Start ticker
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -48,14 +64,7 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, collect Col
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			metricsSlice, err := collect(ctx)
-			if err != nil {
-				log.Printf("collection error: %v", err)
-				continue
-			}
-			for _, m := range metricsSlice {
-				c.send(ctx, m)
-			}
+			collectAndSend()
 		}
 	}
 }
