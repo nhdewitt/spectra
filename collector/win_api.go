@@ -38,6 +38,7 @@ var (
 	procFreeMibTable = iphlpapi.NewProc("FreeMibTable")
 
 	// WLAN
+
 	wlanOpenHandle     = wlanapi.NewProc("WlanOpenHandle")
 	wlanCloseHandle    = wlanapi.NewProc("WlanCloseHandle")
 	wlanEnumInterfaces = wlanapi.NewProc("WlanEnumInterfaces")
