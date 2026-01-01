@@ -10,6 +10,11 @@ type Metric interface {
 	MetricType() string
 }
 
+// ProcessListMetric holds all proccesses from a single collection
+type ProcessListMetric struct {
+	Processes []ProcessMetric `json:"processes"`
+}
+
 // Envelope wraps any metric with metadata for transmission
 type Envelope struct {
 	Type      string    `json:"type"`
@@ -39,6 +44,7 @@ func (TemperatureMetric) MetricType() string { return "temperature" }
 func (SystemMetric) MetricType() string      { return "system" }
 func (DiskIOMetric) MetricType() string      { return "disk_io" }
 func (ProcessMetric) MetricType() string     { return "process" }
+func (ProcessListMetric) MetricType() string { return "process_list" }
 func (ThrottleMetric) MetricType() string    { return "throttle" }
 func (ClockMetric) MetricType() string       { return "clock" }
 func (VoltageMetric) MetricType() string     { return "voltage" }

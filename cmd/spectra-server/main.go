@@ -65,6 +65,14 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 				metric = &metrics.ThrottleMetric{}
 			case "gpu":
 				metric = &metrics.GPUMetric{}
+			case "system":
+				metric = &metrics.SystemMetric{}
+			case "process":
+				metric = &metrics.ProcessMetric{}
+			case "process_list":
+				metric = &metrics.ProcessListMetric{}
+			case "temperature":
+				metric = &metrics.TemperatureMetric{}
 			default:
 				log.Printf("Warning: Unknown metric type received: %s", env.Type)
 				continue

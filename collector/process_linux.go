@@ -13,7 +13,14 @@ import (
 	"time"
 
 	"github.com/nhdewitt/spectra/metrics"
+	"github.com/tklauser/go-sysconf"
 )
+
+func init() {
+	if sc, err := sysconf.Sysconf(sysconf.SC_CLK_TCK); err == nil && sc > 0 {
+		clkTck = float64(sc)
+	}
+}
 
 // processState stores the last CPU ticks for a PID
 type processState struct {
@@ -56,7 +63,7 @@ func CollectProcesses(ctx context.Context) ([]metrics.Metric, error) {
 		return nil, err
 	}
 
-	var results []metrics.Metric
+	var results []metrics.ProcessMetric
 	currentStates := make(map[int]processState)
 	now := time.Now()
 	pageSize := uint64(os.Getpagesize())
@@ -112,7 +119,9 @@ func CollectProcesses(ctx context.Context) ([]metrics.Metric, error) {
 	}
 
 	lastProcessStates = currentStates
-	return results, nil
+	return []metrics.Metric{
+		metrics.ProcessListMetric{Processes: results},
+	}, nil
 }
 
 // parseMemInfoFrom parses /proc/meminfo to find MemTotal in bytes.
