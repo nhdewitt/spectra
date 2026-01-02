@@ -39,7 +39,7 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		log.Printf("--- Received Batch of %d Metrics ---", len(rawEnvelopes))
+		log.Printf("--- Received Batch of %d Metrics from %s ---", len(rawEnvelopes), rawEnvelopes[0].Hostname)
 
 		for _, env := range rawEnvelopes {
 			var metric metrics.Metric

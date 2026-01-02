@@ -12,6 +12,7 @@ var (
 	ntdll    = windows.NewLazySystemDLL("ntdll.dll")
 	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
 	wlanapi  = windows.NewLazySystemDLL("wlanapi.dll")
+	psapi    = windows.NewLazySystemDLL("psapi.dll")
 )
 
 // --- Procedure Handles ---
@@ -36,6 +37,10 @@ var (
 
 	procGetIfTable2  = iphlpapi.NewProc("GetIfTable2")
 	procFreeMibTable = iphlpapi.NewProc("FreeMibTable")
+
+	// Processes
+
+	procGetProcessMemoryInfo = psapi.NewProc("GetProcessMemoryInfo")
 
 	// System
 
@@ -261,6 +266,33 @@ type mibIfTable2 struct {
 	NumEntries uint32
 	_          uint32 // Padding
 	Table      [1]mibIfRow2
+}
+
+// Processes: PROCESS_MEMORY_COUNTERS
+type PROCESS_MEMORY_COUNTERS struct {
+	CB                         uint32
+	PageFaultCount             uint32
+	PeakWorkingSetSize         uintptr
+	WorkingSetSize             uintptr // Resident Set Size
+	QuotaPeakPagedPoolUsage    uintptr
+	QuotaPagedPoolUsage        uintptr
+	QuotaPeakNonPagesPoolUsage uintptr
+	QuotaNonPagedPoolUsage     uintptr
+	PagefileUsage              uintptr
+	PeakPagefileUsage          uintptr
+}
+
+// Processes: MEMORYSTATUSEX
+type MEMORYSTATUSEX struct {
+	Length                  uint32
+	MemoryLoad              uint32
+	ULLTotalPhys            uint64 // Total RAM
+	ULLAvailPhys            uint64
+	ULLTotalPageFile        uint64
+	ULLAvailPageFile        uint64
+	ULLTotalVirtual         uint64
+	ULLAvailVirtual         uint64
+	ULLAvailExtendedVirtual uint64
 }
 
 // WLAN: Array of interface info
