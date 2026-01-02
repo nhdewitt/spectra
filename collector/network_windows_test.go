@@ -72,7 +72,7 @@ func TestCollectNetwork_Integration(t *testing.T) {
 		t.Fatalf("First CollectNetwork call failed: %v", err)
 	}
 	if len(data) > 0 {
-		t.Error("Expected 0 metrics on baseline call, got %d", len(data))
+		t.Errorf("Expected 0 metrics on baseline call, got %d", len(data))
 	}
 
 	time.Sleep(1 * time.Second)
