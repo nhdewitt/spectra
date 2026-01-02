@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -29,8 +30,12 @@ func parseMounts() ([]MountInfo, error) {
 	}
 	defer f.Close()
 
+	return parseMountsFrom(f)
+}
+
+func parseMountsFrom(r io.Reader) ([]MountInfo, error) {
 	var mounts []MountInfo
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(r)
 
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())

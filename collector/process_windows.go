@@ -23,12 +23,12 @@ var lastWinProcessStates = make(map[uint32]winProcessState)
 
 func CollectProcesses(ctx context.Context) ([]metrics.Metric, error) {
 	// Get Total System Memory
-	var memStatus MEMORYSTATUSEX
+	var memStatus memoryStatusEx
 	memStatus.Length = uint32(unsafe.Sizeof(memStatus))
 
 	procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memStatus)))
 
-	totalMem := float64(memStatus.ULLTotalPhys)
+	totalMem := float64(memStatus.TotalPhys)
 
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {

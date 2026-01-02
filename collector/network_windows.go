@@ -21,7 +21,7 @@ var (
 
 var ignoredNetworkKeywords = []string{
 	"Filter", "Npcap", "QoS", "Virtual Switch", "Pseudo-Interface",
-	"Miniport", "Kernel Debug", "Teredo", "IP-HTTPS", "6to4",
+	"Miniport", "Kernel Debug", "Teredo", "IP-HTTPS", "6to4", "Virtual Ethernet",
 }
 
 type interfaceState struct {

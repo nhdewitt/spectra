@@ -1,4 +1,4 @@
-//go:build linux && (arm || arm64)
+//go:build !windows
 
 package collector
 
@@ -61,11 +61,20 @@ func CollectPiThrottle(ctx context.Context) ([]metrics.Metric, error) {
 		return nil, nil
 	}
 
-	val, err := strconv.ParseUint(valStr, 0, 32)
+	valStr = strings.TrimPrefix(valStr, "0x")
+
+	val, err := strconv.ParseUint(valStr, 16, 32)
 	if err != nil {
-		return nil, err
+		val, err = strconv.ParseUint(valStr, 10, 32)
+		if err != nil {
+			return nil, err
+		}
 	}
 
+	return decodeThrottle(val), nil
+}
+
+func decodeThrottle(val uint64) []metrics.Metric {
 	// Bitmask Definitions:
 	// 0: Undervoltage detected
 	// 1: Arm frequency capped
@@ -78,19 +87,16 @@ func CollectPiThrottle(ctx context.Context) ([]metrics.Metric, error) {
 
 	return []metrics.Metric{
 		metrics.ThrottleMetric{
-			// Current Status
-			Undervoltage:  (val & (1 << 0)) != 0,
-			ArmFreqCapped: (val & (1 << 1)) != 0,
-			Throttled:     (val & (1 << 2)) != 0,
-			SoftTempLimit: (val & (1 << 3)) != 0,
-
-			// Historical Status
+			Undervoltage:          (val & (1 << 0)) != 0,
+			ArmFreqCapped:         (val & (1 << 1)) != 0,
+			Throttled:             (val & (1 << 2)) != 0,
+			SoftTempLimit:         (val & (1 << 3)) != 0,
 			UndervoltageOccurred:  (val & (1 << 16)) != 0,
 			FreqCapOccurred:       (val & (1 << 17)) != 0,
 			ThrottledOccurred:     (val & (1 << 18)) != 0,
 			SoftTempLimitOccurred: (val & (1 << 19)) != 0,
 		},
-	}, nil
+	}
 }
 
 func CollectPiGPU(ctx context.Context) ([]metrics.Metric, error) {
@@ -145,14 +151,20 @@ func parseMem(ctx context.Context, memType string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+	return parseMemString(valStr)
+}
 
+func parseMemString(valStr string) (uint64, error) {
 	if len(valStr) == 0 {
 		return 0, nil
 	}
 
 	unit := valStr[len(valStr)-1]
-	numStr := valStr[:len(valStr)-1]
+	if unit >= '0' && unit <= '9' {
+		return strconv.ParseUint(valStr, 10, 64)
+	}
 
+	numStr := valStr[:len(valStr)-1]
 	val, err := strconv.ParseUint(numStr, 10, 64)
 	if err != nil {
 		return 0, err

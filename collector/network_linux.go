@@ -139,7 +139,7 @@ func parseNetDevFrom(r io.Reader) (map[string]NetworkRaw, error) {
 		line := scanner.Text()
 		fields := strings.Fields(line)
 
-		if len(fields) < 17 {
+		if len(fields) < 16 {
 			continue
 		}
 

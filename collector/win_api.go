@@ -282,19 +282,6 @@ type PROCESS_MEMORY_COUNTERS struct {
 	PeakPagefileUsage          uintptr
 }
 
-// Processes: MEMORYSTATUSEX
-type MEMORYSTATUSEX struct {
-	Length                  uint32
-	MemoryLoad              uint32
-	ULLTotalPhys            uint64 // Total RAM
-	ULLAvailPhys            uint64
-	ULLTotalPageFile        uint64
-	ULLAvailPageFile        uint64
-	ULLTotalVirtual         uint64
-	ULLAvailVirtual         uint64
-	ULLAvailExtendedVirtual uint64
-}
-
 // WLAN: Array of interface info
 type WLAN_INTERFACE_INFO_LIST struct {
 	NumberOfItems uint32
