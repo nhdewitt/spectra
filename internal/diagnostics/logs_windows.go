@@ -6,13 +6,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
@@ -28,27 +29,26 @@ type winEvent struct {
 	LevelDisplayName string `json:"LevelDisplayName"`
 	Message          string `json:"Message"`
 	ProviderName     string `json:"ProviderName"`
-	Id               int    `json:"Id"`
+	ProcessId        int    `json:"ProcessId"`
 }
 
 func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEntry, error) {
 	levels := getWindowsLevelFlag(opts.MinLevel)
 
-	// Logs since last boot
-	startTime := `$StartTime = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime;`
-
-	// PowerShell Command - use FilterHashtable for speed
 	psCmd := fmt.Sprintf(
-		`%s `+
-			`Get-WinEvent -FilterHashTable @{LogName='System','Application'; Level=(%s); StartTime=$StartTime} -MaxEvents %d -ErrorAction SilentlyContinue | `+
-			`Select-Object TimeCreated, LevelDisplayName, Message, @{N='ProviderName';E={$_.ProviderName}}, Id | `+
-			`ForEach-Object { $_ | ConvertTo-Json -Compress }`,
-		startTime,
+		`$StartTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime;
+		Get-WinEvent -FilterHashTable @{LogName='System','Application'; Level=(%s); StartTime=$StartTime} -MaxEvents %d -ErrorAction SilentlyContinue -Oldest |
+		Select-Object TimeCreated, LevelDisplayName, Message,
+			@{N='ProviderName';E={$_.ProviderName}},
+			@{N='ProcessId';E={$_.ProcessId}} |
+		ForEach-Object { $_ | ConvertTo-Json -Compress; "" }`,
 		levels,
 		MaxLogs,
 	)
 
-	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", psCmd)
+	encoded := encodePowerShell(psCmd)
+
+	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-EncodedCommand", encoded)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -58,39 +58,31 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 		return nil, fmt.Errorf("powershell execution failed: %w", err)
 	}
 
-	data := strings.TrimSpace(string(out))
-	if data == "" {
+	if len(bytes.TrimSpace(out)) == 0 {
 		return nil, nil
 	}
 
-	// Handle PowerShell returning an array for multiple results or a single object for 1 result
-	var events []winEvent
-	if strings.HasPrefix(data, "[") {
-		_ = json.Unmarshal([]byte(data), &events)
-	} else {
-		var single winEvent
-		if err := json.Unmarshal([]byte(data), &single); err == nil {
-			events = append(events, single)
-		}
-	}
+	results := make([]protocol.LogEntry, 0, 1024)
 
-	var results []protocol.LogEntry
 	scanner := bufio.NewScanner(bytes.NewReader(out))
-
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	var sourceBuilder strings.Builder
 	sourceBuilder.Grow(64)
 
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		b := bytes.TrimSpace(scanner.Bytes())
+		if len(b) == 0 {
 			continue
 		}
 
 		var e winEvent
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
+		if err := json.Unmarshal(b, &e); err != nil {
+			continue
+		}
+
+		timestamp := parseWinDate(e.TimeCreated)
+		if timestamp == 0 {
 			continue
 		}
 
@@ -102,22 +94,14 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 			sourceBuilder.WriteString("Unknown")
 		}
 
-		timestamp := parseWinDate(e.TimeCreated)
-		if timestamp == 0 {
-			continue
-		}
-
 		results = append(results, protocol.LogEntry{
-			Timestamp:   timestamp,
-			Source:      sourceBuilder.String(),
-			Level:       mapWinLevel(e.LevelDisplayName),
-			Message:     formatWindowsMessage(e.Message),
-			ProcessID:   e.Id,
-			ProcessName: e.ProviderName,
+			Timestamp: timestamp,
+			Source:    sourceBuilder.String(),
+			Level:     mapWinLevel(e.LevelDisplayName),
+			Message:   formatWindowsMessage(e.Message),
+			ProcessID: e.ProcessId,
 		})
 	}
-
-	slices.Reverse(results)
 
 	return results, nil
 }
@@ -178,4 +162,16 @@ func formatWindowsMessage(raw string) string {
 	flat := spaceCollapser.ReplaceAllString(raw, " ")
 
 	return strings.TrimSpace(flat)
+}
+
+func encodePowerShell(cmd string) string {
+	utf16Chars := utf16.Encode([]rune(cmd))
+
+	buf := make([]byte, len(utf16Chars)*2)
+	for i, c := range utf16Chars {
+		buf[i*2] = byte(c)
+		buf[i*2+1] = byte(c >> 8)
+	}
+
+	return base64.StdEncoding.EncodeToString(buf)
 }
