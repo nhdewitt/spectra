@@ -1,6 +1,5 @@
 .vscode/
 *.test
-collector.*
 *.exe
 .env
 *.armv6
