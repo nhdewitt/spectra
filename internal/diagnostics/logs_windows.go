@@ -14,7 +14,7 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-const MaxLogs = 5000
+const MaxLogs = 25000
 
 // Regex to collapse multiple spaces into one
 var spaceCollapser = regexp.MustCompile(`\s+`)

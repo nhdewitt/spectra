@@ -27,7 +27,7 @@ var dmesgLevels = []string{
 	"emerg",
 }
 
-const MaxLogs = 5000
+const MaxLogs = 25000
 
 func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEntry, error) {
 	var results []protocol.LogEntry

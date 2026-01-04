@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -83,16 +84,37 @@ func uploadLogs(ctx context.Context, client *http.Client, cfg Config, logs []pro
 		return
 	}
 
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	if _, err := gw.Write(data); err != nil {
+		return
+	}
+	gw.Close()
+
 	url := fmt.Sprintf("%s%s?cmd_id=%s&hostname=%s", cfg.BaseURL, cfg.LogsPath, cmdID, cfg.Hostname)
 
 	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
 
 	resp, err := client.Do(req)
 	if err == nil {
 		resp.Body.Close()
-		fmt.Printf("Uploaded %d log entries.\n", len(logs))
+		fmt.Printf("Uploaded %d log entries (%s compressed).\n", len(logs), formatBytes(buf.Len()))
 	} else {
 		fmt.Println("Failed to upload logs:", err)
 	}
+}
+
+func formatBytes(b int) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }

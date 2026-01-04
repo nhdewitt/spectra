@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -109,6 +110,18 @@ func handleAgentCommand(store *AgentStore) http.HandlerFunc {
 
 func handleAgentLogs(w http.ResponseWriter, r *http.Request) {
 	hostname := r.URL.Query().Get("hostname")
+
+	var reader io.ReadCloser = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, "Decompression failed", http.StatusBadRequest)
+			return
+		}
+		reader = gz
+	}
+	defer reader.Close()
+
 	var logs []protocol.LogEntry
 
 	if err := json.NewDecoder(r.Body).Decode(&logs); err != nil {
