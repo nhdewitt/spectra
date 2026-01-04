@@ -38,11 +38,12 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 	// PowerShell Command - use FilterHashtable for speed
 	psCmd := fmt.Sprintf(
 		`%s `+
-			`Get-WinEvent -FilterHashTable @{LogName='System','Application'; Level=(%s); StartTime=$StartTime} -ErrorAction SilentlyContinue | `+
+			`Get-WinEvent -FilterHashTable @{LogName='System','Application'; Level=(%s); StartTime=$StartTime} -MaxEvents %d -ErrorAction SilentlyContinue | `+
 			`Select-Object TimeCreated, LevelDisplayName, Message, @{N='ProviderName';E={$_.ProviderName}}, Id | `+
 			`ConvertTo-Json -Compress`,
 		startTime,
 		levels,
+		MaxLogs,
 	)
 
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", psCmd)
@@ -100,10 +101,6 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 	}
 
 	slices.Reverse(results)
-
-	if len(results) > MaxLogs {
-		results = results[len(results)-MaxLogs:]
-	}
 
 	return results, nil
 }
