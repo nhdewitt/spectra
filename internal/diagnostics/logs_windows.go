@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -97,6 +98,8 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 			ProcessName: e.ProviderName,
 		})
 	}
+
+	slices.Reverse(results)
 
 	if len(results) > MaxLogs {
 		results = results[len(results)-MaxLogs:]
