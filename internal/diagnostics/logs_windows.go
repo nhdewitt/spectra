@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,9 @@ import (
 )
 
 const MaxLogs = 5000
+
+// Regex to collapse multiple spaces into one
+var spaceCollapser = regexp.MustCompile(`\s+`)
 
 // winEvent matches PowerShell's JSON output
 type winEvent struct {
@@ -82,11 +86,13 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 			continue
 		}
 
+		msg := formatWindowsMessage(e.Message)
+
 		results = append(results, protocol.LogEntry{
 			Timestamp:   timestamp,
 			Source:      sourceBuilder.String(),
 			Level:       mapWinLevel(e.LevelDisplayName),
-			Message:     e.Message,
+			Message:     msg,
 			ProcessID:   e.Id,
 			ProcessName: e.ProviderName,
 		})
@@ -140,4 +146,19 @@ func parseWinDate(raw string) int64 {
 	}
 
 	return 0
+}
+
+// formatWindowsMessage makes Windows logs look like concise Linux logs
+func formatWindowsMessage(raw string) string {
+	if idx := strings.Index(raw, "Context:"); idx != -1 {
+		raw = raw[:idx]
+	}
+	if idx := strings.Index(raw, "Operation:"); idx != -1 {
+		raw = raw[:idx]
+	}
+
+	// Collapse all whitespace into a single space
+	flat := spaceCollapser.ReplaceAllString(raw, " ")
+
+	return strings.TrimSpace(flat)
 }
