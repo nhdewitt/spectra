@@ -3,6 +3,8 @@
 package diagnostics
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -40,7 +42,7 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 		`%s `+
 			`Get-WinEvent -FilterHashTable @{LogName='System','Application'; Level=(%s); StartTime=$StartTime} -MaxEvents %d -ErrorAction SilentlyContinue | `+
 			`Select-Object TimeCreated, LevelDisplayName, Message, @{N='ProviderName';E={$_.ProviderName}}, Id | `+
-			`ConvertTo-Json -Compress`,
+			`ForEach-Object { $_ | ConvertTo-Json -Compress }`,
 		startTime,
 		levels,
 		MaxLogs,
@@ -50,8 +52,10 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 
 	out, err := cmd.Output()
 	if err != nil {
-		// Exit Code 1 if no events found - ignore
-		return nil, nil
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			fmt.Printf("PowerShell Error: %s\n", string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("powershell execution failed: %w", err)
 	}
 
 	data := strings.TrimSpace(string(out))
@@ -71,10 +75,25 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 	}
 
 	var results []protocol.LogEntry
+	scanner := bufio.NewScanner(bytes.NewReader(out))
+
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
 	var sourceBuilder strings.Builder
 	sourceBuilder.Grow(64)
 
-	for _, e := range events {
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		var e winEvent
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			continue
+		}
+
 		sourceBuilder.Reset()
 		sourceBuilder.WriteString("WinEvent:")
 		if e.ProviderName != "" {
@@ -88,13 +107,11 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 			continue
 		}
 
-		msg := formatWindowsMessage(e.Message)
-
 		results = append(results, protocol.LogEntry{
 			Timestamp:   timestamp,
 			Source:      sourceBuilder.String(),
 			Level:       mapWinLevel(e.LevelDisplayName),
-			Message:     msg,
+			Message:     formatWindowsMessage(e.Message),
 			ProcessID:   e.Id,
 			ProcessName: e.ProviderName,
 		})
