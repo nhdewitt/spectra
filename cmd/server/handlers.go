@@ -118,7 +118,7 @@ func handleAgentLogs(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("\n=== INCOMING LOGS FROM %s ===\n", hostname)
 	for _, l := range logs {
-		fmt.Printf("[%s] [%s] %s: %s\n", time.Unix(l.Timestamp, 0).Format(time.TimeOnly), l.Level, l.Source, l.Message)
+		fmt.Printf("[%s] [%s] %s: %s\n", time.Unix(l.Timestamp, 0), l.Level, l.Source, l.Message)
 	}
 	fmt.Printf("=============================\n")
 }

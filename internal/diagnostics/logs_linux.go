@@ -31,19 +31,19 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 	var results []protocol.LogEntry
 
 	// Kernel Logs
-	if dmesg, err := getDmesg(ctx, opts.Lines/2, opts.MinLevel); err == nil {
+	if dmesg, err := getDmesg(ctx, opts.Lines/2, opts.MinLevel, opts.Since); err == nil {
 		results = append(results, dmesg...)
 	}
 
 	// Journal Logs
-	if journal, err := getJournal(ctx, opts.Lines/2, opts.MinLevel); err == nil {
+	if journal, err := getJournal(ctx, opts.Lines/2, opts.MinLevel, opts.Since); err == nil {
 		results = append(results, journal...)
 	}
 
 	return results, nil
 }
 
-func getDmesg(ctx context.Context, count int, minLevel protocol.LogLevel) ([]protocol.LogEntry, error) {
+func getDmesg(ctx context.Context, count int, minLevel protocol.LogLevel, since int64) ([]protocol.LogEntry, error) {
 	levelFlag := buildDmesgLevelFlag(minLevel)
 
 	cmd := exec.CommandContext(ctx, "dmesg", "-T", "-x", "--level="+levelFlag)
@@ -53,18 +53,25 @@ func getDmesg(ctx context.Context, count int, minLevel protocol.LogLevel) ([]pro
 		return nil, err
 	}
 
-	return parseDmesgFrom(bytes.NewReader(out), count)
+	return parseDmesgFrom(bytes.NewReader(out), count, since)
 }
 
-func getJournal(ctx context.Context, count int, minLevel protocol.LogLevel) ([]protocol.LogEntry, error) {
+func getJournal(ctx context.Context, count int, minLevel protocol.LogLevel, since int64) ([]protocol.LogEntry, error) {
 	priority := mapLogLevelToJournalPriority(minLevel)
 
-	cmd := exec.CommandContext(ctx, "journalctl",
+	args := []string{
 		"-n", strconv.Itoa(count),
 		"-p", priority,
 		"-o", "json",
 		"--no-pager",
-	)
+	}
+
+	if since > 0 {
+		startTime := time.Unix(since, 0).Format("2006-01-02 15:04:05")
+		args = append(args, "--since", startTime)
+	}
+
+	cmd := exec.CommandContext(ctx, "journalctl", args...)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -102,7 +109,7 @@ func buildDmesgLevelFlag(min protocol.LogLevel) string {
 }
 
 // parseDmesgFrom parses the raw output of `dmesg -T -x`
-func parseDmesgFrom(r io.Reader, count int) ([]protocol.LogEntry, error) {
+func parseDmesgFrom(r io.Reader, count int, since int64) ([]protocol.LogEntry, error) {
 	var entries []protocol.LogEntry
 	scanner := bufio.NewScanner(r)
 	var allLines []string
@@ -135,14 +142,14 @@ func parseDmesgFrom(r io.Reader, count int) ([]protocol.LogEntry, error) {
 		raw := strings.TrimSpace(parts[2])
 
 		timestamp, msg := parseDmesgTimestampAndMsg(raw)
-		if msg == "" {
-			continue
-		}
-
 		if timestamp == 0 {
 			timestamp = lastTimestamp
 		} else {
 			lastTimestamp = timestamp
+		}
+
+		if timestamp < since || msg == "" {
+			continue
 		}
 
 		sourceBuilder.Reset()
