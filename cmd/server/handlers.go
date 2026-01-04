@@ -109,6 +109,9 @@ func handleAgentCommand(store *AgentStore) http.HandlerFunc {
 }
 
 func handleAgentLogs(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("handleAgentLogs hit: method=%s path=%s query=%s encoding=%s\n",
+		r.Method, r.URL.Path, r.URL.RawQuery, r.Header.Get("Content-Encoding"))
+
 	hostname := r.URL.Query().Get("hostname")
 
 	var reader io.ReadCloser = r.Body
