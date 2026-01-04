@@ -80,8 +80,6 @@ func handleCommand(ctx context.Context, client *http.Client, cfg Config, cmd pro
 }
 
 func uploadLogs(ctx context.Context, client *http.Client, cfg Config, logs []protocol.LogEntry, cmdID string) {
-	fmt.Printf("uploadLogs: preparing %d logs for cmd_id=%s\n", len(logs), cmdID)
-
 	data, err := json.Marshal(logs)
 	if err != nil {
 		return
@@ -90,35 +88,27 @@ func uploadLogs(ctx context.Context, client *http.Client, cfg Config, logs []pro
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
 	if _, err := gw.Write(data); err != nil {
-		fmt.Println("uploadLogs: gzip write:", err)
 		_ = gw.Close()
 		return
 	}
 	if err := gw.Close(); err != nil {
-		fmt.Println("uploadLogs: gzip close:", err)
 		return
 	}
 
 	url := fmt.Sprintf("%s%s?cmd_id=%s&hostname=%s", cfg.BaseURL, cfg.LogsPath, cmdID, cfg.Hostname)
-	fmt.Println("uploadLogs: POST", url, "bytes=", buf.Len())
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(buf.Bytes()))
-	if err != nil {
-		fmt.Println("uploadLogs: new request:", err)
-		return
-	}
+	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(buf.Bytes()))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("uploadLogs: do:", err)
+		fmt.Println("Failed to upload logs:", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	fmt.Printf("uploadLogs: resp %s\n%s\n", resp.Status, string(body))
 	if resp.StatusCode/100 != 2 {
 		fmt.Printf("Upload failed: %s\n%s\n", resp.Status, string(body))
 		return
