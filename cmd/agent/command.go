@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -87,23 +88,33 @@ func uploadLogs(ctx context.Context, client *http.Client, cfg Config, logs []pro
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
 	if _, err := gw.Write(data); err != nil {
+		_ = gw.Close()
 		return
 	}
-	gw.Close()
+	if err := gw.Close(); err != nil {
+		return
+	}
 
 	url := fmt.Sprintf("%s%s?cmd_id=%s&hostname=%s", cfg.BaseURL, cfg.LogsPath, cmdID, cfg.Hostname)
 
-	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(buf.Bytes()))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
 
 	resp, err := client.Do(req)
-	if err == nil {
-		resp.Body.Close()
-		fmt.Printf("Uploaded %d log entries (%s compressed).\n", len(logs), formatBytes(buf.Len()))
-	} else {
+	if err != nil {
 		fmt.Println("Failed to upload logs:", err)
+		return
 	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode/100 != 2 {
+		fmt.Printf("Upload failed: %s\n%s\n", resp.Status, string(body))
+		return
+	}
+
+	fmt.Printf("Uploaded %d log entries (%s compressed).\n", len(logs), formatBytes(buf.Len()))
 }
 
 func formatBytes(b int) string {

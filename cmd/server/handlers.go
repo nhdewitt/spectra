@@ -123,8 +123,7 @@ func handleAgentLogs(w http.ResponseWriter, r *http.Request) {
 	defer reader.Close()
 
 	var logs []protocol.LogEntry
-
-	if err := json.NewDecoder(r.Body).Decode(&logs); err != nil {
+	if err := json.NewDecoder(reader).Decode(&logs); err != nil {
 		http.Error(w, "Bad JSON", http.StatusBadRequest)
 		return
 	}
@@ -134,6 +133,8 @@ func handleAgentLogs(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[%s] [%s] %s: %s\n", time.Unix(l.Timestamp, 0), l.Level, l.Source, l.Message)
 	}
 	fmt.Printf("=============================\n")
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func handleAdminTriggerLogs(store *AgentStore) http.HandlerFunc {
