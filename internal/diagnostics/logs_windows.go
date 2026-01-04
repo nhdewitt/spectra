@@ -36,7 +36,8 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 	levels := getWindowsLevelFlag(opts.MinLevel)
 
 	psCmd := fmt.Sprintf(
-		`$StartTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime;
+		`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
+		$StartTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime;
 		Get-WinEvent -FilterHashTable @{LogName='System','Application'; Level=(%s); StartTime=$StartTime} -MaxEvents %d -ErrorAction SilentlyContinue -Oldest |
 		Select-Object TimeCreated, LevelDisplayName, Message,
 			@{N='ProviderName';E={$_.ProviderName}},
@@ -95,11 +96,12 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 		}
 
 		results = append(results, protocol.LogEntry{
-			Timestamp: timestamp,
-			Source:    sourceBuilder.String(),
-			Level:     mapWinLevel(e.LevelDisplayName),
-			Message:   formatWindowsMessage(e.Message),
-			ProcessID: e.ProcessId,
+			Timestamp:   timestamp,
+			Source:      sourceBuilder.String(),
+			Level:       mapWinLevel(e.LevelDisplayName),
+			Message:     formatWindowsMessage(e.Message),
+			ProcessID:   e.ProcessId,
+			ProcessName: e.ProviderName,
 		})
 	}
 
