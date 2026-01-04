@@ -128,7 +128,6 @@ func handleAdminTriggerLogs(store *AgentStore) http.HandlerFunc {
 		hostname := r.URL.Query().Get("hostname")
 
 		req := protocol.LogRequest{
-			Lines:    50,
 			MinLevel: protocol.LevelError,
 		}
 		payload, err := json.Marshal(req)

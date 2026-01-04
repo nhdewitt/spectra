@@ -47,7 +47,5 @@ type Command struct {
 }
 
 type LogRequest struct {
-	Lines    int      `json:"lines"`
 	MinLevel LogLevel `json:"min_level"`
-	Since    int64    `json:"since"` // Unix Timestamp (seconds)
 }

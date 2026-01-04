@@ -13,6 +13,8 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
+const MaxLogs = 5000
+
 // winEvent matches PowerShell's JSON output
 type winEvent struct {
 	TimeCreated      string `json:"TimeCreated"`
@@ -25,15 +27,17 @@ type winEvent struct {
 func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEntry, error) {
 	levels := getWindowsLevelFlag(opts.MinLevel)
 
+	// Logs since last boot
+	startTime := `$StartTime = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime;`
+
 	// PowerShell Command - use FilterHashtable for speed
 	psCmd := fmt.Sprintf(
-		`$StartTime = (Get-Date "1970-01-01 00:00:00Z").AddSeconds(%d); `+
-			`Get-WinEvent -FilterHashtable @{LogName='System','Application'; Level=(%s); StartTime=$StartTime} -MaxEvents %d -ErrorAction SilentlyContinue | `+
+		`%s `+
+			`Get-WinEvent -FilterHashTable @{LogName='System','Application'; Level=(%s); StartTime=$StartTime} -ErrorAction SilentlyContinue | `+
 			`Select-Object TimeCreated, LevelDisplayName, Message, @{N='ProviderName';E={$_.ProviderName}}, Id | `+
 			`ConvertTo-Json -Compress`,
-		opts.Since,
+		startTime,
 		levels,
-		opts.Lines,
 	)
 
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", psCmd)
@@ -86,6 +90,10 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 			ProcessID:   e.Id,
 			ProcessName: e.ProviderName,
 		})
+	}
+
+	if len(results) > MaxLogs {
+		results = results[len(results)-MaxLogs:]
 	}
 
 	return results, nil
