@@ -3,19 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/collector"
 	"github.com/nhdewitt/spectra/internal/protocol"
-	"github.com/nhdewitt/spectra/internal/sender"
-)
-
-const (
-	mountUpdateInterval = 30 * time.Second
 )
 
 // Config holds all URL paths and identity info
@@ -32,13 +29,19 @@ func main() {
 	fmt.Printf("Spectra Agent starting on %s...\n", cfg.Hostname)
 	fmt.Printf("Server: %s\n", cfg.BaseURL)
 
+	client := &http.Client{
+		Timeout: 40 * time.Second,
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	setupSignalHandler(cancel)
 
+	var wg sync.WaitGroup
+
 	// Channels & Caches
-	metricsCh := make(chan protocol.Envelope, 100)
+	metricsCh := make(chan protocol.Envelope, 500)
 	driveCache := collector.NewDriveCache()
 
 	// Subsystems
@@ -46,15 +49,18 @@ func main() {
 	go collector.RunMountManager(ctx, driveCache, 30*time.Second)
 	time.Sleep(1 * time.Second) // Warmup
 
-	// Metrics Sender
-	metricsSender := sender.New(cfg.BaseURL+cfg.MetricsPath, metricsCh)
-	go metricsSender.Run(ctx)
+	// Metrics Sender (start in background)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runMetricSender(ctx, client, cfg, metricsCh)
+	}()
 
 	// Metric Collectors
 	startCollectors(ctx, cfg.Hostname, metricsCh, driveCache)
 
 	// Command Loop
-	go runCommandLoop(ctx, cfg)
+	go runCommandLoop(ctx, client, cfg)
 
 	// Block until shutdown
 	<-ctx.Done()
@@ -105,6 +111,7 @@ func startCollectors(ctx context.Context, hostname string, ch chan protocol.Enve
 		{300 * time.Second, collector.CollectSystem},
 		{60 * time.Second, diskCol},
 		{5 * time.Second, diskIOCol},
+		{60 * time.Second, collector.CollectServices},
 		{15 * time.Second, collector.CollectProcesses},
 		{10 * time.Second, collector.CollectTemperature},
 		{30 * time.Second, collector.CollectWiFi},

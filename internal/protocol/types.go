@@ -49,3 +49,23 @@ type Command struct {
 type LogRequest struct {
 	MinLevel LogLevel `json:"min_level"`
 }
+
+type ServiceMetric struct {
+	Name        string `json:"name"`
+	Status      string `json:"status"`     // "active", "inactive", "failed"
+	SubStatus   string `json:"sub_status"` // "running", "exited", "dead"
+	LoadState   string `json:"load_state"` // "loaded", "not-found"
+	Description string `json:"description"`
+}
+
+func (m ServiceMetric) MetricType() string {
+	return "service"
+}
+
+type ServiceListMetric struct {
+	Services []ServiceMetric `json:"services"`
+}
+
+func (m ServiceListMetric) MetricType() string {
+	return "service_list"
+}

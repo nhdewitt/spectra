@@ -23,8 +23,25 @@ type RawEnvelope struct {
 }
 
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
+	hostname := r.URL.Query().Get("hostname")
+	if hostname == "" {
+		http.Error(w, "Missing hostname", http.StatusBadRequest)
+		return
+	}
+
+	var reader io.ReadCloser = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, "Bad Gzip Body", http.StatusBadRequest)
+			return
+		}
+		reader = gz
+	}
+	defer reader.Close()
+
 	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r.Body); err != nil {
+	if _, err := io.Copy(&buf, reader); err != nil {
 		http.Error(w, "Failed to read body", http.StatusInternalServerError)
 		return
 	}
@@ -73,6 +90,10 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 				metric = &protocol.ProcessListMetric{}
 			case "temperature":
 				metric = &protocol.TemperatureMetric{}
+			case "service":
+				metric = &protocol.ServiceMetric{}
+			case "service_list":
+				metric = &protocol.ServiceListMetric{}
 			default:
 				log.Printf("Warning: Unknown metric type received: %s", env.Type)
 				continue
@@ -83,7 +104,18 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			fmt.Printf(" [%s] %s: %v\n", env.Timestamp.Format("15:04:05"), env.Type, metric)
+			if env.Type == "service" {
+				s := metric.(*protocol.ServiceMetric)
+				fmt.Printf(" [%s] service: %-20s %s (%s)\n", env.Timestamp.Format("15:04:05"), s.Name, s.Status, s.SubStatus)
+			} else if env.Type == "service_list" {
+				list := metric.(*protocol.ServiceListMetric)
+				log.Printf(" [%s] service_list: Received list of %d services", env.Timestamp.Format("15:04:05"), len(list.Services))
+				for _, s := range list.Services {
+					fmt.Printf(" [%s] service: %-20s %s (%s)\n", env.Timestamp.Format("15:04:05"), s.Name, s.Status, s.SubStatus)
+				}
+			} else {
+				fmt.Printf(" [%s] %s: %v\n", env.Timestamp.Format("15:04:05"), env.Type, metric)
+			}
 		}
 	}()
 }
