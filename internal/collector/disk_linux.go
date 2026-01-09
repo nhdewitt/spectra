@@ -113,3 +113,21 @@ func fsCategory(fsType string) string {
 	}
 	return "other"
 }
+
+// ListMounts returns a generic list of mount points for the protocol.
+func (c *DriveCache) ListMounts() []protocol.MountInfo {
+	c.RLock()
+	defer c.RUnlock()
+
+	results := make([]protocol.MountInfo, 0, len(c.DeviceToMountpoint))
+
+	for _, info := range c.DeviceToMountpoint {
+		results = append(results, protocol.MountInfo{
+			Mountpoint: info.Mountpoint,
+			Device:     info.Device,
+			FSType:     info.FSType,
+		})
+	}
+
+	return results
+}

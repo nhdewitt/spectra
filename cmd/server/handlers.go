@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -120,6 +121,83 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
+func handleCommandResult(w http.ResponseWriter, r *http.Request) {
+	hostname := r.URL.Query().Get("hostname")
+
+	var reader io.ReadCloser = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, "Decompression failed", http.StatusBadRequest)
+			return
+		}
+		reader = gz
+	}
+	defer reader.Close()
+
+	var res protocol.CommandResult
+	if err := json.NewDecoder(reader).Decode(&res); err != nil {
+		http.Error(w, "Bad JSON", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("\n>>> RESULT RECEIVED FROM %s (CMD: %s) <<<\n", hostname, res.ID)
+
+	if res.Error != "" {
+		fmt.Printf(" [ERROR] Agent failed to execute command: %s\n", res.Error)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	switch res.Type {
+	case protocol.CmdFetchLogs:
+		var logs []protocol.LogEntry
+		if err := json.Unmarshal(res.Payload, &logs); err != nil {
+			log.Printf("Failed to unmarshal logs: %v", err)
+			return
+		}
+
+		for _, l := range logs {
+			fmt.Printf(" [LOG] [%s] %s: %s\n", time.Unix(l.Timestamp, 0).Format(time.TimeOnly), l.Source, l.Message)
+		}
+
+	case protocol.CmdDiskUsage:
+		var report protocol.DiskUsageTopReport
+
+		if err := json.Unmarshal(res.Payload, &report); err != nil {
+			log.Printf(" [DISK] Failed to unmarshal report: %v", err)
+			return
+		}
+
+		fmt.Printf(" [DISK SCAN] Root: %s | Scanned: %d files (%d ms)\n", report.Root, report.ScannedFiles, report.DurationMs)
+
+		if len(report.TopFiles) > 0 {
+			fmt.Println(" --- Top Largest Files ---")
+			for _, f := range report.TopFiles {
+				fmt.Printf("   %-10s %s\n", formatBytes(f.Size), f.Path)
+			}
+		}
+		if len(report.TopDirs) > 0 {
+			fmt.Println(" --- Top Largest Directories ---")
+			for _, d := range report.TopDirs {
+				fmt.Printf("   %-10s %s\n", formatBytes(d.Size), d.Path)
+			}
+		}
+
+	case protocol.CmdListMounts:
+		var mounts []protocol.MountInfo
+		if err := json.Unmarshal(res.Payload, &mounts); err != nil {
+			log.Printf("Failed to unmarshal mounts: %v", err)
+			return
+		}
+		fmt.Println(" [DISK] Available Mounts:")
+		for _, m := range mounts {
+			fmt.Printf("   %s (%s) [%s]\n", m.Mountpoint, m.Device, m.FSType)
+		}
+
+	}
+}
+
 func handleAgentCommand(store *AgentStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		hostname := r.URL.Query().Get("hostname")
@@ -140,33 +218,47 @@ func handleAgentCommand(store *AgentStore) http.HandlerFunc {
 	}
 }
 
-func handleAgentLogs(w http.ResponseWriter, r *http.Request) {
-	hostname := r.URL.Query().Get("hostname")
+func handleAdminTriggerDisk(store *AgentStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hostname := r.URL.Query().Get("hostname")
+		path := r.URL.Query().Get("path")
 
-	var reader io.ReadCloser = r.Body
-	if r.Header.Get("Content-Encoding") == "gzip" {
-		gz, err := gzip.NewReader(r.Body)
+		topN := 20
+		if val := r.URL.Query().Get("top_n"); val != "" {
+			if n, err := strconv.Atoi(val); err == nil && n > 0 {
+				topN = n
+			}
+		}
+
+		req := protocol.DiskUsageRequest{
+			Path: path,
+			TopN: topN,
+		}
+
+		payload, err := json.Marshal(req)
 		if err != nil {
-			http.Error(w, "Decompression failed", http.StatusBadRequest)
+			http.Error(w, "JSON Marshal Error", http.StatusInternalServerError)
 			return
 		}
-		reader = gz
-	}
-	defer reader.Close()
 
-	var logs []protocol.LogEntry
-	if err := json.NewDecoder(reader).Decode(&logs); err != nil {
-		http.Error(w, "Bad JSON", http.StatusBadRequest)
-		return
-	}
+		cmd := protocol.Command{
+			ID:      uuid.NewString(),
+			Type:    protocol.CmdDiskUsage,
+			Payload: payload,
+		}
 
-	fmt.Printf("\n=== INCOMING LOGS FROM %s ===\n", hostname)
-	for _, l := range logs {
-		fmt.Printf("[%s] [%s] %s: %s\n", time.Unix(l.Timestamp, 0), l.Level, l.Source, l.Message)
-	}
-	fmt.Printf("=============================\n")
+		if store.QueueCommand(hostname, cmd) {
+			target := path
+			if target == "" {
+				target = "Default Drive"
+			}
 
-	w.WriteHeader(http.StatusOK)
+			log.Printf("Queued Disk Scan (Path: %s, TopN: %d) for %s\n", target, topN, hostname)
+			fmt.Fprintf(w, "Disk Scan Queued (TopN: %d)\n", topN)
+		} else {
+			http.Error(w, "Queue full", http.StatusServiceUnavailable)
+		}
+	}
 }
 
 func handleAdminTriggerLogs(store *AgentStore) http.HandlerFunc {
@@ -196,4 +288,17 @@ func handleAdminTriggerLogs(store *AgentStore) http.HandlerFunc {
 			http.Error(w, "Agent queue full", http.StatusServiceUnavailable)
 		}
 	}
+}
+
+func formatBytes(b uint64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }

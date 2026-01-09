@@ -14,49 +14,49 @@ func TestFormatDeviceName(t *testing.T) {
 	tests := []struct {
 		name      string
 		idx       uint32
-		driveInfo DiskInfo
+		driveInfo MountInfo
 		letterMap map[uint32][]string
 		want      string
 	}{
 		{
 			name:      "single drive letter",
 			idx:       0,
-			driveInfo: DiskInfo{Model: "Samsung SSD"},
+			driveInfo: MountInfo{Model: "Samsung SSD"},
 			letterMap: map[uint32][]string{0: {"C:"}},
 			want:      "C:",
 		},
 		{
 			name:      "multiple drive letters",
 			idx:       1,
-			driveInfo: DiskInfo{Model: "Samsung SSD"},
+			driveInfo: MountInfo{Model: "Samsung SSD"},
 			letterMap: map[uint32][]string{1: {"D:", "E:"}},
 			want:      "D:, E:",
 		},
 		{
 			name:      "fallback to model when no letter",
 			idx:       2,
-			driveInfo: DiskInfo{Model: "Samsung SSD 990 PRO"},
+			driveInfo: MountInfo{Model: "Samsung SSD 990 PRO"},
 			letterMap: map[uint32][]string{},
 			want:      "Samsung SSD 990 PRO",
 		},
 		{
 			name:      "fallback to PhysicalDrive when no letter or model",
 			idx:       3,
-			driveInfo: DiskInfo{},
+			driveInfo: MountInfo{},
 			letterMap: map[uint32][]string{},
 			want:      "PhysicalDrive3",
 		},
 		{
 			name:      "letter map exists but empty slice",
 			idx:       0,
-			driveInfo: DiskInfo{Model: "WD Blue"},
+			driveInfo: MountInfo{Model: "WD Blue"},
 			letterMap: map[uint32][]string{0: {}},
 			want:      "WD Blue",
 		},
 		{
 			name:      "different drive index in map",
 			idx:       5,
-			driveInfo: DiskInfo{Model: "Seagate"},
+			driveInfo: MountInfo{Model: "Seagate"},
 			letterMap: map[uint32][]string{0: {"C:"}, 1: {"D:"}},
 			want:      "Seagate",
 		},
@@ -76,7 +76,7 @@ func TestCollectDiskIO_EmptyCache(t *testing.T) {
 	lastDiskPerf = nil
 
 	cache := &DriveCache{
-		AllowedDrives:  make(map[uint32]DiskInfo),
+		AllowedDrives:  make(map[uint32]MountInfo),
 		DriveLetterMap: make(map[uint32][]string),
 	}
 
@@ -106,7 +106,7 @@ func TestCollectDiskIO_BaselineCollection(t *testing.T) {
 	}
 
 	cache := &DriveCache{
-		AllowedDrives:  map[uint32]DiskInfo{0: {Model: "TestDrive"}},
+		AllowedDrives:  map[uint32]MountInfo{0: {Model: "TestDrive"}},
 		DriveLetterMap: map[uint32][]string{0: {"C:"}},
 	}
 
@@ -154,7 +154,7 @@ func TestCollectDiskIO_RateCalculation(t *testing.T) {
 	}
 
 	cache := &DriveCache{
-		AllowedDrives:  map[uint32]DiskInfo{0: {Model: "TestDrive"}},
+		AllowedDrives:  map[uint32]MountInfo{0: {Model: "TestDrive"}},
 		DriveLetterMap: map[uint32][]string{0: {"C:"}},
 	}
 
@@ -227,7 +227,7 @@ func TestCollectDiskIO_MultipleDrives(t *testing.T) {
 	}
 
 	cache := &DriveCache{
-		AllowedDrives: map[uint32]DiskInfo{
+		AllowedDrives: map[uint32]MountInfo{
 			0: {Model: "Drive0"},
 			1: {Model: "Drive1"},
 			2: {Model: "Drive2"},
@@ -287,7 +287,7 @@ func TestCollectDiskIO_DriveError(t *testing.T) {
 	}
 
 	cache := &DriveCache{
-		AllowedDrives: map[uint32]DiskInfo{
+		AllowedDrives: map[uint32]MountInfo{
 			0: {Model: "GoodDrive"},
 			1: {Model: "BadDrive"},
 		},
@@ -327,7 +327,7 @@ func TestCollectDiskIO_NewDriveAppears(t *testing.T) {
 	}
 
 	cache := &DriveCache{
-		AllowedDrives:  map[uint32]DiskInfo{0: {Model: "Drive0"}},
+		AllowedDrives:  map[uint32]MountInfo{0: {Model: "Drive0"}},
 		DriveLetterMap: map[uint32][]string{0: {"C:"}},
 	}
 
@@ -335,7 +335,7 @@ func TestCollectDiskIO_NewDriveAppears(t *testing.T) {
 	_, _ = CollectDiskIO(context.Background(), cache)
 
 	// Add a new drive
-	cache.AllowedDrives[1] = DiskInfo{Model: "NewDrive"}
+	cache.AllowedDrives[1] = MountInfo{Model: "NewDrive"}
 	cache.DriveLetterMap[1] = []string{"D:"}
 
 	// Collection - new drive should be skipped (no baseline)

@@ -137,7 +137,7 @@ func getDrivePerformance(driveIndex uint32) (diskPerformance, error) {
 	return perf, nil
 }
 
-func formatDeviceName(idx uint32, driveInfo DiskInfo, letterMap map[uint32][]string) string {
+func formatDeviceName(idx uint32, driveInfo MountInfo, letterMap map[uint32][]string) string {
 	letters := ""
 	if l, ok := letterMap[idx]; ok && len(l) > 0 {
 		letters = strings.Join(l, ", ")

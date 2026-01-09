@@ -30,7 +30,7 @@ func main() {
 	fmt.Printf("Server: %s\n", cfg.BaseURL)
 
 	client := &http.Client{
-		Timeout: 40 * time.Second,
+		Timeout: 45 * time.Second,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -60,7 +60,7 @@ func main() {
 	startCollectors(ctx, cfg.Hostname, metricsCh, driveCache)
 
 	// Command Loop
-	go runCommandLoop(ctx, client, cfg)
+	go runCommandLoop(ctx, client, cfg, driveCache)
 
 	// Block until shutdown
 	<-ctx.Done()

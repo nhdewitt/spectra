@@ -110,3 +110,29 @@ func CollectDisk(ctx context.Context) ([]protocol.Metric, error) {
 
 	return result, nil
 }
+
+// ListMounts flattens the DriveLetterMap into a list of generic mounts.
+func (c *DriveCache) ListMounts() []protocol.MountInfo {
+	c.RLock()
+	defer c.Unlock()
+
+	var results []protocol.MountInfo
+
+	// Physical Disks (Index -> MountInfo)
+	for idx, diskInfo := range c.AllowedDrives {
+		letters, ok := c.DriveLetterMap[idx]
+		if !ok {
+			continue
+		}
+
+		for _, letter := range letters {
+			results = append(results, protocol.MountInfo{
+				Mountpoint: letter,
+				Device:     diskInfo.Model,
+				FSType:     "NTFS",
+			})
+		}
+	}
+
+	return results
+}

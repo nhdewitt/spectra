@@ -1,38 +1,33 @@
 package main
 
 import (
-	"context"
 	"log"
-	"net"
 	"net/http"
-	"syscall"
+	"time"
 )
 
 func main() {
 	store := NewAgentStore()
 	mux := http.NewServeMux()
 
+	// Routes
 	mux.HandleFunc("/api/v1/metrics", handleMetrics)
 	mux.HandleFunc("/api/v1/agent/command", handleAgentCommand(store))
-	mux.HandleFunc("/api/v1/agent/logs", handleAgentLogs)
+	mux.HandleFunc("/api/v1/agent/command_result", handleCommandResult)
 	mux.HandleFunc("/admin/trigger_logs", handleAdminTriggerLogs(store))
+	mux.HandleFunc("/admin/trigger_disk", handleAdminTriggerDisk(store))
 
-	listenAddr := "0.0.0.0:8080"
-	log.Printf("Spectra Server starting on %s", listenAddr)
-
-	lc := net.ListenConfig{
-		Control: func(network, address string, c syscall.RawConn) error {
-			return nil
-		},
+	server := &http.Server{
+		Addr:         ":8080",
+		Handler:      mux,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 40 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
-	listener, err := lc.Listen(context.Background(), "tcp4", listenAddr)
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
-	}
-	defer listener.Close()
+	log.Println("Server listening on :8080...")
 
-	if err := http.Serve(listener, mux); err != nil {
-		log.Fatal(err)
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("Server failed: %v", err)
 	}
 }

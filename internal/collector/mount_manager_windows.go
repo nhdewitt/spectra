@@ -36,7 +36,7 @@ func RunMountManager(ctx context.Context, cache *DriveCache, interval time.Durat
 func updateDriveCacheNative(cache *DriveCache) {
 	allDrives := scanPhysicalDrives()
 
-	allowedMap := make(map[uint32]DiskInfo)
+	allowedMap := make(map[uint32]MountInfo)
 	for _, d := range allDrives {
 		if d.InterfaceType == BusTypeUsb || d.InterfaceType == BusType1394 {
 			continue
@@ -58,8 +58,8 @@ func updateDriveCacheNative(cache *DriveCache) {
 	cache.DriveLetterMap = letterMap
 }
 
-func scanPhysicalDrives() []DiskInfo {
-	var drives []DiskInfo
+func scanPhysicalDrives() []MountInfo {
+	var drives []MountInfo
 
 	for i := uint32(0); i < 64; i++ {
 		path := fmt.Sprintf(`\\.\PhysicalDrive%d`, i)
@@ -89,7 +89,7 @@ func scanPhysicalDrives() []DiskInfo {
 	return drives
 }
 
-func getStorageProperty(handle windows.Handle, index uint32) (DiskInfo, error) {
+func getStorageProperty(handle windows.Handle, index uint32) (MountInfo, error) {
 	var query storagePropertyQuery
 	query.PropertyId = storageDeviceProperty
 	query.QueryType = propertyStandardQuery
@@ -108,7 +108,7 @@ func getStorageProperty(handle windows.Handle, index uint32) (DiskInfo, error) {
 		nil,
 	)
 	if err != nil {
-		return DiskInfo{}, err
+		return MountInfo{}, err
 	}
 
 	header := (*storageDeviceDescriptor)(unsafe.Pointer(&buf[0]))
@@ -123,7 +123,7 @@ func getStorageProperty(handle windows.Handle, index uint32) (DiskInfo, error) {
 		model = fmt.Sprintf("PhysicalDrive%d", index)
 	}
 
-	return DiskInfo{
+	return MountInfo{
 		DeviceID:      fmt.Sprintf(`\\.\PHYSICALDRIVE%d`, index),
 		Index:         index,
 		Model:         model,
@@ -145,7 +145,7 @@ func extractString(buf []byte, offset uint32) string {
 	return string(buf[offset : offset+uint32(end)])
 }
 
-func mapDriveLettersToPhysicalDisks(physicalDrives map[uint32]DiskInfo) map[uint32][]string {
+func mapDriveLettersToPhysicalDisks(physicalDrives map[uint32]MountInfo) map[uint32][]string {
 	result := make(map[uint32][]string)
 
 	ret, _, _ := procGetLogicalDrives.Call()

@@ -10,7 +10,7 @@ import (
 type BusType uint32
 
 // DiskInfo represents a phsyical disk detected on the system
-type DiskInfo struct {
+type MountInfo struct {
 	DeviceID      string // "\\.\PHYSICALDRIVE0"
 	Index         uint32
 	Model         string  // "Samsung SSD 970 EVO"
@@ -19,13 +19,36 @@ type DiskInfo struct {
 
 type DriveCache struct {
 	sync.RWMutex
-	AllowedDrives  map[uint32]DiskInfo
+	AllowedDrives  map[uint32]MountInfo
 	DriveLetterMap map[uint32][]string // ["C:", "D:", ...]
 }
 
 func NewDriveCache() *DriveCache {
 	return &DriveCache{
-		AllowedDrives:  make(map[uint32]DiskInfo),
+		AllowedDrives:  make(map[uint32]MountInfo),
 		DriveLetterMap: make(map[uint32][]string),
 	}
+}
+
+// GetDefaultPath returns "C:" if present, or the first available drive letter
+func (c *DriveCache) GetDefaultPath() string {
+	c.RLock()
+	defer c.RUnlock()
+
+	for _, letters := range c.DriveLetterMap {
+		for _, letter := range letters {
+			if letter == "C:" {
+				return "C:\\"
+			}
+		}
+	}
+
+	for _, letters := range c.DriveLetterMap {
+		if len(letters) > 0 {
+			return letters[0] + "\\"
+		}
+	}
+
+	// Fail-safe: Current Directory
+	return "."
 }
