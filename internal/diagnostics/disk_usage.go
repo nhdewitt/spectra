@@ -15,10 +15,10 @@ import (
 func RunDiskUsageTop(ctx context.Context, root string, topDirsN, topFilesN int) (*protocol.DiskUsageTopReport, error) {
 	start := time.Now()
 
-	filesHeap := &topNHeap{}
-	dirsHeap := &topNHeap{}
-	heap.Init(filesHeap)
-	heap.Init(dirsHeap)
+	filesHeap := make(topNHeap, 0, topFilesN)
+	dirsHeap := make(topNHeap, 0, topDirsN)
+	heap.Init(&filesHeap)
+	heap.Init(&dirsHeap)
 
 	var scannedFiles, scannedDirs, errorCount uint64
 
@@ -38,6 +38,8 @@ func RunDiskUsageTop(ctx context.Context, root string, topDirsN, topFilesN int) 
 			return 0, 0, nil // Skip permission errors
 		}
 
+		scannedDirs++
+
 		var dirSize, dirFileCount uint64
 
 		for _, entry := range entries {
@@ -54,7 +56,6 @@ func RunDiskUsageTop(ctx context.Context, root string, topDirsN, topFilesN int) 
 			fullPath := filepath.Join(path, entry.Name())
 
 			if entry.IsDir() {
-				scannedDirs++
 				s, c, _ := walk(fullPath)
 				dirSize += s
 				dirFileCount += c
@@ -65,7 +66,7 @@ func RunDiskUsageTop(ctx context.Context, root string, topDirsN, topFilesN int) 
 				dirFileCount++
 				scannedFiles++
 
-				pushTopN(filesHeap, topFilesN, protocol.TopEntry{
+				pushTopN(&filesHeap, topFilesN, protocol.TopEntry{
 					Path: fullPath,
 					Size: size,
 				})
@@ -73,7 +74,7 @@ func RunDiskUsageTop(ctx context.Context, root string, topDirsN, topFilesN int) 
 		}
 
 		if dirSize > 0 {
-			pushTopN(dirsHeap, topDirsN, protocol.TopEntry{
+			pushTopN(&dirsHeap, topDirsN, protocol.TopEntry{
 				Path:  path,
 				Size:  dirSize,
 				Count: dirFileCount,
@@ -95,8 +96,8 @@ func RunDiskUsageTop(ctx context.Context, root string, topDirsN, topFilesN int) 
 		ErrorCount:   errorCount,
 		DurationMs:   time.Since(start).Milliseconds(),
 		ScannedAt:    time.Now(),
-		TopFiles:     popAllSortedDesc(filesHeap),
-		TopDirs:      popAllSortedDesc(dirsHeap),
+		TopFiles:     popAllSortedDesc(&filesHeap),
+		TopDirs:      popAllSortedDesc(&dirsHeap),
 	}
 
 	return report, nil

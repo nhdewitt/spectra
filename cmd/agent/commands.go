@@ -58,7 +58,7 @@ func runCommandLoop(ctx context.Context, client *http.Client, cfg Config, driveC
 func handleCommand(ctx context.Context, client *http.Client, cfg Config, cmd protocol.Command, driveCache *collector.DriveCache) {
 	fmt.Printf("Received Command: %s (%s)\n", cmd.Type, cmd.ID)
 
-	var resultData interface{}
+	var resultData any
 	var err error
 
 	switch cmd.Type {
@@ -97,6 +97,14 @@ func handleCommand(ctx context.Context, client *http.Client, cfg Config, cmd pro
 
 	case protocol.CmdListMounts:
 		resultData = driveCache.ListMounts()
+
+	case protocol.CmdNetworkDiag:
+		var req protocol.NetworkRequest
+		if json.Unmarshal(cmd.Payload, &req) == nil {
+			resultData, err = diagnostics.RunNetworkDiag(ctx, req)
+		} else {
+			err = fmt.Errorf("invalid network request payload")
+		}
 
 	default:
 		err = fmt.Errorf("unknown command type: %s", cmd.Type)

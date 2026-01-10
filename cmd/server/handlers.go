@@ -343,6 +343,43 @@ func handleAdminTriggerLogs(store *AgentStore) http.HandlerFunc {
 	}
 }
 
+func handleAdminTriggerNetwork(store *AgentStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hostname := r.URL.Query().Get("hostname")
+		action := r.URL.Query().Get("action")
+		target := r.URL.Query().Get("target")
+
+		if hostname == "" || action == "" {
+			http.Error(w, "hostname and action are required", http.StatusBadRequest)
+			return
+		}
+
+		req := protocol.NetworkRequest{
+			Action: action,
+			Target: target,
+		}
+
+		payload, err := json.Marshal(req)
+		if err != nil {
+			http.Error(w, "JSON Marshal Error", http.StatusInternalServerError)
+			return
+		}
+
+		cmd := protocol.Command{
+			ID:      uuid.NewString(),
+			Type:    protocol.CmdNetworkDiag,
+			Payload: payload,
+		}
+
+		if store.QueueCommand(hostname, cmd) {
+			log.Printf("Queued Network Diag (%s -> %s) for %s\n", action, target, hostname)
+			fmt.Fprintf(w, "Network Diagnostic Queued: %s %s\n", action, target)
+		} else {
+			http.Error(w, "Queue full or agent not found", http.StatusServiceUnavailable)
+		}
+	}
+}
+
 func formatBytes(b uint64) string {
 	const unit = 1024
 	if b < unit {

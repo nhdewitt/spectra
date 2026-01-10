@@ -16,6 +16,7 @@ func main() {
 	mux.HandleFunc("/api/v1/agent/command_result", handleCommandResult)
 	mux.HandleFunc("/admin/trigger_logs", handleAdminTriggerLogs(store))
 	mux.HandleFunc("/admin/trigger_disk", handleAdminTriggerDisk(store))
+	mux.HandleFunc("/admin/trigger_network", handleAdminTriggerNetwork(store))
 
 	server := &http.Server{
 		Addr:         ":8080",

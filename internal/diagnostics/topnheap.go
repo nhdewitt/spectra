@@ -20,7 +20,7 @@ func (h topNHeap) Less(i, j int) bool {
 	if h[i].Size != h[j].Size {
 		return h[i].Size < h[j].Size
 	}
-	return strings.ToLower(h[i].Path) < strings.ToLower(h[j].Path)
+	return strings.ToLower(h[i].Path) > strings.ToLower(h[j].Path)
 }
 
 func (h topNHeap) Swap(i, j int) {
@@ -52,7 +52,7 @@ func pushTopN(h *topNHeap, n int, e protocol.TopEntry) {
 
 	// Only replace if new item is larger than smallest
 	smallest := (*h)[0]
-	if e.Size > smallest.Size || (e.Size == smallest.Size && strings.ToLower(e.Path) > strings.ToLower(smallest.Path)) {
+	if e.Size > smallest.Size || (e.Size == smallest.Size && strings.ToLower(e.Path) < strings.ToLower(smallest.Path)) {
 		(*h)[0] = e
 		heap.Fix(h, 0)
 	}
