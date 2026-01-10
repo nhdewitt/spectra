@@ -45,6 +45,7 @@ const (
 	CmdDiskUsage    CommandType = "DISK_USAGE"
 	CmdRestartAgent CommandType = "RESTART_AGENT"
 	CmdListMounts   CommandType = "LIST_MOUNTS"
+	CmdNetworkDiag  CommandType = "NETWORK_DIAG"
 )
 
 type Command struct {
@@ -115,4 +116,41 @@ type MountInfo struct {
 	Mountpoint string `json:"mountpoint"` // "C:", "/"
 	Device     string `json:"device"`     // "Samsung SSD 970", "/dev/sda1"
 	FSType     string `json:"fstype"`     // "NTFS", "ext4"
+}
+
+// NetworkRequest defines what the admin wants to run.
+type NetworkRequest struct {
+	Action string `json:"action"` // "ping", "traceroute", "netstat"
+	Target string `json:"target"` // for ping/traceroute
+	Count  int    `json:"count"`  // no. of packets
+}
+
+type PingResult struct {
+	Seq      int           `json:"seq"`
+	Success  bool          `json:"success"`
+	RTT      time.Duration `json:"rtt"`
+	Response string        `json:"response"` // "reply", "timeout", "dest unreachable"
+	Peer     string        `json:"peer"`
+	Code     uint8         `json:"code,omitempty"` // Code (if error)
+}
+
+// NetstatEntry is a single row in the netstat table
+type NetstatEntry struct {
+	Proto      string `json:"proto"` // tcp, udp
+	LocalAddr  string `json:"local_addr"`
+	LocalPort  uint16 `json:"local_port"`
+	RemoteAddr string `json:"remote_addr"`
+	RemotePort uint16 `json:"remote_port"`
+	State      string `json:"state"`          // LISTEN, ESTABLISHED
+	User       string `json:"user,omitempty"` // UID (Linux)
+	PID        uint32 `json:"pid,omitempty"`  // PID (Windows)
+}
+
+// NetworkDiagnosticReport is the generic result container
+type NetworkDiagnosticReport struct {
+	Action      string         `json:"action"`
+	Target      string         `json:"target,omitempty"`
+	RawOutput   string         `json:"raw_output,omitempty"`
+	Netstat     []NetstatEntry `json:"netstat,omitempty"`
+	PingResults []PingResult   `json:"ping_results,omitempty"`
 }

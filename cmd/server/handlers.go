@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -195,6 +196,58 @@ func handleCommandResult(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("   %s (%s) [%s]\n", m.Mountpoint, m.Device, m.FSType)
 		}
 
+	case protocol.CmdNetworkDiag:
+		var report protocol.NetworkDiagnosticReport
+		if err := json.Unmarshal(res.Payload, &report); err != nil {
+			log.Printf(" [NET] Failed to unmarshal report: %v", err)
+			return
+		}
+
+		fmt.Printf(" [NET] Action: %s | Target %s\n", report.Action, report.Target)
+
+		if len(report.PingResults) > 0 {
+			fmt.Println(" --- Ping Results ---")
+			fmt.Printf("   %-4s %-20s %-12s %s\n", "SEQ", "PEER", "RTT", "STATUS")
+			for _, p := range report.PingResults {
+				status := p.Response
+				if p.Success {
+					status = "OK"
+				}
+				fmt.Printf("   %-4d %-20s %-12s %s\n", p.Seq, p.Peer, p.RTT.Round(time.Millisecond), status)
+			}
+			return
+		}
+
+		if len(report.Netstat) > 0 {
+			fmt.Println(" --- Active Connections ---")
+			fmt.Printf("   %-5s %-25s %-25s %-12s %s\n", "PROTO", "LOCAL", "REMOTE", "STATE", "USER/PID")
+			for i, n := range report.Netstat {
+				if i >= 20 {
+					break
+				}
+
+				local := net.JoinHostPort(n.LocalAddr, fmt.Sprintf("%d", n.LocalPort))
+				remote := net.JoinHostPort(n.RemoteAddr, fmt.Sprintf("%d", n.RemotePort))
+
+				owner := ""
+				if n.PID > 0 {
+					owner = fmt.Sprintf("PID: %d", n.PID)
+				} else if n.User != "" {
+					owner = fmt.Sprintf("UID: %s", n.User)
+				}
+
+				fmt.Printf("   %-5s %-25s %-25s %-12s %s\n", n.Proto, local, remote, n.State, owner)
+			}
+			return
+		}
+
+		if report.RawOutput != "" {
+			fmt.Println(" --- Trace Output ---")
+			fmt.Println(report.RawOutput)
+			return
+		}
+
+		fmt.Println(" [NET] Report contained no data.")
 	}
 }
 
