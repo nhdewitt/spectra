@@ -1,9 +1,7 @@
-package main
+package agent
 
 import (
-	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
@@ -15,7 +13,7 @@ const (
 )
 
 // runMetricSender consumes the channel and sends batches via HTTP
-func runMetricSender(ctx context.Context, client *http.Client, cfg Config, ch <-chan protocol.Envelope) {
+func (a *Agent) runMetricSender() {
 	batch := make([]protocol.Envelope, 0, BatchSize)
 
 	ticker := time.NewTicker(SendInterval)
@@ -23,14 +21,14 @@ func runMetricSender(ctx context.Context, client *http.Client, cfg Config, ch <-
 
 	flush := func() {
 		if len(batch) > 0 {
-			uploadBatch(ctx, client, cfg, batch)
+			a.uploadBatch(batch)
 			batch = make([]protocol.Envelope, 0, BatchSize)
 		}
 	}
 
 	for {
 		select {
-		case envelope := <-ch:
+		case envelope := <-a.metricsCh:
 			batch = append(batch, envelope)
 			if len(batch) >= BatchSize {
 				flush()
@@ -39,17 +37,17 @@ func runMetricSender(ctx context.Context, client *http.Client, cfg Config, ch <-
 		case <-ticker.C:
 			flush()
 
-		case <-ctx.Done():
+		case <-a.ctx.Done():
 			flush()
 			return
 		}
 	}
 }
 
-func uploadBatch(ctx context.Context, client *http.Client, cfg Config, batch []protocol.Envelope) {
-	url := fmt.Sprintf("%s%s?hostname=%s", cfg.BaseURL, cfg.MetricsPath, cfg.Hostname)
+func (a *Agent) uploadBatch(batch []protocol.Envelope) {
+	url := fmt.Sprintf("%s%s?hostname=%s", a.Config.BaseURL, a.Config.MetricsPath, a.Config.Hostname)
 
-	if err := postCompressed(ctx, client, url, batch); err != nil {
+	if err := postCompressed(a.ctx, a.Client, url, batch); err != nil {
 		fmt.Printf("Error sending batch of %d metrics: %v\n", len(batch), err)
 	} else {
 		fmt.Printf("Sent batch of %d metrics\n", len(batch))

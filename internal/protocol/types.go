@@ -154,3 +154,21 @@ type NetworkDiagnosticReport struct {
 	Netstat     []NetstatEntry `json:"netstat,omitempty"`
 	PingResults []PingResult   `json:"ping_results,omitempty"`
 }
+
+type HostInfo struct {
+	Hostname string `json:"hostname"`
+	OS       string `json:"os"`
+	Platform string `json:"platform"`
+	PlatVer  string `json:"platform_ver"`
+	Kernel   string `json:"kernel"`
+	Arch     string `json:"arch"`
+
+	CPUModel string `json:"cpu_model"`
+	CPUCores int    `json:"cpu_cores"`
+
+	RAMTotal uint64 `json:"ram_total"`
+
+	AgentVer string   `json:"agent_version"`
+	BootTime int64    `json:"boot_time"`
+	IPs      []string `json:"ips"` // List of local interface IPs
+}
