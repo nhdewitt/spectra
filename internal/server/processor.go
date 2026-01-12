@@ -142,6 +142,26 @@ func (s *Server) logCommandResult(res protocol.CommandResult) {
 
 		fmt.Printf(" [NET] Action: %s | Target %s\n", report.Action, report.Target)
 
+		if report.Action == "connect" {
+			if len(report.PingResults) == 0 {
+				fmt.Printf(" [NET] Connect check to %s returned no data.\n", report.Target)
+				return
+			}
+
+			res := report.PingResults[0]
+			status := "CLOSED/FAILED"
+			if res.Success {
+				status = "OPEN/CONNECTED"
+			}
+
+			fmt.Printf(" [NET] Connect: %s -> %s (%s)\n", report.Target, status, res.RTT.Round(time.Millisecond))
+			if !res.Success {
+				fmt.Printf("      Error: %s\n", res.Response)
+			}
+
+			return
+		}
+
 		if len(report.PingResults) > 0 {
 			fmt.Println(" --- Ping Results ---")
 			fmt.Printf("   %-4s %-20s %-12s %s\n", "SEQ", "PEER", "RTT", "STATUS")

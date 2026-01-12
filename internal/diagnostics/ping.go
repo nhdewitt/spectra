@@ -155,6 +155,30 @@ func runPing(ctx context.Context, target string) ([]protocol.PingResult, error) 
 	return results, nil
 }
 
+func testConnectivity(target string, timeout time.Duration) protocol.PingResult {
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", target, timeout)
+	duration := time.Since(start)
+
+	res := protocol.PingResult{
+		Seq:  0,
+		Peer: target,
+		RTT:  duration,
+	}
+
+	if err != nil {
+		res.Success = false
+		res.Response = fmt.Sprintf("failed: %v", err)
+		return res
+	}
+	defer conn.Close()
+
+	res.Success = true
+	res.Response = "OK"
+
+	return res
+}
+
 func marshalMsg(typ uint8, id, seq uint16, payload []byte) []byte {
 	b := make([]byte, 8+len(payload))
 
