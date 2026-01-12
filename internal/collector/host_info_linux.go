@@ -51,7 +51,9 @@ func getKernel() string {
 	return charsToString(uname.Release[:])
 }
 
-func charsToString(ca []int8) string {
+// charsToString converts a NUL-terminated C char buffer to a Go string.
+// It accepts both signed and unsigned byte representations.
+func charsToString[T ~int8 | ~uint8](ca []T) string {
 	buf := make([]byte, 0, len(ca))
 
 	for _, c := range ca {

@@ -2,33 +2,18 @@ package main
 
 import (
 	"log"
-	"net/http"
-	"time"
+
+	"github.com/nhdewitt/spectra/internal/server"
 )
 
 func main() {
-	store := NewAgentStore()
-	mux := http.NewServeMux()
-
-	// Routes
-	mux.HandleFunc("/api/v1/metrics", handleMetrics)
-	mux.HandleFunc("/api/v1/agent/command", handleAgentCommand(store))
-	mux.HandleFunc("/api/v1/agent/command_result", handleCommandResult)
-	mux.HandleFunc("/admin/trigger_logs", handleAdminTriggerLogs(store))
-	mux.HandleFunc("/admin/trigger_disk", handleAdminTriggerDisk(store))
-	mux.HandleFunc("/admin/trigger_network", handleAdminTriggerNetwork(store))
-
-	server := &http.Server{
-		Addr:         ":8080",
-		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 40 * time.Second,
-		IdleTimeout:  120 * time.Second,
+	cfg := server.Config{
+		Port: 8080,
 	}
 
-	log.Println("Server listening on :8080...")
+	srv := server.New(cfg)
 
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Server failed: %v", err)
+	if err := srv.Start(); err != nil {
+		log.Fatalf("Server exited: %v", err)
 	}
 }
