@@ -1,54 +1,32 @@
 package agent
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
+	"time"
 )
 
-// postCompressed marshals data to JSON, compresses it, and sends it to the server.
-func postCompressed(ctx context.Context, client *http.Client, url string, data any) error {
-	// Marshal JSON
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("marshalling failed: %w", err)
-	}
+// scheduleNightly runs the provided function every day at the specified hour/minute.
+// It accounts for restarts and date rollovers.
+func scheduleNightly(ctx context.Context, hour, minute int, fn func(context.Context)) {
+	for {
+		now := time.Now()
+		next := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
 
-	// Compress
-	var buf bytes.Buffer
-	gw := gzip.NewWriter(&buf)
-	if _, err := gw.Write(jsonData); err != nil {
-		return fmt.Errorf("compression failed: %w", err)
-	}
-	if err := gw.Close(); err != nil {
-		return fmt.Errorf("gzip close failed: %w", err)
-	}
+		if now.After(next) {
+			next = next.AddDate(0, 0, 1)
+		}
 
-	// Create Request
-	req, err := http.NewRequestWithContext(ctx, "POST", url, &buf)
-	if err != nil {
-		return fmt.Errorf("request creation failed: %w", err)
+		t := time.NewTimer(time.Until(next))
+
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return
+		case <-t.C:
+			fn(ctx)
+		}
 	}
-
-	// Headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-
-	// Send
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("network error: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("server rejected with status: %s", resp.Status)
-	}
-
-	return nil
 }
 
 func formatBytes(b int) string {

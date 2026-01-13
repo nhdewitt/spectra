@@ -1,8 +1,11 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -27,9 +30,12 @@ type Agent struct {
 	DriveCache *collector.DriveCache
 
 	metricsCh chan protocol.Envelope
+	batch     []protocol.Envelope
 	wg        sync.WaitGroup
 	ctx       context.Context
 	cancel    context.CancelFunc
+	gzipBuf   bytes.Buffer
+	gzipW     *gzip.Writer
 }
 
 // New creates a configured Agent instance
@@ -45,8 +51,10 @@ func New(cfg Config) *Agent {
 		Client:     client,
 		DriveCache: collector.NewDriveCache(),
 		metricsCh:  make(chan protocol.Envelope, 500),
+		batch:      make([]protocol.Envelope, 0, 50),
 		ctx:        ctx,
 		cancel:     cancel,
+		gzipW:      gzip.NewWriter(io.Discard),
 	}
 }
 

@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
@@ -22,7 +24,7 @@ func (a *Agent) runMetricSender() {
 	flush := func() {
 		if len(batch) > 0 {
 			a.uploadBatch(batch)
-			batch = make([]protocol.Envelope, 0, BatchSize)
+			batch = batch[:0]
 		}
 	}
 
@@ -47,9 +49,44 @@ func (a *Agent) runMetricSender() {
 func (a *Agent) uploadBatch(batch []protocol.Envelope) {
 	url := fmt.Sprintf("%s%s?hostname=%s", a.Config.BaseURL, a.Config.MetricsPath, a.Config.Hostname)
 
-	if err := postCompressed(a.ctx, a.Client, url, batch); err != nil {
+	if err := a.postCompressed(url, batch); err != nil {
 		fmt.Printf("Error sending batch of %d metrics: %v\n", len(batch), err)
 	} else {
 		fmt.Printf("Sent batch of %d metrics\n", len(batch))
 	}
+}
+
+// postCompressed marshals data to JSON, compresses it, and sends it to the server.
+func (a *Agent) postCompressed(url string, batch []protocol.Envelope) error {
+	a.gzipBuf.Reset()
+	a.gzipW.Reset(&a.gzipBuf)
+
+	if err := json.NewEncoder(a.gzipW).Encode(batch); err != nil {
+		return fmt.Errorf("json encode error: %w", err)
+	}
+
+	if err := a.gzipW.Close(); err != nil {
+		return fmt.Errorf("gzip close error: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(a.ctx, "POST", url, &a.gzipBuf)
+	if err != nil {
+		return fmt.Errorf("create request error: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("User-Agent", "Spectra-Agent/1.0")
+
+	resp, err := a.Client.Do(req)
+	if err != nil {
+		return fmt.Errorf("http error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
+
+	return nil
 }

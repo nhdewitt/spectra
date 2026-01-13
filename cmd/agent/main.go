@@ -1,7 +1,10 @@
 package main
 
 import (
+	"flag"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,6 +14,18 @@ import (
 )
 
 func main() {
+	// DEBUGGING
+	debugMode := flag.Bool("debug", false, "Enable pprof debug server on localhost:6060")
+	flag.Parse()
+
+	if *debugMode {
+		go func() {
+			log.Println("DEBUG MODE: pprof server running on http://127.0.0.1:6060/debug/pprof/")
+			if err := http.ListenAndServe("127.0.0.1:6060", nil); err != nil {
+				log.Printf("failed to start debug server: %v", err)
+			}
+		}()
+	}
 	baseURL := os.Getenv("SPECTRA_SERVER")
 	if baseURL == "" {
 		baseURL = "http://127.0.0.1:8080"
