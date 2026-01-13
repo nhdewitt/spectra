@@ -49,17 +49,18 @@ func main() {
 
 	a := agent.New(cfg)
 
-	// Handle shutdown signals
 	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-		<-sigCh
-
-		log.Println("\nReceived termination signal...")
-		a.Shutdown()
+		if err := a.Start(); err != nil {
+			log.Fatalf("Agent exited with error: %v", err)
+		}
 	}()
 
-	if err := a.Start(); err != nil {
-		log.Fatalf("Agent exited with error: %v", err)
-	}
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	<-sigCh
+
+	log.Println("\nReceived termination signal...")
+
+	a.Shutdown()
 }
