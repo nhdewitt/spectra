@@ -30,7 +30,8 @@ func (a *Agent) Register() error {
 	// Request with retries
 	for range 3 {
 		req, _ := http.NewRequestWithContext(a.ctx, "POST", url, bytes.NewReader(payload))
-		req.Header.Set("Content-Type", "application/json")
+		a.setHeaders(req)
+		req.Header.Del("Content-Encoding")
 
 		resp, reqErr = a.Client.Do(req)
 		if reqErr == nil && (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated) {

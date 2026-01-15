@@ -34,8 +34,12 @@ type Agent struct {
 	wg        sync.WaitGroup
 	ctx       context.Context
 	cancel    context.CancelFunc
-	gzipBuf   bytes.Buffer
-	gzipW     *gzip.Writer
+
+	gzipMu  sync.Mutex
+	gzipBuf bytes.Buffer
+	gzipW   *gzip.Writer
+
+	commonHeaders map[string]string
 }
 
 // New creates a configured Agent instance
@@ -55,6 +59,11 @@ func New(cfg Config) *Agent {
 		ctx:        ctx,
 		cancel:     cancel,
 		gzipW:      gzip.NewWriter(io.Discard),
+		commonHeaders: map[string]string{
+			"Content-Type":     "application/json",
+			"Content-Encoding": "gzip",
+			"User-Agent":       "Spectra-Agent/1.0",
+		},
 	}
 }
 
@@ -99,4 +108,11 @@ func (a *Agent) Shutdown() {
 	a.cancel()
 	a.wg.Wait()
 	fmt.Println("Agent stopped.")
+}
+
+// setHeaders sets common headers for an http.Request
+func (a *Agent) setHeaders(req *http.Request) {
+	for k, v := range a.commonHeaders {
+		req.Header.Set(k, v)
+	}
 }

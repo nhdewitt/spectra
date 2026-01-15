@@ -2,7 +2,6 @@ package agent
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -135,32 +134,40 @@ func (a *Agent) uploadCommandResult(cmd protocol.Command, data any, cmdErr error
 		}
 	}
 
-	// Marshal the envelope
-	envelopeBytes, err := json.Marshal(res)
+	var payload []byte
+	var compressedSize int
+
+	err := func() error {
+		a.gzipMu.Lock()
+		defer a.gzipMu.Unlock()
+
+		a.gzipBuf.Reset()
+		a.gzipW.Reset(&a.gzipBuf)
+
+		if err := json.NewEncoder(a.gzipW).Encode(res); err != nil {
+			return err
+		}
+		if err := a.gzipW.Close(); err != nil {
+			return err
+		}
+
+		compressedSize = a.gzipBuf.Len()
+		payload = make([]byte, compressedSize)
+		copy(payload, a.gzipBuf.Bytes())
+		return nil
+	}()
 	if err != nil {
-		return err
+		return fmt.Errorf("compression failed: %v", err)
 	}
 
-	// Compress
-	var buf bytes.Buffer
-	gw := gzip.NewWriter(&buf)
-	if _, err := gw.Write(envelopeBytes); err != nil {
-		return err
-	}
-	if err := gw.Close(); err != nil {
-		return err
-	}
-	compressedSize := buf.Len()
-
-	// Send
 	url := fmt.Sprintf("%s/api/v1/agent/command_result?hostname=%s", a.Config.BaseURL, a.Config.Hostname)
 
-	req, err := http.NewRequestWithContext(a.ctx, "POST", url, &buf)
+	req, err := http.NewRequestWithContext(a.ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
+
+	a.setHeaders(req)
 
 	resp, err := a.Client.Do(req)
 	if err != nil {

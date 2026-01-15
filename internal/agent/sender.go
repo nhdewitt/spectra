@@ -58,6 +58,9 @@ func (a *Agent) uploadBatch(batch []protocol.Envelope) {
 
 // postCompressed marshals data to JSON, compresses it, and sends it to the server.
 func (a *Agent) postCompressed(url string, batch []protocol.Envelope) error {
+	a.gzipMu.Lock()
+	defer a.gzipMu.Unlock()
+
 	a.gzipBuf.Reset()
 	a.gzipW.Reset(&a.gzipBuf)
 
@@ -74,9 +77,7 @@ func (a *Agent) postCompressed(url string, batch []protocol.Envelope) error {
 		return fmt.Errorf("create request error: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("User-Agent", "Spectra-Agent/1.0")
+	a.setHeaders(req)
 
 	resp, err := a.Client.Do(req)
 	if err != nil {
