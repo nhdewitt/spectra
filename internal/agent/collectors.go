@@ -38,4 +38,7 @@ func (a *Agent) startCollectors() {
 	for _, j := range jobs {
 		go c.Run(a.ctx, j.Interval, j.Fn)
 	}
+
+	// Nightly tasks
+	go a.runNightly(2, 0, collector.GetInstalledApps)
 }

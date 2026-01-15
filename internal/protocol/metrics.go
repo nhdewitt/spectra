@@ -36,20 +36,21 @@ func (e Envelope) MarshalJSON() ([]byte, error) {
 }
 
 // Impelement the interface on each metric type
-func (CPUMetric) MetricType() string         { return "cpu" }
-func (MemoryMetric) MetricType() string      { return "memory" }
-func (DiskMetric) MetricType() string        { return "disk" }
-func (NetworkMetric) MetricType() string     { return "network" }
-func (TemperatureMetric) MetricType() string { return "temperature" }
-func (SystemMetric) MetricType() string      { return "system" }
-func (DiskIOMetric) MetricType() string      { return "disk_io" }
-func (ProcessMetric) MetricType() string     { return "process" }
-func (ProcessListMetric) MetricType() string { return "process_list" }
-func (ThrottleMetric) MetricType() string    { return "throttle" }
-func (ClockMetric) MetricType() string       { return "clock" }
-func (VoltageMetric) MetricType() string     { return "voltage" }
-func (WiFiMetric) MetricType() string        { return "wifi" }
-func (GPUMetric) MetricType() string         { return "gpu" }
+func (CPUMetric) MetricType() string             { return "cpu" }
+func (MemoryMetric) MetricType() string          { return "memory" }
+func (DiskMetric) MetricType() string            { return "disk" }
+func (NetworkMetric) MetricType() string         { return "network" }
+func (TemperatureMetric) MetricType() string     { return "temperature" }
+func (SystemMetric) MetricType() string          { return "system" }
+func (DiskIOMetric) MetricType() string          { return "disk_io" }
+func (ProcessMetric) MetricType() string         { return "process" }
+func (ProcessListMetric) MetricType() string     { return "process_list" }
+func (ThrottleMetric) MetricType() string        { return "throttle" }
+func (ClockMetric) MetricType() string           { return "clock" }
+func (VoltageMetric) MetricType() string         { return "voltage" }
+func (WiFiMetric) MetricType() string            { return "wifi" }
+func (GPUMetric) MetricType() string             { return "gpu" }
+func (ApplicationListMetric) MetricType() string { return "application_list" }
 
 type CPUMetric struct {
 	Usage     float64   `json:"usage"`
@@ -167,4 +168,14 @@ type WiFiMetric struct {
 type GPUMetric struct {
 	MemoryTotal uint64 `json:"gpu_mem_total,omitempty"`
 	MemoryUsed  uint64 `json:"gpu_mem_used,omitempty"`
+}
+
+type Application struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Vendor  string `json:"vendor,omitempty"`
+}
+
+type ApplicationListMetric struct {
+	Applications []Application `json:"applications"`
 }

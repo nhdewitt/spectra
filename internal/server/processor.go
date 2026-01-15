@@ -58,6 +58,8 @@ func (s *Server) unmarshalMetric(typ string, data []byte) (protocol.Metric, erro
 		metric = &protocol.ServiceMetric{}
 	case "service_list":
 		metric = &protocol.ServiceListMetric{}
+	case "application_list":
+		metric = &protocol.ApplicationListMetric{}
 	default:
 		return nil, fmt.Errorf("unknown metric type: %s", typ)
 	}
@@ -81,6 +83,8 @@ func (s *Server) logMetric(env RawEnvelope, metric protocol.Metric) {
 		for _, s := range m.Services {
 			fmt.Printf(" [%s] service: %-20s %s (%s)\n", ts, s.Name, s.Status, s.SubStatus)
 		}
+	case *protocol.ApplicationListMetric:
+		log.Printf(" [%s] application_list: Received %d applications from %s", ts, len(m.Applications), env.Hostname)
 	default:
 		fmt.Printf(" [%s] %s: %v\n", ts, env.Type, metric)
 	}

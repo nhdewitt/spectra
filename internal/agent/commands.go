@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/diagnostics"
@@ -182,4 +185,51 @@ func (a *Agent) uploadCommandResult(cmd protocol.Command, data any, cmdErr error
 
 	fmt.Printf("Uploaded result for %s (%s compressed)\n", cmd.ID, formatBytes(compressedSize))
 	return nil
+}
+
+func (a *Agent) runNightly(hour, minute int, fn func(context.Context) ([]protocol.Application, error)) {
+	// TODO: Remove after verifying it runs
+	statusFile := filepath.Join(os.TempDir(), "spectra-nightly-status.json")
+	for {
+		now := time.Now()
+		next := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
+
+		if now.After(next) {
+			next = next.Add(24 * time.Hour)
+		}
+
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-time.After(time.Until(next)):
+			status := struct {
+				StartedAt   time.Time `json:"started_at"`
+				CompletedAt time.Time `json:"completed_at,omitempty"`
+				AppCount    int       `json:"app_count,omitempty"`
+				Error       string    `json:"error,omitempty"`
+			}{
+				StartedAt: time.Now(),
+			}
+			apps, err := fn(a.ctx)
+			if err != nil {
+				status.Error = err.Error()
+				log.Printf("nightly apps collection failed: %v", err)
+				continue
+			} else {
+				status.CompletedAt = time.Now()
+				status.AppCount = len(apps)
+			}
+
+			a.metricsCh <- protocol.Envelope{
+				Type:      "application_list",
+				Timestamp: time.Now(),
+				Hostname:  a.Config.Hostname,
+				Data:      &protocol.ApplicationListMetric{Applications: apps},
+			}
+
+			data, _ := json.MarshalIndent(status, "", "  ")
+			os.WriteFile(statusFile, data, 0644)
+		}
+
+	}
 }

@@ -3,6 +3,7 @@ package collector
 import (
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
@@ -58,4 +59,20 @@ func validateTimeDelta(now, last time.Time, source string) float64 {
 	}
 
 	return delta
+}
+
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+func cleanVendor(v string) string {
+	v = strings.TrimSpace(v)
+	// Strip email portion
+	if idx := strings.Index(v, "<"); idx > 0 {
+		v = strings.TrimSpace(v[:idx])
+	}
+	if v == "" {
+		return ""
+	}
+	return v
 }
