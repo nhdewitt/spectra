@@ -6,9 +6,6 @@ import (
 	"sync"
 )
 
-// BusType represents the hardware interface (USB, SATA, NVMe, etc.)
-type BusType uint32
-
 // DiskInfo represents a phsyical disk detected on the system
 type MountInfo struct {
 	DeviceID      string // "\\.\PHYSICALDRIVE0"

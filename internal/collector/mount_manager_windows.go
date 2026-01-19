@@ -92,7 +92,7 @@ func scanPhysicalDrives() []MountInfo {
 func getStorageProperty(handle windows.Handle, index uint32) (MountInfo, error) {
 	var query storagePropertyQuery
 	query.PropertyId = storageDeviceProperty
-	query.QueryType = propertyStandardQuery
+	query.QueryType = storageStandardQuery
 
 	buf := make([]byte, 1024)
 	var bytesReturned uint32

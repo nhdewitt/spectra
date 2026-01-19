@@ -26,7 +26,7 @@ func CollectWiFi(ctx context.Context) ([]protocol.Metric, error) {
 	}
 	defer wlanCloseHandle.Call(handle, 0)
 
-	var ifaceList *WLAN_INTERFACE_INFO_LIST
+	var ifaceList *wlanInterfaceInfoList
 	ret, _, _ = wlanEnumInterfaces.Call(
 		handle,                              // [in] HANDLE
 		0,                                   // [in] PVOID
@@ -59,7 +59,7 @@ func CollectWiFi(ctx context.Context) ([]protocol.Metric, error) {
 
 		// Connection attributes
 		var dataSize uint32
-		var connAttr *WLAN_CONNECTION_ATTRIBUTES
+		var connAttr *wlanConnectionAttributes
 		var opcode uint32 = wlanIntfOpcodeCurrentConnection
 
 		ret, _, _ := wlanQueryInterface.Call(
@@ -76,9 +76,9 @@ func CollectWiFi(ctx context.Context) ([]protocol.Metric, error) {
 			continue
 		}
 
-		ssid := parseDot11SSID(connAttr.wlanAssociationAttributes.dot11Ssid)
-		quality := int(connAttr.wlanAssociationAttributes.wlanSignalQuality)
-		txRateKbps := connAttr.wlanAssociationAttributes.ulTxRate
+		ssid := parseDot11SSID(connAttr.WlanAssociationAttributes.Dot11Ssid)
+		quality := int(connAttr.WlanAssociationAttributes.WlanSignalQuality)
+		txRateKbps := connAttr.WlanAssociationAttributes.UlTxRate
 		bitRate := float64(txRateKbps) / 1000.0
 
 		wlanFreeMemory.Call(uintptr(unsafe.Pointer(connAttr)))
@@ -160,11 +160,11 @@ func utf16ToString(w []uint16) string {
 	return windows.UTF16ToString(w)
 }
 
-func parseDot11SSID(ssid DOT11_SSID) string {
-	if ssid.uSSIDLength == 0 {
+func parseDot11SSID(ssid dot11Ssid) string {
+	if ssid.USSIDLength == 0 {
 		return ""
 	}
-	return string(ssid.ucSSID[:ssid.uSSIDLength])
+	return string(ssid.UcSSID[:ssid.USSIDLength])
 }
 
 // channelToFrequency converts a channel number to its center frequency in GHz.

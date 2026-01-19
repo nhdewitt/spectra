@@ -57,7 +57,7 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 			pid,
 		)
 		if err == nil {
-			var memCounters PROCESS_MEMORY_COUNTERS
+			var memCounters processMemoryCounters
 			memCounters.CB = uint32(unsafe.Sizeof(memCounters))
 
 			r1, _, _ := procGetProcessMemoryInfo.Call(

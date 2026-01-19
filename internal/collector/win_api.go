@@ -6,64 +6,15 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// --- DLL Handles ---
-var (
-	iphlpapi = windows.NewLazySystemDLL("iphlpapi.dll")
-	ntdll    = windows.NewLazySystemDLL("ntdll.dll")
-	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
-	wlanapi  = windows.NewLazySystemDLL("wlanapi.dll")
-	psapi    = windows.NewLazySystemDLL("psapi.dll")
-)
+// BusType represents the hardware interface (USB, SATA, NVMe, etc.)
+type BusType uint32
 
-// --- Procedure Handles ---
-var (
-	// CPU/System
-
-	procNtQuerySystemInformation = ntdll.NewProc("NtQuerySystemInformation")
-	procGetNativeSystemInfo      = kernel32.NewProc("GetNativeSystemInfo")
-
-	// Filesystem/Disk usage
-
-	procGetLogicalDrives     = kernel32.NewProc("GetLogicalDrives")
-	procGetDriveType         = kernel32.NewProc("GetDriveTypeW")
-	procGetVolumeInformation = kernel32.NewProc("GetVolumeInformationW")
-	procGetDiskFreeSpaceEx   = kernel32.NewProc("GetDiskFreeSpaceExW")
-
-	// Memory
-
-	procGlobalMemoryStatusEx = kernel32.NewProc("GlobalMemoryStatusEx")
-
-	// Network
-
-	procGetIfTable2  = iphlpapi.NewProc("GetIfTable2")
-	procFreeMibTable = iphlpapi.NewProc("FreeMibTable")
-
-	// Processes
-
-	procGetProcessMemoryInfo = psapi.NewProc("GetProcessMemoryInfo")
-
-	// System
-
-	procGetTickCount64 = kernel32.NewProc("GetTickCount64")
-
-	// WLAN
-
-	wlanOpenHandle     = wlanapi.NewProc("WlanOpenHandle")
-	wlanCloseHandle    = wlanapi.NewProc("WlanCloseHandle")
-	wlanEnumInterfaces = wlanapi.NewProc("WlanEnumInterfaces")
-	wlanQueryInterface = wlanapi.NewProc("WlanQueryInterface")
-	wlanFreeMemory     = wlanapi.NewProc("WlanFreeMemory")
-)
-
-// --- Constants ---
 const (
 	// CPU/System
 
 	systemProcessorPerformanceInformation = 8
 
-	// Disk
-
-	// Drive Types
+	// Disk: Drive Types
 
 	driveUnknown   = 0
 	driveNoRootDir = 1
@@ -73,24 +24,19 @@ const (
 	driveCdrom     = 5
 	driveRamdisk   = 6
 
-	// Disk IO
+	// Disk: IOCTL Codes
 
-	// IOCTL_DISK_PERFORMANCE: 0x70020
-	// ControlCode(DeviceType: 7 (Disk), Function: 8, Method: 0 (Buffered), Access: 0 (Any))
-	ioctlDiskPerformance = 0x70020
-	// IOCTL_STORAGE_QUERY_PROPERTY: 0x2D1400
-	ioctlStorageQueryProperty = 0x2D1400
-	// IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS: 0x560000
+	// DeviceType: 7 (Disk), Function: 8, Method: 0 (Buffered), Access: 0 (Any)
+	ioctlDiskPerformance            = 0x70020
+	ioctlStorageQueryProperty       = 0x2D1400
 	ioctlVolumeGetVolumeDiskExtents = 0x560000
 
-	// Storage Property Types
+	// Disk: Property Types
 
-	// PropertyId
-	storageDeviceProperty = 0
-	// QueryType
-	propertyStandardQuery = 0
+	storageDeviceProperty = 0 // PropertyId
+	storageStandardQuery  = 0 // QueryType
 
-	// Bus Types
+	// Disk: Bus Types
 
 	BusTypeUnknown           BusType = 0x00
 	BusTypeScsi              BusType = 0x01
@@ -112,10 +58,9 @@ const (
 
 	// WLAN
 
-	// WLAN_API_VERSION_2_0 is for Windows Vista+
-	wlanApiVersion = 2
+	wlanApiVersion = 2 // Windows Vista+
 
-	// OpCodes from wlanapi.h WLAN_INTF_OPCODE enum
+	// WLAN_INTF_OPCODE enum
 
 	wlanIntfOpcodeCurrentConnection = 0x00000007
 	wlanIntfOpcodeChannelNumber     = 0x00000008
@@ -125,7 +70,9 @@ const (
 
 // --- Struct Definitions ---
 
-// CPU: Native internal structure
+// CPU
+
+// Native internal structure for NtQuerySystemInformation
 type systemProcessorPerformanceInfo struct {
 	IdleTime       int64
 	KernelTime     int64
@@ -136,7 +83,7 @@ type systemProcessorPerformanceInfo struct {
 	_              uint32 // Padding for 64-bit alignment
 }
 
-// CPU: Hardware topology
+// Hardware topology
 type systemInfo struct {
 	ProcessorArchitecture     uint16
 	Reserved                  uint16
@@ -151,14 +98,14 @@ type systemInfo struct {
 	ProcessorRevision         uint16
 }
 
-// Disk: STORAGE_PROPERTY_QUERY
+// Disk
+
 type storagePropertyQuery struct {
 	PropertyId           uint32
 	QueryType            uint32
 	AdditionalParameters [1]byte
 }
 
-// Disk: STORAGE_DEVICE_DESCRIPTOR
 type storageDeviceDescriptor struct {
 	Version               uint32
 	Size                  uint32
@@ -174,7 +121,6 @@ type storageDeviceDescriptor struct {
 	RawPropertiesLength   uint32
 }
 
-// Disk: VOLUME_DISK_EXTENTS
 type diskExtent struct {
 	DiskNumber     uint32
 	StartingOffset int64
@@ -186,7 +132,6 @@ type volumeDiskExtents struct {
 	Extents             [1]diskExtent
 }
 
-// Disk IO: Disk Performance
 type diskPerformance struct {
 	BytesRead           int64
 	BytesWritten        int64
@@ -202,7 +147,8 @@ type diskPerformance struct {
 	StorageManagerName  [8]uint16
 }
 
-// Memory: RAM and Pagefile
+// Memory
+
 type memoryStatusEx struct {
 	Length               uint32
 	MemoryLoad           uint32
@@ -215,7 +161,8 @@ type memoryStatusEx struct {
 	AvailExtendedVirtual uint64
 }
 
-// Network: MIB_IF_ROW2
+// Network
+
 type mibIfRow2 struct {
 	InterfaceLuid               uint64
 	InterfaceIndex              uint32
@@ -261,15 +208,15 @@ type mibIfRow2 struct {
 	OutQLen                     uint64
 }
 
-// Network: MIB_IF_TABLE2
 type mibIfTable2 struct {
 	NumEntries uint32
 	_          uint32 // Padding
 	Table      [1]mibIfRow2
 }
 
-// Processes: PROCESS_MEMORY_COUNTERS
-type PROCESS_MEMORY_COUNTERS struct {
+// Processes
+
+type processMemoryCounters struct {
 	CB                         uint32
 	PageFaultCount             uint32
 	PeakWorkingSetSize         uintptr
@@ -282,59 +229,93 @@ type PROCESS_MEMORY_COUNTERS struct {
 	PeakPagefileUsage          uintptr
 }
 
-// WLAN: Array of interface info
-type WLAN_INTERFACE_INFO_LIST struct {
+// WLAN
+
+type wlanInterfaceInfoList struct {
 	NumberOfItems uint32
 	Index         uint32
-	InterfaceInfo [1]WLAN_INTERFACE_INFO
+	InterfaceInfo [1]wlanInterfaceInfo
 }
 
-// WLAN: Interface
-type WLAN_INTERFACE_INFO struct {
-	InterfaceGuid        GUID
+type wlanInterfaceInfo struct {
+	InterfaceGuid        windows.GUID
 	InterfaceDescription [256]uint16
 	IsState              uint32
 }
 
-// WLAN: Interface GUID
-type GUID struct {
-	Data1 uint32
-	Data2 uint16
-	Data3 uint16
-	Data4 [8]byte
-}
-
-// WLAN: Wireless connection attributes
-type WLAN_CONNECTION_ATTRIBUTES struct {
+type wlanConnectionAttributes struct {
 	IsState                   uint32
-	wlanConnectionMode        uint32
-	strProfileName            [256]uint16
-	wlanAssociationAttributes WLAN_ASSOCIATION_ATTRIBUTES
-	wlanSecurityAttributes    WLAN_SECURITY_ATTRIBUTES
+	WlanConnectionMode        uint32
+	StrProfileName            [256]uint16
+	WlanAssociationAttributes wlanAssociationAttributes
+	WlanSecurityAttributes    wlanSecurityAttributes
 }
 
-// WLAN: Connection association attributes
-type WLAN_ASSOCIATION_ATTRIBUTES struct {
-	dot11Ssid         DOT11_SSID
-	dot11BssType      uint32
-	dot11Bssid        [6]byte
-	dot11PhyType      uint32
-	uDot11PhyIndex    uint32
-	wlanSignalQuality uint32
-	ulRxRate          uint32
-	ulTxRate          uint32
+type wlanAssociationAttributes struct {
+	Dot11Ssid         dot11Ssid
+	Dot11BssType      uint32
+	Dot11Bssid        [6]byte
+	Dot11PhyType      uint32
+	UDot11PhyIndex    uint32
+	WlanSignalQuality uint32
+	UlRxRate          uint32
+	UlTxRate          uint32
 }
 
-// WLAN: SSID
-type DOT11_SSID struct {
-	uSSIDLength uint32
-	ucSSID      [32]byte
+type dot11Ssid struct {
+	USSIDLength uint32
+	UcSSID      [32]byte
 }
 
-// WLAN: Security
-type WLAN_SECURITY_ATTRIBUTES struct {
-	bSecurityEnabled     uint32
-	bOneXEnabled         uint32
-	dot11AuthAlgorithm   uint32
-	dot11CipherAlgorithm uint32
+type wlanSecurityAttributes struct {
+	BSecurityEnabled     uint32
+	BOneXEnabled         uint32
+	Dot11AuthAlgorithm   uint32
+	Dot11CipherAlgorithm uint32
 }
+
+// --- DLL & Procedure Handles
+
+var (
+	// DLLs
+
+	iphlpapi = windows.NewLazySystemDLL("iphlpapi.dll")
+	ntdll    = windows.NewLazySystemDLL("ntdll.dll")
+	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
+	wlanapi  = windows.NewLazySystemDLL("wlanapi.dll")
+	psapi    = windows.NewLazySystemDLL("psapi.dll")
+
+	// CPU/System
+
+	procNtQuerySystemInformation = ntdll.NewProc("NtQuerySystemInformation")
+	procGetNativeSystemInfo      = kernel32.NewProc("GetNativeSystemInfo")
+	procGetTickCount64           = kernel32.NewProc("GetTickCount64")
+
+	// Filesystem/Disk
+
+	procGetLogicalDrives     = kernel32.NewProc("GetLogicalDrives")
+	procGetDriveType         = kernel32.NewProc("GetDriveTypeW")
+	procGetVolumeInformation = kernel32.NewProc("GetVolumeInformationW")
+	procGetDiskFreeSpaceEx   = kernel32.NewProc("GetDiskFreeSpaceExW")
+
+	// Memory
+
+	procGlobalMemoryStatusEx = kernel32.NewProc("GlobalMemoryStatusEx")
+
+	// Network
+
+	procGetIfTable2  = iphlpapi.NewProc("GetIfTable2")
+	procFreeMibTable = iphlpapi.NewProc("FreeMibTable")
+
+	// Processes
+
+	procGetProcessMemoryInfo = psapi.NewProc("GetProcessMemoryInfo")
+
+	// WLAN
+
+	wlanOpenHandle     = wlanapi.NewProc("WlanOpenHandle")
+	wlanCloseHandle    = wlanapi.NewProc("WlanCloseHandle")
+	wlanEnumInterfaces = wlanapi.NewProc("WlanEnumInterfaces")
+	wlanQueryInterface = wlanapi.NewProc("WlanQueryInterface")
+	wlanFreeMemory     = wlanapi.NewProc("WlanFreeMemory")
+)
