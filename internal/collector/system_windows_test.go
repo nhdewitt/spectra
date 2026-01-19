@@ -91,3 +91,22 @@ func TestCollectSystem_Integration(t *testing.T) {
 		t.Errorf("BootTime calculation seems off: Got %d, Expected ~%d (Diff: %d)", m.BootTime, expectedBoot, diff)
 	}
 }
+
+func BenchmarkCountQUserLines(b *testing.B) {
+	input := []byte(`
+USERNAME		SESSIONNAME			ID	STATE	IDLE TIME	LOGON TIME
+admin			console				1	Active	none		1/2/2026 8:00AM
+guest			rdp-tcp#0			2	Active	none		1/2/2026 9:00AM
+`)
+	b.ResetTimer()
+	for b.Loop() {
+		countQUserLines(input)
+	}
+}
+
+func BenchmarkCollectSystem(b *testing.B) {
+	ctx := context.Background()
+	for b.Loop() {
+		_, _ = CollectSystem(ctx)
+	}
+}

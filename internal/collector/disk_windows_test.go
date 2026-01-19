@@ -40,3 +40,12 @@ func TestCollectDisk_Integration(t *testing.T) {
 		t.Log("Warning: C:\\ drive was not found.")
 	}
 }
+
+func BenchmarkCollectDisk(b *testing.B) {
+	ctx := context.Background()
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_, _ = CollectDisk(ctx)
+	}
+}

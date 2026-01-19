@@ -106,3 +106,21 @@ func TestMountManager_Race(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	close(stopReader)
 }
+
+func BenchmarkExtractString(b *testing.B) {
+	buf := []byte("TestString\x00Padding")
+	b.ResetTimer()
+	for b.Loop() {
+		extractString(buf, 0)
+	}
+}
+
+func BenchmarkUpdateDriveCache(b *testing.B) {
+	cache := NewDriveCache()
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		updateDriveCacheNative(cache)
+	}
+}

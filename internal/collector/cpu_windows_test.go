@@ -317,3 +317,21 @@ func BenchmarkLoadAverages_Update(b *testing.B) {
 		la.Update(50.0)
 	}
 }
+
+func BenchmarkCalculateCPUDeltas(b *testing.B) {
+	t0 := makeMockTimes(100, 100, 100, 32)
+	t1 := makeMockTimes(200, 200, 200, 32)
+
+	b.ResetTimer()
+	for b.Loop() {
+		calculateCPUDeltas(t1, t0)
+	}
+}
+
+func BenchmarkCollectCPU(b *testing.B) {
+	ctx := context.Background()
+
+	for b.Loop() {
+		_, _ = CollectCPU(ctx)
+	}
+}

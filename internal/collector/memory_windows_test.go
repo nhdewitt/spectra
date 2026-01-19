@@ -38,3 +38,10 @@ func TestCollectMemory_Integration(t *testing.T) {
 		t.Error("Available memory reported as 0")
 	}
 }
+
+func BenchmarkCollectMemory(b *testing.B) {
+	ctx := context.Background()
+	for b.Loop() {
+		_, _ = CollectMemory(ctx)
+	}
+}

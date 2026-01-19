@@ -372,3 +372,26 @@ func TestCollectDiskIO_NewDriveAppears(t *testing.T) {
 		t.Errorf("expected only C: to be reported, got %s", metric.Device)
 	}
 }
+
+func BenchmarkFormatDeviceName(b *testing.B) {
+	di := MountInfo{Model: "Samsung SSD 990 PRO"}
+	lm := map[uint32][]string{0: {"C:", "D:"}}
+
+	b.ResetTimer()
+	for b.Loop() {
+		formatDeviceName(0, di, lm)
+	}
+}
+
+func BenchmarkCollectDiskIO(b *testing.B) {
+	ctx := context.Background()
+	cache := &DriveCache{
+		AllowedDrives:  map[uint32]MountInfo{0: {Model: "BenchDrive"}},
+		DriveLetterMap: map[uint32][]string{0: {"C:"}},
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = CollectDiskIO(ctx, cache)
+	}
+}

@@ -102,3 +102,28 @@ func TestCollectNetwork_Integration(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkIsIgnoredInterface(b *testing.B) {
+	name := "Teredo Tunneling Pseudo-Interface"
+	for b.Loop() {
+		isIgnoredInterface(name)
+	}
+}
+
+func BenchmarkFormatMAC(b *testing.B) {
+	var mac [32]byte
+	copy(mac[:], []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF})
+
+	for b.Loop() {
+		formatMAC(mac, 6)
+	}
+}
+
+func BenchmarkCollectNetwork(b *testing.B) {
+	ctx := context.Background()
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_, _ = CollectNetwork(ctx)
+	}
+}

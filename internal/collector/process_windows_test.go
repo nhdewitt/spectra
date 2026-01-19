@@ -74,3 +74,12 @@ func TestCollectProcesses_Integration(t *testing.T) {
 		t.Log("Could not find 'System' process (PID 4).")
 	}
 }
+
+func BenchmarkCollectProcesses(b *testing.B) {
+	ctx := context.Background()
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_, _ = CollectProcesses(ctx)
+	}
+}
