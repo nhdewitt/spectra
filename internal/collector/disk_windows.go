@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/bits"
 	"strings"
 	"unsafe"
 
@@ -15,11 +16,14 @@ import (
 )
 
 var monitoredFilesystems = map[string]struct{}{
-	"NTFS":  {},
+	// Windows native
+	"NTFS": {},
+	"REFS": {}, // Resilient File System (Windows Server)
+
+	// FAT
 	"FAT32": {},
 	"FAT":   {},
 	"EXFAT": {},
-	"REFS":  {},
 }
 
 func CollectDisk(ctx context.Context) ([]protocol.Metric, error) {
@@ -31,7 +35,8 @@ func CollectDisk(ctx context.Context) ([]protocol.Metric, error) {
 		return nil, fmt.Errorf("GetLogicalDrives failed")
 	}
 
-	var result []protocol.Metric
+	// Optimize result to actual drive count return from GetLogicalDrives
+	result := make([]protocol.Metric, 0, bits.OnesCount32(driveMask))
 
 	for i := range 26 {
 		if driveMask&(1<<i) == 0 {
@@ -114,7 +119,7 @@ func CollectDisk(ctx context.Context) ([]protocol.Metric, error) {
 // ListMounts flattens the DriveLetterMap into a list of generic mounts.
 func (c *DriveCache) ListMounts() []protocol.MountInfo {
 	c.RLock()
-	defer c.Unlock()
+	defer c.RUnlock()
 
 	var results []protocol.MountInfo
 
