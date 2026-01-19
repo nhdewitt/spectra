@@ -45,10 +45,14 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 
 	var results []protocol.ProcessMetric
 	currentStates := make(map[uint32]winProcessState)
-	now := time.Now()
+	now := nowFunc()
 
 	for {
 		pid := pe32.ProcessID
+
+		// Default to Mem 0/CPU 0% if the process can't be read
+		memRSS := uint64(0)
+		cpuPercent := 0.0
 
 		// Get Memory Usage
 		hProcess, err := windows.OpenProcess(
@@ -66,7 +70,6 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 				uintptr(memCounters.CB),
 			)
 
-			memRSS := uint64(0)
 			if r1 != 0 {
 				memRSS = uint64(memCounters.WorkingSetSize)
 			}
@@ -74,8 +77,6 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 			// Get CPU Usage
 			var create, exit, kernel, user windows.Filetime
 			errTimes := windows.GetProcessTimes(hProcess, &create, &exit, &kernel, &user)
-
-			cpuPercent := 0.0
 
 			if errTimes == nil {
 				kTime := uint64(kernel.HighDateTime)<<32 + uint64(kernel.LowDateTime)
@@ -99,26 +100,24 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 					LastUser:   uTime,
 				}
 			}
-
-			// Calculate Percent
-			memPercent := 0.0
-			if totalMem > 0 {
-				memPercent = (float64(memRSS) / totalMem) * 100.0
-			}
-
-			name := windows.UTF16ToString(pe32.ExeFile[:])
-
-			results = append(results, protocol.ProcessMetric{
-				Pid:        int(pid),
-				Name:       name,
-				MemRSS:     memRSS,
-				MemPercent: memPercent,
-				CPUPercent: cpuPercent,
-				Status:     "Running",
-			})
-
 			windows.CloseHandle(hProcess)
 		}
+
+		memPercent := 0.0
+		if totalMem > 0 {
+			memPercent = (float64(memRSS) / totalMem) * 100.0
+		}
+
+		name := windows.UTF16ToString(pe32.ExeFile[:])
+
+		results = append(results, protocol.ProcessMetric{
+			Pid:        int(pid),
+			Name:       name,
+			MemRSS:     memRSS,
+			MemPercent: memPercent,
+			CPUPercent: cpuPercent,
+			Status:     "Running",
+		})
 
 		if err := windows.Process32Next(snapshot, &pe32); err != nil {
 			break
