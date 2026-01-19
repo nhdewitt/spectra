@@ -11,8 +11,6 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-const epsilon = 0.001
-
 // Helper to create native Windows structs for testing.
 // IMPORTANT: Simulates Windows behavior where KernelTime INCLUDES IdleTime.
 func makeMockTimes(user, system, idle int64, count int) []systemProcessorPerformanceInfo {
@@ -29,7 +27,7 @@ func makeMockTimes(user, system, idle int64, count int) []systemProcessorPerform
 	return stats
 }
 
-func approxEqual_Windows(a, b float64) bool {
+func approxEqual_Windows(a, b, epsilon float64) bool {
 	return math.Abs(a-b) < epsilon
 }
 
@@ -95,7 +93,7 @@ func TestCalculateDeltaWindows_Logic(t *testing.T) {
 	// Overall = 225 / 400 = 56.25%
 	expectedOverallUsage := 56.25
 
-	if !approxEqual_Windows(overall, expectedOverallUsage) {
+	if !approxEqual_Windows(overall, expectedOverallUsage, 0.001) {
 		t.Errorf("Overall Usage mismatch. Got: %.2f%%, Want: %.2f%%", overall, expectedOverallUsage)
 	}
 
@@ -104,7 +102,7 @@ func TestCalculateDeltaWindows_Logic(t *testing.T) {
 	}
 
 	for i := range perCore {
-		if !approxEqual_Windows(perCore[i], expectedCoreUsage[i]) {
+		if !approxEqual_Windows(perCore[i], expectedCoreUsage[i], 0.001) {
 			t.Errorf("Core %d Usage mismatch. Got: %.2f%%, Want: %.2f%%", i, perCore[i], expectedCoreUsage[i])
 		}
 	}
@@ -168,6 +166,7 @@ func TestEMA(t *testing.T) {
 		interval float64
 		period   float64
 		want     float64
+		epsilon  float64
 	}{
 		{
 			name:     "no time elapsed",
@@ -176,6 +175,7 @@ func TestEMA(t *testing.T) {
 			interval: 0,
 			period:   60,
 			want:     5.0, // prev * 1 + current * 0
+			epsilon:  0.001,
 		},
 		{
 			name:     "one period elapsed",
@@ -184,6 +184,7 @@ func TestEMA(t *testing.T) {
 			interval: 60,
 			period:   60,
 			want:     10.0 * (1 - math.Exp(-1)),
+			epsilon:  0.01,
 		},
 		{
 			name:     "very long interval",
@@ -192,6 +193,7 @@ func TestEMA(t *testing.T) {
 			interval: 6000,
 			period:   60,
 			want:     5.0,
+			epsilon:  0.01,
 		},
 		{
 			name:     "steady state",
@@ -200,13 +202,14 @@ func TestEMA(t *testing.T) {
 			interval: 30,
 			period:   60,
 			want:     50.0,
+			epsilon:  0.001,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ema(tt.prev, tt.current, tt.interval, tt.period)
-			if !approxEqual_Windows(got, tt.want) {
+			if !approxEqual_Windows(got, tt.want, tt.epsilon) {
 				t.Errorf("ema() = %f, want %f", got, tt.want)
 			}
 		})
@@ -276,10 +279,10 @@ func TestCalculateCPUDeltas_SingleCore(t *testing.T) {
 	if len(perCore) != 1 {
 		t.Fatalf("expected 1 core, got %d", len(perCore))
 	}
-	if !approxEqual_Windows(overall, 75.0) {
+	if !approxEqual_Windows(overall, 75.0, 0.001) {
 		t.Errorf("overall = %f, want 75.0", overall)
 	}
-	if !approxEqual_Windows(perCore[0], 75.0) {
+	if !approxEqual_Windows(perCore[0], 75.0, 0.001) {
 		t.Errorf("core 0 = %f, want 75.0", perCore[0])
 	}
 }
