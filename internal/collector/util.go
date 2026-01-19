@@ -14,6 +14,9 @@ type Numeric interface {
 	constraints.Integer | constraints.Float
 }
 
+// nowFunc returns current time; replaced in tests for deterministic timing
+var nowFunc = time.Now
+
 func percent[T Numeric](part, total T) float64 {
 	if total == 0 {
 		return 0.0

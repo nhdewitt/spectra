@@ -37,7 +37,7 @@ func CollectNetwork(ctx context.Context) ([]protocol.Metric, error) {
 	}
 	defer procFreeMibTable.Call(uintptr(unsafe.Pointer(tablePtr)))
 
-	now := time.Now()
+	now := nowFunc()
 	currentStats := make(map[uint32]interfaceState)
 
 	start := &tablePtr.Table[0]
