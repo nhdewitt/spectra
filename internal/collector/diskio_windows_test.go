@@ -11,11 +11,11 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-func mockTime(t *testing.T) *time.Time {
-	t.Helper()
+func mockTime(tb testing.TB) *time.Time {
+	tb.Helper()
 	fakeTime := time.Now()
 	nowFunc = func() time.Time { return fakeTime }
-	t.Cleanup(func() { nowFunc = time.Now })
+	tb.Cleanup(func() { nowFunc = time.Now })
 	return &fakeTime
 }
 
@@ -390,8 +390,11 @@ func BenchmarkCollectDiskIO(b *testing.B) {
 		DriveLetterMap: map[uint32][]string{0: {"C:"}},
 	}
 
+	fakeTime := mockTime(b)
+
 	b.ResetTimer()
 	for b.Loop() {
 		_, _ = CollectDiskIO(ctx, cache)
+		*fakeTime = fakeTime.Add(1 * time.Second)
 	}
 }
