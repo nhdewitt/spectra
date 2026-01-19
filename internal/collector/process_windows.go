@@ -56,7 +56,7 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 
 		// Get Memory Usage
 		hProcess, err := windows.OpenProcess(
-			windows.PROCESS_QUERY_INFORMATION|windows.PROCESS_VM_READ,
+			windows.PROCESS_QUERY_LIMITED_INFORMATION,
 			false,
 			pid,
 		)
