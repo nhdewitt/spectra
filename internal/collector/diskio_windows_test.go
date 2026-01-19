@@ -195,7 +195,7 @@ func TestCollectDiskIO_RateCalculation(t *testing.T) {
 	expectedReadOps := uint64(25 / 5.0)       // 5
 	expectedWriteOps := uint64(50 / 5.0)      // 10
 
-	if metric.Device != "C:" {
+	if metric.Device != "TestDrive (C:)" {
 		t.Errorf("Device = %q, want %q", metric.Device, "C:")
 	}
 	if metric.ReadBytes != expectedReadBytes {
