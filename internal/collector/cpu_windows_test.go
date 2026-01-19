@@ -189,7 +189,7 @@ func TestEMA(t *testing.T) {
 			name:     "very long interval",
 			prev:     100.0,
 			current:  5.0,
-			interval: 600,
+			interval: 6000,
 			period:   60,
 			want:     5.0,
 		},

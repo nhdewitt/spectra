@@ -23,6 +23,8 @@ var (
 	lastDiskTime time.Time
 	// getDrivePerf is the function used to get performance data (mockable)
 	getDrivePerf perfGetter = getDrivePerformance
+	// nowFunc returns current time; replaced in tests for deterministic timing
+	nowFunc = time.Now
 )
 
 func CollectDiskIO(ctx context.Context, driveCache *DriveCache) ([]protocol.Metric, error) {
@@ -46,7 +48,7 @@ func CollectDiskIO(ctx context.Context, driveCache *DriveCache) ([]protocol.Metr
 		currentPerf[idx] = perf
 	}
 
-	now := time.Now()
+	now := nowFunc()
 
 	// Baseline
 	if lastDiskPerf == nil {

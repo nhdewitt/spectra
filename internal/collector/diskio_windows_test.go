@@ -6,9 +6,18 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
+
+func mockTime(t *testing.T) *time.Time {
+	t.Helper()
+	fakeTime := time.Now()
+	nowFunc = func() time.Time { return fakeTime }
+	t.Cleanup(func() { nowFunc = time.Now })
+	return &fakeTime
+}
 
 func TestFormatDeviceName(t *testing.T) {
 	tests := []struct {
@@ -122,6 +131,7 @@ func TestCollectDiskIO_BaselineCollection(t *testing.T) {
 
 func TestCollectDiskIO_RateCalculation(t *testing.T) {
 	lastDiskPerf = nil
+	fakeTime := mockTime(t)
 
 	origGetter := getDrivePerf
 	defer func() { getDrivePerf = origGetter }()
@@ -160,6 +170,9 @@ func TestCollectDiskIO_RateCalculation(t *testing.T) {
 
 	// Baseline
 	_, _ = CollectDiskIO(context.Background(), cache)
+
+	// Advance time by 5 seconds
+	*fakeTime = fakeTime.Add(5 * time.Second)
 
 	// Actual collection
 	result, err := CollectDiskIO(context.Background(), cache)
@@ -210,6 +223,7 @@ func TestCollectDiskIO_RateCalculation(t *testing.T) {
 
 func TestCollectDiskIO_MultipleDrives(t *testing.T) {
 	lastDiskPerf = nil
+	fakeTime := mockTime(t)
 
 	origGetter := getDrivePerf
 	defer func() { getDrivePerf = origGetter }()
@@ -241,6 +255,7 @@ func TestCollectDiskIO_MultipleDrives(t *testing.T) {
 
 	// Baseline
 	_, _ = CollectDiskIO(context.Background(), cache)
+	*fakeTime = fakeTime.Add(5 * time.Second)
 
 	// Collection
 	result, err := CollectDiskIO(context.Background(), cache)
@@ -269,6 +284,7 @@ func TestCollectDiskIO_MultipleDrives(t *testing.T) {
 
 func TestCollectDiskIO_DriveError(t *testing.T) {
 	lastDiskPerf = nil
+	fakeTime := mockTime(t)
 
 	origGetter := getDrivePerf
 	defer func() { getDrivePerf = origGetter }()
@@ -299,6 +315,7 @@ func TestCollectDiskIO_DriveError(t *testing.T) {
 
 	// Baseline
 	_, _ = CollectDiskIO(context.Background(), cache)
+	*fakeTime = fakeTime.Add(5 * time.Second)
 
 	// Collection - should still return metrics for working drive
 	result, err := CollectDiskIO(context.Background(), cache)
@@ -318,6 +335,7 @@ func TestCollectDiskIO_DriveError(t *testing.T) {
 
 func TestCollectDiskIO_NewDriveAppears(t *testing.T) {
 	lastDiskPerf = nil
+	fakeTime := mockTime(t)
 
 	origGetter := getDrivePerf
 	defer func() { getDrivePerf = origGetter }()
@@ -333,6 +351,7 @@ func TestCollectDiskIO_NewDriveAppears(t *testing.T) {
 
 	// Baseline with one drive
 	_, _ = CollectDiskIO(context.Background(), cache)
+	*fakeTime = fakeTime.Add(5 * time.Second)
 
 	// Add a new drive
 	cache.AllowedDrives[1] = MountInfo{Model: "NewDrive"}
