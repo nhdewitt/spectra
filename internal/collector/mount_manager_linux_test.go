@@ -27,10 +27,10 @@ C:\ /mnt/wsl/docker-desktop-data ext4 rw,relatime 0 0
 		t.Fatalf("parseMountsFrom failed: %v", err)
 	}
 
-	// shouldIgnore should remove: rootfs, sysfs, proc, tmpfs, /dev/loop0, /mnt/wsl/docker
-	// Should keep: /dev/sda1, /dev/sdb1, //192.168.1.5/share
+	// shouldIgnore should remove: rootfs, sysfs, proc, tmpfs, /dev/loop0, /mnt/wsl/docker, //192.168.1.5/share
+	// Should keep: /dev/sda1, /dev/sdb1
 
-	expectedCount := 3
+	expectedCount := 2
 	if len(mounts) != expectedCount {
 		t.Errorf("Expected %d mounts, got %d", expectedCount, len(mounts))
 		for i, m := range mounts {

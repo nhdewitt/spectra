@@ -39,6 +39,13 @@ func getPlatformInfoFrom(r io.Reader) (platform, version string) {
 		}
 	}
 
+	platform = strings.TrimSpace(platform)
+	version = strings.TrimSpace(version)
+
+	if platform == "" {
+		platform = "linux"
+	}
+
 	return platform, version
 }
 

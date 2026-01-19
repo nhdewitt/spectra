@@ -56,7 +56,7 @@ func CollectDiskIO(ctx context.Context, driveCache *DriveCache) ([]protocol.Metr
 	}
 
 	// Time Delta Calculation
-	secondsElapsed := validateTimeDelta(now, lastNetTime, "disk_io")
+	secondsElapsed := validateTimeDelta(now, lastDiskTime, "disk_io")
 	if secondsElapsed == 0 {
 		lastDiskPerf = currentPerf
 		lastDiskTime = now

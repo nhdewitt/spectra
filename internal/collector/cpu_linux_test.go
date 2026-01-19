@@ -21,6 +21,35 @@ func BenchmarkCollectCPU(b *testing.B) {
 	}
 }
 
+func BenchmarkCollectCPU_FullCycle(b *testing.B) {
+	ctx := context.Background()
+	lastCPURawData = nil
+
+	// Baseline
+	CollectCPU(ctx)
+
+	b.ResetTimer()
+	for b.Loop() {
+		CollectCPU(ctx)
+	}
+}
+
+func BenchmarkCalcCoreUsage_Allocs(b *testing.B) {
+	deltaMap := map[string]CPUDelta{
+		"cpu":  {Used: 100, Total: 200},
+		"cpu0": {Used: 50, Total: 100},
+		"cpu1": {Used: 75, Total: 100},
+		"cpu2": {Used: 60, Total: 100},
+		"cpu3": {Used: 80, Total: 100},
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_ = calcCoreUsage(deltaMap)
+	}
+}
+
 func TestParseCPULine(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -298,6 +327,26 @@ func TestCalcCoreUsage_ZeroTotal(t *testing.T) {
 	}
 }
 
+func TestCalcCoreUsage_SparseCores(t *testing.T) {
+	// Edge case: What if cpu1 is missing but cpu0 and cpu2 exist?
+	deltaMap := map[string]CPUDelta{
+		"cpu":  {Used: 100, Total: 200},
+		"cpu0": {Used: 50, Total: 100},
+		// cpu1 missing
+		"cpu2": {Used: 75, Total: 100},
+	}
+
+	got := calcCoreUsage(deltaMap)
+
+	if len(got) != 2 {
+		t.Errorf("got %d cores, want 2", len(got))
+	}
+
+	if got[1] != 0 {
+		t.Errorf("missing core should have 0 usage, got %f", got[1])
+	}
+}
+
 func BenchmarkParseCPULine(b *testing.B) {
 	line := "cpu  123456 7890 12345 678901 2345 678 90 12 34 0"
 	for b.Loop() {
@@ -416,6 +465,26 @@ func TestCollectCPU_Integration(t *testing.T) {
 	}
 	if len(metrics2) != 1 {
 		t.Fatalf("CollectCPU() returned %d metrics, expected 1", len(metrics2))
+	}
+}
+
+func TestCollectCPU_CounterReset(t *testing.T) {
+	// Simulate what happens when counters reset (reboot, overflow)
+	lastCPURawData = map[string]CPURaw{
+		"cpu": {User: 1000, Nice: 100, System: 500, Idle: 5000, IOWait: 50, IRQ: 10, SoftIRQ: 5, Steal: 0},
+	}
+
+	ctx := context.Background()
+	metrics, err := CollectCPU(ctx)
+	// After reset detection, lastCPURawData should be nil
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if metrics != nil {
+		t.Error("expected nil metrics after counter reset")
+	}
+	if lastCPURawData != nil {
+		t.Error("expected lastCPURawData to be reset to nil")
 	}
 }
 
@@ -633,6 +702,42 @@ func TestParseProcStat_FileNotFound(t *testing.T) {
 	_, err := os.Open("/nonexistent/proc/stat")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
+	}
+}
+
+func TestParseProcStatFrom_MalformedLines(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantCPUs int // map entries, including the aggregate "cpu"
+	}{
+		{
+			name:     "malformed line skipped",
+			input:    "cpu  1000 200 300 5000 100 50 25 10 5 3\ncpu0 bad data here\ncpu1 500 100 150 2500 50 25 12 5 2 1\n",
+			wantCPUs: 2, // cpu0 skipped
+		},
+		{
+			name:     "empty lines ignored",
+			input:    "cpu  1000 200 300 5000 100 50 25 10 5 3\n\ncpu0 500 100 150 2500 50 25 12 5 2 1\n",
+			wantCPUs: 1, // stops at empty line
+		},
+		{
+			name:     "only aggregate",
+			input:    "cpu  1000 200 300 5000 100 50 25 10 5 3\nintr 123\n",
+			wantCPUs: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseProcStatFrom(strings.NewReader(tt.input))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != tt.wantCPUs {
+				t.Errorf("got %d CPUs, want %d", len(got), tt.wantCPUs)
+			}
+		})
 	}
 }
 

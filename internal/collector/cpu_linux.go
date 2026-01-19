@@ -146,6 +146,9 @@ func parseCPULine(line string) (CPURaw, error) {
 	}, nil
 }
 
+// calcCoreUsage returns per-core CPU usage percentages.
+// Assumes contiguous core numbering (cpu0, cpu1, ..., cpuN-1).
+// Missing cores will show 0% usage.
 func calcCoreUsage(deltaMap map[string]CPUDelta) []float64 {
 	numCores := len(deltaMap) - 1 // exclude aggregate "cpu"
 	usage := make([]float64, numCores)

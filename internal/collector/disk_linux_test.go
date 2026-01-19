@@ -39,6 +39,27 @@ func BenchmarkCollectDisk(b *testing.B) {
 	}
 }
 
+func BenchmarkBuildDiskMetric(b *testing.B) {
+	info := MountInfo{
+		Device:     "/dev/sda1",
+		Mountpoint: "/",
+		FSType:     "ext4",
+	}
+	stat := unix.Statfs_t{
+		Bsize:  4096,
+		Blocks: 26214400,
+		Bfree:  13107200,
+		Bavail: 11796480,
+		Files:  6553600,
+		Ffree:  6000000,
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		_ = buildDiskMetric(info, stat)
+	}
+}
+
 func TestFsCategory(t *testing.T) {
 	tests := []struct {
 		fsType string
@@ -270,4 +291,133 @@ func approxEqual(a, b, epsilon float64) bool {
 		diff = -diff
 	}
 	return diff <= epsilon
+}
+
+func TestCollectDisk_EmptyCache(t *testing.T) {
+	ctx := context.Background()
+	cache := &DriveCache{
+		DeviceToMountpoint: make(map[string]MountInfo),
+	}
+
+	_ = MakeDiskCollector(cache)
+	metrics, err := CollectDisk(ctx, cache)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(metrics) != 0 {
+		t.Errorf("expected 0 metrics for empty cache, got %d", len(metrics))
+	}
+}
+
+func TestBuildDiskMetric_ZeroSize(t *testing.T) {
+	info := MountInfo{
+		Device:     "/dev/loop0",
+		Mountpoint: "/mnt/empty",
+		FSType:     "ext4",
+	}
+
+	stat := unix.Statfs_t{
+		Bsize:  4096,
+		Blocks: 0,
+		Bfree:  0,
+		Bavail: 0,
+		Files:  0,
+		Ffree:  0,
+	}
+
+	got := buildDiskMetric(info, stat)
+
+	if got.Total != 0 {
+		t.Errorf("Total = %d, want 0", got.Total)
+	}
+	if got.UsedPct != 0 {
+		t.Errorf("UsedPct = %f, want 0", got.UsedPct)
+	}
+	if got.InodesPct != 0 {
+		t.Errorf("InodesPct = %f, want 0", got.InodesPct)
+	}
+}
+
+func TestBuildDiskMetric_LargeDisk(t *testing.T) {
+	info := MountInfo{
+		Device:     "/dev/sda1",
+		Mountpoint: "/data",
+		FSType:     "xfs",
+	}
+
+	stat := unix.Statfs_t{
+		Bsize:  4096,
+		Blocks: 2147483648, // 8TB
+		Bfree:  1073741824, // 4TB free
+		Bavail: 1073741824,
+		Files:  500000000,
+		Ffree:  450000000,
+	}
+
+	got := buildDiskMetric(info, stat)
+
+	expectedTotal := uint64(8796093022208) // 8TB in bytes
+	if got.Total != expectedTotal {
+		t.Errorf("Total = %d, want %d", got.Total, expectedTotal)
+	}
+	if !approxEqual(got.UsedPct, 50.0, 0.01) {
+		t.Errorf("UsedPct = %.2f, want 50.0", got.UsedPct)
+	}
+}
+
+func TestDriveCache_ListMounts(t *testing.T) {
+	cache := &DriveCache{
+		DeviceToMountpoint: map[string]MountInfo{
+			"/dev/sda1": {Device: "/dev/sda1", Mountpoint: "/", FSType: "ext4"},
+			"/dev/sda2": {Device: "/dev/sda2", Mountpoint: "/home", FSType: "ext4"},
+		},
+	}
+
+	mounts := cache.ListMounts()
+
+	if len(mounts) != 2 {
+		t.Fatalf("expected 2 mounts, got %d", len(mounts))
+	}
+
+	found := make(map[string]bool)
+	for _, m := range mounts {
+		found[m.Mountpoint] = true
+	}
+
+	if !found["/"] || !found["/home"] {
+		t.Errorf("missing expected mountpoints: %v", mounts)
+	}
+}
+
+func TestDriveCache_ListMounts_Empty(t *testing.T) {
+	cache := &DriveCache{
+		DeviceToMountpoint: make(map[string]MountInfo),
+	}
+
+	mounts := cache.ListMounts()
+
+	if mounts == nil {
+		t.Error("expected empty slice, got nil")
+	}
+	if len(mounts) != 0 {
+		t.Errorf("expected 0 mounts, got %d", len(mounts))
+	}
+}
+
+func TestFsCategory_Comprehensive(t *testing.T) {
+	for fs := range localFilesystems {
+		if got := fsCategory(fs); got != "local" {
+			t.Errorf("fsCategory(%q) = %q, want 'local'", fs, got)
+		}
+	}
+
+	for fs := range ignoredFilesystems {
+		if got := fsCategory(fs); got != "other" {
+			t.Errorf("fsCategory(%q) = %q, want 'other'", fs, got)
+		}
+	}
+
+	if got := fsCategory("unknownfs"); got != "other" {
+		t.Errorf("fsCategory('unknowfs') = %q, want 'other'", got)
+	}
 }

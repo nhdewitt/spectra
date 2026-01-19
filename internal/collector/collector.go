@@ -56,6 +56,10 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, collect Col
 		}
 
 		for _, m := range data {
+			if m == nil {
+				log.Printf("Warning: collector returned nil metric in slice, skipping")
+				continue
+			}
 			c.send(ctx, m)
 		}
 	}

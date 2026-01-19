@@ -159,3 +159,158 @@ func TestCollectCPUWindows_StateManagement(t *testing.T) {
 		t.Error("Expected per-core usage data, got empty slice")
 	}
 }
+
+func TestEMA(t *testing.T) {
+	tests := []struct {
+		name     string
+		prev     float64
+		current  float64
+		interval float64
+		period   float64
+		want     float64
+	}{
+		{
+			name:     "no time elapsed",
+			prev:     5.0,
+			current:  10.0,
+			interval: 0,
+			period:   60,
+			want:     5.0, // prev * 1 + current * 0
+		},
+		{
+			name:     "one period elapsed",
+			prev:     0.0,
+			current:  10.0,
+			interval: 60,
+			period:   60,
+			want:     10.0 * (1 - math.Exp(-1)),
+		},
+		{
+			name:     "very long interval",
+			prev:     100.0,
+			current:  5.0,
+			interval: 600,
+			period:   60,
+			want:     5.0,
+		},
+		{
+			name:     "steady state",
+			prev:     50.0,
+			current:  50.0,
+			interval: 30,
+			period:   60,
+			want:     50.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ema(tt.prev, tt.current, tt.interval, tt.period)
+			if !approxEqual_Windows(got, tt.want) {
+				t.Errorf("ema() = %f, want %f", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadAverages_FirstUpdate(t *testing.T) {
+	la := &loadAverages{}
+
+	load1, load5, load15 := la.Update(50.0)
+
+	if load1 != load5 || load5 != load15 {
+		t.Errorf("first update should set equal values: got %f, %f, %f", load1, load5, load15)
+	}
+	if load1 <= 0 {
+		t.Error("load should be positive after update")
+	}
+}
+
+func TestCalculateCPUDeltas_Overflow(t *testing.T) {
+	t0 := []systemProcessorPerformanceInfo{
+		{UserTime: math.MaxInt64 - 100, KernelTime: math.MaxInt64 - 100, IdleTime: math.MaxInt64 - 200},
+	}
+	t1 := []systemProcessorPerformanceInfo{
+		{UserTime: 100, KernelTime: 100, IdleTime: 50}, // wrapped
+	}
+
+	overall, perCore := calculateCPUDeltas(t1, t0)
+
+	if overall != 0 {
+		t.Errorf("expected 0%% on overflow, got %f", overall)
+	}
+
+	for i, usage := range perCore {
+		if usage != 0 {
+			t.Errorf("core %d: expected 0%% on overflow, got %f", i, usage)
+		}
+	}
+}
+
+func TestCalculateCPUDeltas_ZeroDelta(t *testing.T) {
+	times := makeMockTimes(100, 50, 200, 2)
+
+	overall, perCore := calculateCPUDeltas(times, times)
+
+	if overall != 0 {
+		t.Errorf("expected 0%% usage with no delta, got %f", overall)
+	}
+
+	for i, usage := range perCore {
+		if usage != 0 {
+			t.Errorf("core %d: expected 0%% usage, got %f", i, usage)
+		}
+	}
+}
+
+func TestCalculateCPUDeltas_SingleCore(t *testing.T) {
+	t0 := makeMockTimes(0, 0, 100, 1)
+	t1 := makeMockTimes(0, 0, 100, 1)
+
+	t1[0].UserTime += 75
+	t1[0].IdleTime += 25
+	t1[0].KernelTime += 25
+
+	overall, perCore := calculateCPUDeltas(t1, t0)
+
+	if len(perCore) != 1 {
+		t.Fatalf("expected 1 core, got %d", len(perCore))
+	}
+	if !approxEqual_Windows(overall, 75.0) {
+		t.Errorf("overall = %f, want 75.0", overall)
+	}
+	if !approxEqual_Windows(perCore[0], 75.0) {
+		t.Errorf("core 0 = %f, want 75.0", perCore[0])
+	}
+}
+
+func TestLoadAverages_Convergence(t *testing.T) {
+	la := &loadAverages{}
+
+	// Simulate sustained 100% CPU load
+	for range 100 {
+		la.Update(100.0)
+		la.lastUpdate = la.lastUpdate.Add(-5 * time.Second)
+	}
+
+	load1, load5, load15 := la.load1, la.load5, la.load15
+
+	if load1 < load5 || load5 < load15 {
+		t.Logf("convergence order: load1=%f, load5=%f, load15=%f", load1, load5, load15)
+	}
+}
+
+func BenchmarkEMA(b *testing.B) {
+	for b.Loop() {
+		_ = ema(5.0, 10.0, 5.0, 60.0)
+	}
+}
+
+func BenchmarkLoadAverages_Update(b *testing.B) {
+	la := &loadAverages{}
+
+	b.ResetTimer()
+	for b.Loop() {
+		la.Update(50.0)
+	}
+}

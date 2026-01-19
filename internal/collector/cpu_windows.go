@@ -142,6 +142,11 @@ func calculateCPUDeltas(current, last []systemProcessorPerformanceInfo) (float64
 		deltaKernel := float64(c.KernelTime - l.KernelTime)
 		deltaUser := float64(c.UserTime - l.UserTime)
 
+		if deltaIdle < 0 || deltaKernel < 0 || deltaUser < 0 {
+			// Counter wrapped, skip this sample
+			return 0, make([]float64, len(current))
+		}
+
 		// Total active time = (Kernel - Idle) + User
 		// Total elapsed time = Kernel + User
 

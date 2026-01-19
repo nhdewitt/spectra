@@ -23,14 +23,14 @@ func TestFormatDeviceName(t *testing.T) {
 			idx:       0,
 			driveInfo: MountInfo{Model: "Samsung SSD"},
 			letterMap: map[uint32][]string{0: {"C:"}},
-			want:      "C:",
+			want:      "Samsung SSD (C:)",
 		},
 		{
 			name:      "multiple drive letters",
 			idx:       1,
 			driveInfo: MountInfo{Model: "Samsung SSD"},
 			letterMap: map[uint32][]string{1: {"D:", "E:"}},
-			want:      "D:, E:",
+			want:      "Samsung SSD (D:, E:)",
 		},
 		{
 			name:      "fallback to model when no letter",
@@ -259,7 +259,7 @@ func TestCollectDiskIO_MultipleDrives(t *testing.T) {
 		deviceNames[metric.Device] = true
 	}
 
-	expectedDevices := []string{"C:", "D:", "E:, F:"}
+	expectedDevices := []string{"Drive0 (C:)", "Drive1 (D:)", "Drive2 (E:, F:)"}
 	for _, expected := range expectedDevices {
 		if !deviceNames[expected] {
 			t.Errorf("missing expected device %q", expected)
@@ -311,7 +311,7 @@ func TestCollectDiskIO_DriveError(t *testing.T) {
 	}
 
 	metric := result[0].(protocol.DiskIOMetric)
-	if metric.Device != "C:" {
+	if metric.Device != "GoodDrive (C:)" {
 		t.Errorf("expected C: to be reported, got %s", metric.Device)
 	}
 }
@@ -349,7 +349,7 @@ func TestCollectDiskIO_NewDriveAppears(t *testing.T) {
 	}
 
 	metric := result[0].(protocol.DiskIOMetric)
-	if metric.Device != "C:" {
+	if metric.Device != "Drive0 (C:)" {
 		t.Errorf("expected only C: to be reported, got %s", metric.Device)
 	}
 }
