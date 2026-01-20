@@ -52,7 +52,7 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 	}
 	defer memFile.Close()
 
-	totalMem, err := parseMemInfoFrom(memFile)
+	totalMem, err := parseProcessMemInfoFrom(memFile)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 }
 
 // parseMemInfoFrom parses /proc/meminfo to find MemTotal in bytes.
-func parseMemInfoFrom(r io.Reader) (uint64, error) {
+func parseProcessMemInfoFrom(r io.Reader) (uint64, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return 0, err

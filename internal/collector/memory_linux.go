@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -48,6 +49,10 @@ func parseMemInfo() (memRaw, error) {
 	}
 	defer f.Close()
 
+	return parseMemInfoFrom(f)
+}
+
+func parseMemInfoFrom(r io.Reader) (memRaw, error) {
 	var raw memRaw
 
 	targets := map[string]*uint64{
@@ -57,10 +62,9 @@ func parseMemInfo() (memRaw, error) {
 		"SwapFree":     &raw.SwapFree,
 	}
 
-	found := 0
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(r)
 
-	for scanner.Scan() && found < len(targets) {
+	for scanner.Scan() && len(targets) > 0 {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) < 2 {
 			continue
@@ -77,15 +81,16 @@ func parseMemInfo() (memRaw, error) {
 			return memRaw{}, fmt.Errorf("parsing %s: %w", key, err)
 		}
 
-		*target = value
-		found++
+		*target = value * 1024
+		// Remove the key to prevent duplicates from changing the value
+		delete(targets, key)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return memRaw{}, fmt.Errorf("reading /proc/meminfo: %w", err)
 	}
-	if found < len(targets) {
-		return memRaw{}, fmt.Errorf("missing fields in /proc/meminfo: found %d of %d", found, len(targets))
+	if len(targets) > 0 {
+		return memRaw{}, fmt.Errorf("missing fields in /proc/meminfo: found %d of 4", 4-len(targets))
 	}
 
 	return raw, nil

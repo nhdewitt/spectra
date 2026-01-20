@@ -71,11 +71,8 @@ func isDigit(b byte) bool {
 func cleanVendor(v string) string {
 	v = strings.TrimSpace(v)
 	// Strip email portion
-	if idx := strings.Index(v, "<"); idx > 0 {
+	if idx := strings.Index(v, "<"); idx >= 0 {
 		v = strings.TrimSpace(v[:idx])
-	}
-	if v == "" {
-		return ""
 	}
 	return v
 }

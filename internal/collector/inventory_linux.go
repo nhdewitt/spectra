@@ -124,7 +124,7 @@ func parseGenericOutput(r io.Reader, separator, defaultVendor string) ([]protoco
 			}
 		}
 
-		if len(parts) >= 2 {
+		if len(parts) >= 2 && parts[0] != "" && parts[1] != "" {
 			apps = append(apps, protocol.Application{
 				Name:    parts[0],
 				Version: parts[1],
@@ -139,7 +139,7 @@ func parseGenericOutput(r io.Reader, separator, defaultVendor string) ([]protoco
 // findApkVersionIndex returns the index where the version starts or -1
 func findApkVersionIndex(line string) int {
 	// Scan backwards for the first '-' followed by a digit
-	for i := len(line) - 2; i >= 0; i-- {
+	for i := len(line) - 2; i > 0; i-- {
 		if line[i] == '-' && isDigit(line[i+1]) {
 			return i
 		}

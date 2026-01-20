@@ -10,7 +10,7 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-func TestParseMemInfoFrom(t *testing.T) {
+func TestParseProcessMemInfoFrom(t *testing.T) {
 	input := `
 MemTotal:		32806268 kB
 MemFree:		18263152 kB
@@ -20,7 +20,7 @@ Buffers:		  542380 kB
 
 	reader := strings.NewReader(input)
 
-	bytes, err := parseMemInfoFrom(reader)
+	bytes, err := parseProcessMemInfoFrom(reader)
 	if err != nil {
 		t.Fatalf("parseMemInfoFrom failed: %v", err)
 	}
