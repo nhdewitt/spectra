@@ -90,7 +90,11 @@ func parseMemInfoFrom(r io.Reader) (memRaw, error) {
 		return memRaw{}, fmt.Errorf("reading /proc/meminfo: %w", err)
 	}
 	if len(targets) > 0 {
-		return memRaw{}, fmt.Errorf("missing fields in /proc/meminfo: found %d of 4", 4-len(targets))
+		missing := make([]string, 0, len(targets))
+		for k := range targets {
+			missing = append(missing, k)
+		}
+		return memRaw{}, fmt.Errorf("missing fields in /proc/meminfo: %v", missing)
 	}
 
 	return raw, nil

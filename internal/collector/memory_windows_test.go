@@ -37,6 +37,50 @@ func TestCollectMemory_Integration(t *testing.T) {
 	if m.Available == 0 {
 		t.Error("Available memory reported as 0")
 	}
+	if m.Available > m.Total {
+		t.Errorf("Available (%d) > Total (%d)", m.Available, m.Total)
+	}
+
+	sum := m.Used + m.Available
+	if sum != m.Total {
+		t.Logf("Note: Used + Available = %d, Total = %d (diff: %d)", sum, m.Total, m.Total-sum)
+	}
+
+	if m.UsedPct < 0 || m.UsedPct > 100 {
+		t.Errorf("UsedPct out of range: %.2f", m.UsedPct)
+	}
+	if m.SwapPct < 0 || m.SwapPct > 100 {
+		t.Errorf("SwapPct out of range: %.2f", m.SwapPct)
+	}
+
+	minRAM := uint64(512 * 1024 * 1024)
+	if m.Total < minRAM {
+		t.Errorf("Total RAM %d seems too low", m.Total)
+	}
+}
+
+func TestCollectMemory_Consistency(t *testing.T) {
+	ctx := context.Background()
+
+	m1, err := CollectMemory(ctx)
+	if err != nil {
+		t.Fatalf("first call failed: %v", err)
+	}
+
+	m2, err := CollectMemory(ctx)
+	if err != nil {
+		t.Fatalf("second call failed: %v", err)
+	}
+
+	mem1 := m1[0].(protocol.MemoryMetric)
+	mem2 := m2[0].(protocol.MemoryMetric)
+
+	if mem1.Total != mem2.Total {
+		t.Errorf("Total changed between calls: %d vs %d", mem1.Total, mem2.Total)
+	}
+	if mem1.SwapTotal != mem2.SwapTotal {
+		t.Errorf("SwapTotal changed between calls: %d vs %d", mem1.SwapTotal, mem2.SwapTotal)
+	}
 }
 
 func BenchmarkCollectMemory(b *testing.B) {
