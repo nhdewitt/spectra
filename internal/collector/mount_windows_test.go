@@ -188,14 +188,13 @@ func BenchmarkDriveCache_GetDefaultPath_Contended_Windows(b *testing.B) {
 	})
 }
 
-func BenchmarkDriveCache_GetDefaultPath_ManyDrives(b *testing.B) {
+func BenchmarkDriveCache_GetDefaultPath_ManyDrives_NoC(b *testing.B) {
 	cache := NewDriveCache()
 
 	for i := range 10 {
 		letter := string(rune('D'+i)) + ":"
 		cache.DriveLetterMap[uint32(i)] = []string{letter}
 	}
-	cache.DriveLetterMap[10] = []string{"C:"}
 
 	b.ResetTimer()
 	for b.Loop() {

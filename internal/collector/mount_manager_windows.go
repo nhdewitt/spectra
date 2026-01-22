@@ -183,7 +183,7 @@ func getPhysicalDiskNumber(driveLetter string) (uint32, error) {
 		0,
 	)
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
 	defer windows.CloseHandle(handle)
 
@@ -201,7 +201,7 @@ func getPhysicalDiskNumber(driveLetter string) (uint32, error) {
 		nil,
 	)
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
 
 	if extents.NumberOfDiskExtents > 0 {

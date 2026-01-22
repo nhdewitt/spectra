@@ -18,7 +18,9 @@ func createDeviceToMountpointMap(mounts []MountInfo) map[string]MountInfo {
 
 	for _, info := range mounts {
 		deviceName := strings.TrimPrefix(info.Device, "/dev/")
-		deviceMap[deviceName] = info
+		if _, exists := deviceMap[deviceName]; !exists {
+			deviceMap[deviceName] = info
+		}
 	}
 	return deviceMap
 }
@@ -45,7 +47,7 @@ func parseMountsFrom(r io.Reader) ([]MountInfo, error) {
 
 		m := MountInfo{
 			Device:     fields[0],
-			Mountpoint: fields[1],
+			Mountpoint: decodeMountPath(fields[1]),
 			FSType:     fields[2],
 		}
 
@@ -65,6 +67,13 @@ func shouldIgnore(m MountInfo) bool {
 	return isFSTypeIgnored || strings.HasPrefix(m.Device, "/dev/loop") ||
 		strings.HasPrefix(m.Mountpoint, "/mnt/wsl/") ||
 		strings.HasPrefix(m.Mountpoint, "/Docker/")
+}
+
+// decodeMountPath replaces common octal escapes in /proc/mounts.
+func decodeMountPath(s string) string {
+	s = strings.ReplaceAll(s, `\040`, " ")
+	s = strings.ReplaceAll(s, `\134`, `\`)
+	return s
 }
 
 func RunMountManager(ctx context.Context, cache *DriveCache, interval time.Duration) {
