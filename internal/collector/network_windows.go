@@ -112,18 +112,18 @@ func CollectNetwork(ctx context.Context) ([]protocol.Metric, error) {
 		}
 
 		result = append(result, protocol.NetworkMetric{
-			Interface:   curr.name,
-			BytesRcvd:   uint64(rxDelta / secondsElapsed),
-			BytesSent:   uint64(txDelta / secondsElapsed),
-			PacketsRcvd: uint64(rxPackets / secondsElapsed),
-			PacketsSent: uint64(txPackets / secondsElapsed),
-			ErrorsRcvd:  errsIn,
-			ErrorsSent:  errsOut,
-			DropsRcvd:   dropIn,
-			DropsSent:   dropOut,
-			MAC:         strings.ToUpper(formatMAC(curr.raw.PhysicalAddress, curr.raw.PhysicalAddressLength)),
-			Speed:       speed,
-			MTU:         curr.raw.Mtu,
+			Interface: curr.name,
+			MAC:       strings.ToUpper(formatMAC(curr.raw.PhysicalAddress, curr.raw.PhysicalAddressLength)),
+			MTU:       curr.raw.Mtu,
+			Speed:     speed,
+			RxBytes:   uint64(rxDelta / secondsElapsed),
+			RxPackets: uint64(rxPackets / secondsElapsed),
+			RxErrors:  errsIn,
+			RxDrops:   dropIn,
+			TxBytes:   uint64(txDelta / secondsElapsed),
+			TxPackets: uint64(txPackets / secondsElapsed),
+			TxErrors:  errsOut,
+			TxDrops:   dropOut,
 		})
 	}
 

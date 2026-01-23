@@ -85,18 +85,18 @@ type DiskMetric struct {
 }
 
 type NetworkMetric struct {
-	Interface   string `json:"interface"`
-	BytesRcvd   uint64 `json:"bytes_rcvd"`
-	BytesSent   uint64 `json:"bytes_sent"`
-	PacketsRcvd uint64 `json:"packets_rcvd"`
-	PacketsSent uint64 `json:"packets_sent"`
-	ErrorsRcvd  uint64 `json:"errors_rcvd"`
-	ErrorsSent  uint64 `json:"errors_sent"`
-	DropsRcvd   uint64 `json:"drops_rcvd"`
-	DropsSent   uint64 `json:"drops_sent"`
-	Speed       uint64 `json:"speed"`
-	MAC         string `json:"mac_address"`
-	MTU         uint32 `json:"mtu"`
+	Interface string `json:"interface"`
+	MAC       string `json:"mac_address"`
+	MTU       uint32 `json:"mtu"`
+	Speed     uint64 `json:"speed"`
+	RxBytes   uint64 `json:"rx_bytes"`
+	RxPackets uint64 `json:"rx_packets"`
+	RxErrors  uint64 `json:"rx_errors"`
+	RxDrops   uint64 `json:"rx_drops"`
+	TxBytes   uint64 `json:"tx_bytes"`
+	TxPackets uint64 `json:"tx_packets"`
+	TxErrors  uint64 `json:"tx_errors"`
+	TxDrops   uint64 `json:"tx_drops"`
 }
 
 type TemperatureMetric struct {

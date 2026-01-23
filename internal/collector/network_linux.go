@@ -17,18 +17,18 @@ import (
 
 // NetworkRaw holds the cumulative counters from /proc/net/dev
 type NetworkRaw struct {
-	Interface   string // fields[0]
-	BytesRcvd   uint64 // fields[1]
-	PacketsRcvd uint64 // fields[2]
-	ErrorsRcvd  uint64 // fields[3]
-	BytesSent   uint64 // fields[9]
-	PacketsSent uint64 // fields[10]
-	ErrorsSent  uint64 // fields[11]
-	DropsRcvd   uint64 // fields[4]
-	DropsSent   uint64 // fields[12]
-	MAC         string
-	Speed       uint64
-	MTU         uint32
+	Interface string
+	MAC       string
+	MTU       uint32
+	Speed     uint64
+	RxBytes   uint64 // fields[0]
+	RxPackets uint64 // fields[1]
+	RxErrors  uint64 // fields[2]
+	RxDrops   uint64 // fields[3]
+	TxBytes   uint64 // fields[8]
+	TxPackets uint64 // fields[9]
+	TxErrors  uint64 // fields[10]
+	TxDrops   uint64 // fields[11]
 }
 
 var (
@@ -91,18 +91,18 @@ func CollectNetwork(ctx context.Context) ([]protocol.Metric, error) {
 		}
 
 		metric := protocol.NetworkMetric{
-			Interface:   iface,
-			BytesRcvd:   rate(curr.BytesRcvd-prev.BytesRcvd, elapsed),
-			BytesSent:   rate(curr.BytesSent-prev.BytesSent, elapsed),
-			PacketsRcvd: rate(curr.PacketsRcvd-prev.PacketsRcvd, elapsed),
-			PacketsSent: rate(curr.PacketsSent-prev.PacketsSent, elapsed),
-			ErrorsRcvd:  curr.ErrorsRcvd - prev.ErrorsRcvd,
-			ErrorsSent:  curr.ErrorsSent - prev.ErrorsSent,
-			DropsSent:   curr.DropsSent - prev.DropsSent,
-			DropsRcvd:   curr.DropsRcvd - prev.DropsRcvd,
-			Speed:       curr.Speed,
-			MAC:         curr.MAC,
-			MTU:         curr.MTU,
+			Interface: iface,
+			MAC:       curr.MAC,
+			MTU:       curr.MTU,
+			Speed:     curr.Speed,
+			RxBytes:   rate(delta(curr.RxBytes, prev.RxBytes), elapsed),
+			RxPackets: rate(delta(curr.RxPackets, prev.RxPackets), elapsed),
+			RxErrors:  delta(curr.RxErrors, prev.RxErrors),
+			RxDrops:   rate(delta(curr.RxDrops, prev.RxDrops), elapsed),
+			TxBytes:   rate(delta(curr.TxBytes, prev.TxBytes), elapsed),
+			TxPackets: delta(curr.TxPackets, prev.TxPackets),
+			TxErrors:  delta(curr.TxErrors, prev.TxErrors),
+			TxDrops:   delta(curr.TxDrops, prev.TxDrops),
 		}
 
 		results = append(results, metric)
@@ -128,29 +128,23 @@ func parseNetDevFrom(r io.Reader) (map[string]NetworkRaw, error) {
 	result := make(map[string]NetworkRaw)
 	scanner := bufio.NewScanner(r)
 
-	// Skip headers
-	for range 2 {
-		if !scanner.Scan() {
-			return result, scanner.Err()
-		}
-	}
-
 	for scanner.Scan() {
 		line := scanner.Text()
-		fields := strings.Fields(line)
 
-		if len(fields) < 16 {
+		if strings.TrimSpace(line) == "" {
 			continue
 		}
 
-		iface := strings.TrimSuffix(fields[0], ":")
-		values := fields
-		if strings.HasSuffix(fields[0], ":") {
-			values = fields[1:]
-		} else if strings.Contains(fields[0], ":") {
-			parts := strings.SplitN(fields[0], ":", 2)
-			iface = parts[0]
-			values = append([]string{parts[1]}, fields[1:]...)
+		split := strings.SplitN(line, ":", 2)
+		if len(split) != 2 {
+			continue
+		}
+
+		iface := strings.TrimSpace(split[0])
+		values := strings.Fields(split[1])
+
+		if len(values) < 16 {
+			continue
 		}
 
 		raw := NetworkRaw{
@@ -163,19 +157,15 @@ func parseNetDevFrom(r io.Reader) (map[string]NetworkRaw, error) {
 		// 0: bytes_in, 1: packets_in, 2: errs_in 3: drops_in
 		// 8: bytes_out, 9: packets_out, 10: errs_out 11: drops_out
 
-		if len(values) < 16 {
-			continue
-		}
+		raw.RxBytes = parse(0)
+		raw.RxPackets = parse(1)
+		raw.RxErrors = parse(2)
+		raw.RxDrops = parse(3)
 
-		raw.BytesRcvd = parse(0)
-		raw.PacketsRcvd = parse(1)
-		raw.ErrorsRcvd = parse(2)
-		raw.DropsRcvd = parse(3)
-
-		raw.BytesSent = parse(8)
-		raw.PacketsSent = parse(9)
-		raw.ErrorsSent = parse(10)
-		raw.DropsSent = parse(11)
+		raw.TxBytes = parse(8)
+		raw.TxPackets = parse(9)
+		raw.TxErrors = parse(10)
+		raw.TxDrops = parse(11)
 
 		raw.MAC = strings.ToUpper(getLinuxMAC(iface))
 		raw.MTU = getLinuxMTU(iface)

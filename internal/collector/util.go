@@ -31,6 +31,13 @@ func rate(delta uint64, seconds float64) uint64 {
 	return uint64(float64(delta) / seconds)
 }
 
+func delta(curr, prev uint64) uint64 {
+	if curr < prev {
+		return 0
+	}
+	return curr - prev
+}
+
 func singleMetric(m protocol.Metric, err error) ([]protocol.Metric, error) {
 	if err != nil || m == nil {
 		return nil, err
