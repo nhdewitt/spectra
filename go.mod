@@ -11,6 +11,6 @@ require (
 require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/google/uuid v1.6.0
-	github.com/tklauser/go-sysconf v0.3.16 // indirect
+	github.com/tklauser/go-sysconf v0.3.16
 	github.com/tklauser/numcpus v0.11.0 // indirect
 )
