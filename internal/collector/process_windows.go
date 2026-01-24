@@ -4,6 +4,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"time"
 	"unsafe"
 
@@ -128,4 +129,63 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 	return []protocol.Metric{
 		protocol.ProcessListMetric{Processes: results},
 	}, nil
+}
+
+func getProcessStatus() (map[uint32]string, error) {
+	bufSize := uint32(1024 * 1024)
+	buf := make([]byte, bufSize)
+	var returnLen uint32
+
+	for {
+		ret, _, _ := procNtQuerySystemInformation.Call(
+			uintptr(SystemProcessInformation),
+			uintptr(unsafe.Pointer(&buf[0])),
+			uintptr(bufSize),
+			uintptr(unsafe.Pointer(&returnLen)),
+		)
+
+		if ret == 0 {
+			break
+		}
+		if ret == statusInfoLengthMismatch {
+			bufSize *= 2
+			buf = make([]byte, bufSize)
+			continue
+		}
+		return nil, fmt.Errorf("NtQuerySystemInformation failed: %v", ret)
+	}
+
+	states := make(map[uint32]string)
+	offset := uint32(0)
+
+	for {
+		proc := (*systemProcessInformation)(unsafe.Pointer(&buf[offset]))
+		pid := uint32(proc.UniqueProcessId)
+
+		// Thread state check
+		threadOffset := offset + uint32(unsafe.Sizeof(*proc))
+		allWaiting := true
+		hasThreads := proc.NumberOfThreads > 0
+
+		for i := uint32(0); i < proc.NumberOfThreads; i++ {
+			thread := (*systemThreadInformation)(unsafe.Pointer(&buf[threadOffset]))
+			if ProcessState(thread.ThreadState) != StateWaiting {
+				allWaiting = false
+			}
+			threadOffset += uint32(unsafe.Sizeof(*thread))
+		}
+
+		if hasThreads && allWaiting {
+			states[pid] = "Waiting"
+		} else {
+			states[pid] = "Running"
+		}
+
+		if proc.NextEntryOffset == 0 {
+			break
+		}
+		offset += proc.NextEntryOffset
+	}
+
+	return states, nil
 }

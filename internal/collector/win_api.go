@@ -9,6 +9,8 @@ import (
 // BusType represents the hardware interface (USB, SATA, NVMe, etc.)
 type BusType uint32
 
+type ProcessState uint32
+
 const (
 	// CPU/System
 
@@ -55,6 +57,19 @@ const (
 	BusTypeVirtual           BusType = 0x0E
 	BusTypeFileBackedVirtual BusType = 0x0F
 	BusTypeNvme              BusType = 0x11
+
+	// Processes
+
+	SystemProcessInformation = 5
+
+	StateInitialized ProcessState = 0
+	StateReady       ProcessState = 1
+	StateRunning     ProcessState = 2
+	StateStandby     ProcessState = 3
+	StateTerminated  ProcessState = 4
+	StateWaiting     ProcessState = 5
+
+	statusInfoLengthMismatch = 0xC0000004
 
 	// WLAN
 
@@ -227,6 +242,64 @@ type processMemoryCounters struct {
 	QuotaNonPagedPoolUsage     uintptr
 	PagefileUsage              uintptr
 	PeakPagefileUsage          uintptr
+}
+
+type systemProcessInformation struct {
+	NextEntryOffset              uint32
+	NumberOfThreads              uint32
+	WorkingSetPrivateSize        int64
+	HardFaultCount               uint32
+	NumberOfThreadsHighWatermark uint32
+	CycleTime                    uint64
+	CreateTime                   int64
+	UserTime                     int64
+	KernelTime                   int64
+	ImageName                    unicodeString
+	BasePriority                 int32
+	UniqueProcessId              uintptr
+	InheritedFromUniqueProcessId uintptr
+	HandleCount                  uint32
+	SessionId                    uint32
+	UniqueProcessKey             uintptr
+	PeakVirtualSize              uintptr
+	VirtualSize                  uintptr
+	PageFaultCount               uint32
+	PeakWorkingSetSize           uintptr
+	WorkingSetSize               uintptr
+	QuotaPeakPagedPoolUsage      uintptr
+	QuotaPagedPoolUsage          uintptr
+	QuotaNonPagedPoolUsage       uintptr
+	PagefileUsage                uintptr
+	PeakPagefileUsage            uintptr
+	PrivatePageCount             uintptr
+	ReadOperationCount           int64
+	WriteOperationCount          int64
+	OtherOperationCount          int64
+	ReadTransferCount            int64
+	WriteTransferCount           int64
+	OtherTransferCount           int64
+}
+
+type unicodeString struct {
+	Length        uint16
+	MaximumLength uint16
+	_             [4]byte // Padding
+	Buffer        uintptr
+}
+
+type systemThreadInformation struct {
+	KernelTime      int64
+	UserTime        int64
+	CreateTime      int64
+	WaitTime        uint32
+	StartAddress    uintptr
+	ClientIdPid     uintptr
+	ClientIdTid     uintptr
+	Priority        int32
+	BasePriority    int32
+	ContextSwitches uint32
+	ThreadState     ProcessState
+	WaitReason      uint32
 }
 
 // WLAN
