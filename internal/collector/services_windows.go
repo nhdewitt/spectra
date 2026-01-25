@@ -41,7 +41,7 @@ func CollectServices(ctx context.Context) ([]protocol.Metric, error) {
 		return nil, fmt.Errorf("powershell error: %w", err)
 	}
 
-	metrics := make([]protocol.Metric, 0, 256)
+	services := make([]protocol.ServiceMetric, 0, 256)
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
 
@@ -67,15 +67,12 @@ func CollectServices(ctx context.Context) ([]protocol.Metric, error) {
 			descriptionBuilder.WriteString(s.Description)
 		}
 
-		var loadState string
-		switch s.StartMode {
-		case "Disabled":
+		loadState := "loaded"
+		if strings.EqualFold(s.StartMode, "Disabled") {
 			loadState = "disabled"
-		default:
-			loadState = "loaded"
 		}
 
-		metrics = append(metrics, &protocol.ServiceMetric{
+		services = append(services, protocol.ServiceMetric{
 			Name:        s.Name,
 			Status:      s.State,
 			SubStatus:   s.StartMode,
@@ -84,7 +81,9 @@ func CollectServices(ctx context.Context) ([]protocol.Metric, error) {
 		})
 	}
 
-	return metrics, nil
+	return []protocol.Metric{
+		&protocol.ServiceListMetric{Services: services},
+	}, nil
 }
 
 func encodePowerShell(cmd string) string {
