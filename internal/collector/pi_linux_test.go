@@ -224,12 +224,10 @@ func TestCollectPiVoltage_NoVcgencmd(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	result, err := CollectPiClocks(ctx)
+	result, err := CollectPiVoltage(ctx)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
-
-	t.Logf("result type: %T, value: %v", result, result)
 
 	if result != nil {
 		t.Errorf("expected nil without vcgencmd, got %v", result)
