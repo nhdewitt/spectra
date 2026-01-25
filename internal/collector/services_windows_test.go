@@ -19,9 +19,9 @@ func TestCollectServices_Integration(t *testing.T) {
 		t.Fatal("expected at least some services")
 	}
 
-	listMetric, ok := metrics[0].(*protocol.ServiceListMetric)
+	listMetric, ok := metrics[0].(protocol.ServiceListMetric)
 	if !ok {
-		t.Fatalf("expected *protocol.ServiceListMetric, got %T", metrics[0])
+		t.Fatalf("expected protocol.ServiceListMetric, got %T", metrics[0])
 	}
 
 	t.Logf("Found %d services", len(listMetric.Services))
@@ -47,7 +47,7 @@ func TestCollectServices_ContainsKnownServices(t *testing.T) {
 	knownServices := []string{"wuauserv", "W32Time", "EventLog", "PlugPlay"}
 	found := make(map[string]bool)
 
-	listMetric, _ := metrics[0].(*protocol.ServiceListMetric)
+	listMetric, _ := metrics[0].(protocol.ServiceListMetric)
 	for _, svc := range listMetric.Services {
 		for _, known := range knownServices {
 			if strings.EqualFold(svc.Name, known) {
@@ -93,7 +93,7 @@ func TestCollectServices_ValidStates(t *testing.T) {
 		"Unknown":  true,
 	}
 
-	listMetric, _ := metrics[0].(*protocol.ServiceListMetric)
+	listMetric, _ := metrics[0].(protocol.ServiceListMetric)
 	for _, svc := range listMetric.Services {
 		if !validStates[svc.Status] {
 			t.Errorf("service %s has unexpected state: %s", svc.Name, svc.Status)
@@ -114,7 +114,7 @@ func TestCollectServices_LoadStateMapping(t *testing.T) {
 		t.Fatalf("CollectServices failed: %v", err)
 	}
 
-	listMetric, _ := metrics[0].(*protocol.ServiceListMetric)
+	listMetric, _ := metrics[0].(protocol.ServiceListMetric)
 	for _, svc := range listMetric.Services {
 		if svc.SubStatus == "Disabled" && svc.LoadState != "disabled" {
 			t.Errorf("service %s: StartMode=Disabled but LoadState=%s", svc.Name, svc.LoadState)
@@ -135,7 +135,7 @@ func TestCollectServices_DescriptionFormat(t *testing.T) {
 	withDescription := 0
 	withDisplayNameOnly := 0
 
-	listMetric, _ := metrics[0].(*protocol.ServiceListMetric)
+	listMetric, _ := metrics[0].(protocol.ServiceListMetric)
 	for _, svc := range listMetric.Services {
 		if svc.Description == "" {
 			continue
@@ -169,7 +169,7 @@ func TestCollectServices_NoEmptyNames(t *testing.T) {
 		t.Fatalf("CollectServices failed: %v", err)
 	}
 
-	listMetric := metrics[0].(*protocol.ServiceListMetric)
+	listMetric := metrics[0].(protocol.ServiceListMetric)
 	for _, svc := range listMetric.Services {
 		if svc.Name == "" {
 			t.Error("Found service with empty name")
