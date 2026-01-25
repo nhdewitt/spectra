@@ -5,7 +5,7 @@ go 1.24.3
 require (
 	github.com/yusufpapurcu/wmi v1.2.4
 	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39
-	golang.org/x/sys v0.38.0
+	golang.org/x/sys v0.40.0
 )
 
 require (

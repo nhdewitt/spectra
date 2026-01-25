@@ -13,9 +13,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf16"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
+	"golang.org/x/sys/windows"
 )
 
 const MaxLogs = 25000
@@ -32,18 +34,29 @@ type winEvent struct {
 	ProcessId        int    `json:"ProcessId"`
 }
 
+var (
+	kernel32           = windows.NewLazySystemDLL("kernel32.dll")
+	procGetTickCount64 = kernel32.NewProc("GetTickCount64")
+)
+
 func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEntry, error) {
 	levels := getWindowsLevelFlag(opts.MinLevel)
 
+	bootTime := getBootTime().Format(time.RFC3339)
+
+	xpathQuery := fmt.Sprintf(
+		`*[System[(Level=%s) and TimeCreated[@SystemTime>='%s']]]`,
+		strings.ReplaceAll(levels, ",", " or Level="),
+		bootTime,
+	)
+
 	psCmd := fmt.Sprintf(
 		`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
-		$StartTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime;
-		Get-WinEvent -FilterHashTable @{LogName='System','Application'; Level=(%s); StartTime=$StartTime} -MaxEvents %d -ErrorAction SilentlyContinue -Oldest |
-		Select-Object TimeCreated, LevelDisplayName, Message,
-			@{N='ProviderName';E={$_.ProviderName}},
-			@{N='ProcessId';E={$_.ProcessId}} |
-		ForEach-Object { $_ | ConvertTo-Json -Compress; "" }`,
-		levels,
+		$query = "%s";
+		Get-WinEvent -LogName @('System','Application') -FilterXPath $query -MaxEvents %d -ErrorAction SilentlyContinue -Oldest |
+		Select-Object TimeCreated, LevelDisplayName, Message, ProviderName, ProcessId |
+		ForEach-Object { $_ | ConvertTo-Json -Compress }`,
+		xpathQuery,
 		MaxLogs,
 	)
 
@@ -176,4 +189,10 @@ func encodePowerShell(cmd string) string {
 	}
 
 	return base64.StdEncoding.EncodeToString(buf)
+}
+
+func getBootTime() time.Time {
+	ret, _, _ := procGetTickCount64.Call()
+	tickCount := uint64(ret)
+	return time.Now().Add(time.Duration(-tickCount) * time.Millisecond)
 }

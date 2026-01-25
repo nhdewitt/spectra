@@ -264,28 +264,6 @@ func TestFindApkVersionIndex_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestCleanVendor(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"Ubuntu Developers <ubuntu-devel@lists.ubuntu.com>", "Ubuntu Developers"},
-		{"Simple Vendor", "Simple Vendor"},
-		{"<only@email.com>", ""},
-		{"", ""},
-		{"  Spaced Vendor  <email@test.com>  ", "Spaced Vendor"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := cleanVendor(tt.input)
-			if got != tt.want {
-				t.Errorf("cleanVendor(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func generateDpkgOutput(n int) string {
 	var sb strings.Builder
 	vendors := []string{

@@ -13,14 +13,6 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
-type winService struct {
-	Name        string `json:"Name"`
-	DisplayName string `json:"DisplayName"`
-	State       string `json:"State"`
-	StartMode   string `json:"StartMode"`
-	Description string `json:"Description"`
-}
-
 func CollectServices(ctx context.Context) ([]protocol.Metric, error) {
 	m, err := mgr.Connect()
 	if err != nil {
