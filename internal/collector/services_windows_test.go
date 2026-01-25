@@ -2,57 +2,11 @@ package collector
 
 import (
 	"context"
-	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
-
-func TestEncodePowerShell(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{"Simple", "Get-Process"},
-		{"With Spaces", "Get-Process | Select-Object Name"},
-		{"With Newlines", "Get-Process\nGet-Service"},
-		{"Unicode", "Write-Host 'Héllo Wörld'"},
-		{"Empty", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			encoded := encodePowerShell(tt.input)
-
-			if tt.input != "" && encoded == "" {
-				t.Error("expected non-empty encoded output")
-			}
-
-			for _, c := range encoded {
-				if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-					(c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=') {
-					t.Errorf("invalid base64 character: %c", c)
-				}
-			}
-		})
-	}
-}
-
-func TestEncodePowerShell_Decodable(t *testing.T) {
-	input := "Write-Output 'test'"
-	encoded := encodePowerShell(input)
-
-	cmd := exec.Command("powershell", "-NoProfile", "-EncodedCommand", encoded)
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("PowerShell failed to execute encoded command: %v", err)
-	}
-
-	if !strings.Contains(string(out), "test") {
-		t.Errorf("expected output to contain 'test', got: %s", string(out))
-	}
-}
 
 func TestCollectServices_Integration(t *testing.T) {
 	ctx := context.Background()
@@ -121,14 +75,14 @@ func TestCollectServices_ValidStates(t *testing.T) {
 	}
 
 	validStates := map[string]bool{
-		"Running":          true,
-		"Stopped":          true,
-		"Paused":           true,
-		"Start Pending":    true,
-		"Stop Pending":     true,
-		"Continue Pending": true,
-		"Pause Pending":    true,
-		"":                 true,
+		"Running":         true,
+		"Stopped":         true,
+		"Paused":          true,
+		"StartPending":    true,
+		"StopPending":     true,
+		"ContinuePending": true,
+		"PausePending":    true,
+		"Unknown":         true,
 	}
 	validStartModes := map[string]bool{
 		"Auto":     true,
@@ -136,7 +90,7 @@ func TestCollectServices_ValidStates(t *testing.T) {
 		"Disabled": true,
 		"Boot":     true,
 		"System":   true,
-		"":         true,
+		"Unknown":  true,
 	}
 
 	listMetric, _ := metrics[0].(*protocol.ServiceListMetric)
@@ -223,30 +177,11 @@ func TestCollectServices_NoEmptyNames(t *testing.T) {
 	}
 }
 
-func BenchmarkEncodePowerShell_Short(b *testing.B) {
-	cmd := "Get-Process"
-	b.ReportAllocs()
-	for b.Loop() {
-		_ = encodePowerShell(cmd)
-	}
-}
-
-func BenchmarkEncodePowerShell_Long(b *testing.B) {
-	cmd := `
-		[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
-		Get-CimInstance Win32_Service | 
-		Select-Object Name, DisplayName, State, StartMode, Description | 
-		ForEach-Object { $_ | ConvertTo-Json -Compress; "" }
-	`
-	b.ReportAllocs()
-	for b.Loop() {
-		_ = encodePowerShell(cmd)
-	}
-}
-
 func BenchmarkCollectServices(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
+	b.ResetTimer()
+
 	for b.Loop() {
 		_, _ = CollectServices(ctx)
 	}

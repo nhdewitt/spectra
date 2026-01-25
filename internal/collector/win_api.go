@@ -75,6 +75,11 @@ const (
 
 	statusInfoLengthMismatch = 0xC0000004
 
+	// Services
+
+	// Service Config Levels
+	serviceConfigDescription = 1
+
 	// WLAN
 
 	wlanApiVersion = 2 // Windows Vista+
@@ -311,6 +316,13 @@ type systemThreadInformation struct {
 	WaitReason      uint32
 }
 
+// Services
+
+// https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_descriptiona
+type serviceDescription struct {
+	Description *uint16
+}
+
 // WLAN
 
 type wlanInterfaceInfoList struct {
@@ -361,6 +373,7 @@ type wlanSecurityAttributes struct {
 var (
 	// DLLs
 
+	advapi32 = windows.NewLazySystemDLL("advapi32.dll")
 	iphlpapi = windows.NewLazySystemDLL("iphlpapi.dll")
 	ntdll    = windows.NewLazySystemDLL("ntdll.dll")
 	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
@@ -392,6 +405,10 @@ var (
 	// Processes
 
 	procGetProcessMemoryInfo = psapi.NewProc("GetProcessMemoryInfo")
+
+	// Services
+
+	procQueryServiceConfig2W = advapi32.NewProc("QueryServiceConfig2W")
 
 	// WLAN
 
