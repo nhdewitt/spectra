@@ -45,7 +45,6 @@ func TestCollectProcesses_Integration(t *testing.T) {
 
 	myPid := os.Getpid()
 	foundSelf := false
-	foundSystem := false
 
 	for _, proc := range procs {
 		if proc.MemRSS == 0 && proc.Pid != 0 && proc.Pid != 4 {
@@ -61,18 +60,76 @@ func TestCollectProcesses_Integration(t *testing.T) {
 			if proc.MemRSS == 0 {
 				t.Error("Test runner reported 0 memory usage")
 			}
-		}
-
-		if proc.Pid == 4 {
-			foundSystem = true
+			if proc.ThreadsTotal == 0 {
+				t.Error("Test runner reported 0 threads")
+			}
 		}
 	}
 
 	if !foundSelf {
 		t.Error("Could not find own PID in process list")
 	}
-	if !foundSystem {
-		t.Log("Could not find 'System' process (PID 4).")
+}
+
+func TestCollectProcesses_StatusDistribution(t *testing.T) {
+	lastWinProcessStates = make(map[uint32]winProcessState)
+
+	ctx := context.Background()
+	data, err := CollectProcesses(ctx)
+	if err != nil {
+		t.Fatalf("CollectProcesses failed: %v", err)
+	}
+
+	listMetric := data[0].(protocol.ProcessListMetric)
+
+	statusCounts := make(map[protocol.ProcStatus]int)
+	for _, p := range listMetric.Processes {
+		statusCounts[p.Status]++
+	}
+
+	t.Logf("Status distribution:")
+	t.Logf("  Running:	%d", statusCounts[protocol.ProcRunning])
+	t.Logf("  Runnable:	%d", statusCounts[protocol.ProcRunnable])
+	t.Logf("  Waiting:	%d", statusCounts[protocol.ProcWaiting])
+	t.Logf("  Other:	%d", statusCounts[protocol.ProcOther])
+
+	if statusCounts[protocol.ProcWaiting] == 0 {
+		t.Error("No waiting processes found - expected most to be waiting")
+	}
+
+	// At least the test runner should be running
+	totalActive := statusCounts[protocol.ProcRunning] + statusCounts[protocol.ProcRunnable]
+	if totalActive == 0 {
+		t.Error("No running or runnable processes found")
+	}
+}
+
+func TestCollectProcesses_ThreadCounts(t *testing.T) {
+	lastWinProcessStates = make(map[uint32]winProcessState)
+
+	ctx := context.Background()
+	data, err := CollectProcesses(ctx)
+	if err != nil {
+		t.Fatalf("CollectProcesses failed: %v", err)
+	}
+
+	listMetric := data[0].(protocol.ProcessListMetric)
+
+	for _, p := range listMetric.Processes {
+		if p.Pid == 0 || p.Pid == 4 {
+			continue
+		}
+
+		if p.ThreadsRunning != nil && p.ThreadsRunnable != nil && p.ThreadsWaiting != nil {
+			sum := *p.ThreadsRunning + *p.ThreadsRunnable + *p.ThreadsWaiting
+			if sum > p.ThreadsTotal {
+				t.Errorf("PID %d: thread sum (%d) > total (%d)", p.Pid, sum, p.ThreadsTotal)
+			}
+		}
+
+		if p.ThreadsTotal > 10000 {
+			t.Errorf("PID %d has suspicious thread count: %d", p.Pid, p.ThreadsTotal)
+		}
 	}
 }
 
@@ -129,71 +186,111 @@ func TestCollectProcesses_StateCleanup(t *testing.T) {
 	}
 }
 
-func TestGetProcessStatus_Integration(t *testing.T) {
-	states, err := getProcessStatus()
+func TestCollectProcesses_ValidStatus(t *testing.T) {
+	lastWinProcessStates = make(map[uint32]winProcessState)
+
+	ctx := context.Background()
+	data, err := CollectProcesses(ctx)
 	if err != nil {
-		t.Fatalf("getProcessStatus failed: %v", err)
+		t.Fatalf("CollectProcesses failed: %v", err)
 	}
 
-	if len(states) == 0 {
-		t.Fatal("No process states returned")
+	listMetric := data[0].(protocol.ProcessListMetric)
+
+	validStatuses := map[protocol.ProcStatus]bool{
+		protocol.ProcRunning:  true,
+		protocol.ProcRunnable: true,
+		protocol.ProcWaiting:  true,
+		protocol.ProcOther:    true,
 	}
 
-	t.Logf("Got status for %d processes", len(states))
-
-	runningCount := 0
-	waitingCount := 0
-
-	for pid, status := range states {
-		switch status {
-		case "Running":
-			runningCount++
-		case "Waiting":
-			waitingCount++
-		default:
-			t.Errorf("PID %d has unexpected status: %s", pid, status)
+	for _, p := range listMetric.Processes {
+		if !validStatuses[p.Status] {
+			t.Errorf("PID %d has invalid status: %s", p.Pid, p.Status)
 		}
-	}
-
-	t.Logf("Running: %d, Waiting: %d", runningCount, waitingCount)
-
-	if waitingCount == 0 {
-		t.Log("Warning: no waiting processes found")
 	}
 }
 
-func TestGetProcessStatus_ContainsSelf(t *testing.T) {
-	states, err := getProcessStatus()
+func TestGetProcessSchedulerSummary_Integration(t *testing.T) {
+	sched, err := getProcessSchedulerSummary()
 	if err != nil {
-		t.Fatalf("getProcessStatus failed: %v", err)
+		t.Fatalf("getProcessSchedulerSummary failed: %v", err)
+	}
+
+	if len(sched) == 0 {
+		t.Fatal("No scheduler summaries returned")
+	}
+
+	t.Logf("Got scheduler summary for %d processes", len(sched))
+
+	statusCounts := make(map[protocol.ProcStatus]int)
+	var totalThreads uint32
+
+	for _, s := range sched {
+		statusCounts[s.Status]++
+		totalThreads += s.ThreadsTotal
+	}
+
+	t.Logf("Process status distribution:")
+	t.Logf("  Running:  %d", statusCounts[protocol.ProcRunning])
+	t.Logf("  Runnable: %d", statusCounts[protocol.ProcRunnable])
+	t.Logf("  Waiting:  %d", statusCounts[protocol.ProcWaiting])
+	t.Logf("  Other:    %d", statusCounts[protocol.ProcOther])
+	t.Logf("Total threads across all processes: %d", totalThreads)
+
+	if statusCounts[protocol.ProcWaiting] == 0 {
+		t.Error("No waiting processes found")
+	}
+}
+
+func TestGetProcessSchedulerSummary_ContainsSelf(t *testing.T) {
+	sched, err := getProcessSchedulerSummary()
+	if err != nil {
+		t.Fatalf("getProcessSchedulerSummary failed: %v", err)
 	}
 
 	myPid := uint32(os.Getpid())
-	status, ok := states[myPid]
+	s, ok := sched[myPid]
 	if !ok {
-		t.Errorf("own PID %d not found in states", myPid)
+		t.Errorf("own PID %d not found in scheduler summary", myPid)
 		return
 	}
 
-	t.Logf("Self (PID %d) status: %s", myPid, status)
+	t.Logf("Self (PID %d): Status=%s Threads=%d (Running=%d, Runnable=%d, Waiting=%d)",
+		myPid, s.Status, s.ThreadsTotal, s.ThreadsRunning, s.ThreadsRunnable, s.ThreadsWaiting)
+
+	if s.ThreadsTotal == 0 {
+		t.Error("own process reported 0 threads")
+	}
 }
 
-func TestGetProcessStatus_SystemProcesses(t *testing.T) {
-	states, err := getProcessStatus()
+func TestGetProcessSchedulerSummary_ThreadStateConsistency(t *testing.T) {
+	sched, err := getProcessSchedulerSummary()
 	if err != nil {
-		t.Fatalf("getProcessStatus failed: %v", err)
+		t.Fatalf("getProcessSchedulerSummary failed: %v", err)
 	}
 
-	if status, ok := states[0]; ok {
-		t.Logf("PID 0 status: %s", status)
-	} else {
-		t.Log("PID 0 not in states")
-	}
+	for pid, s := range sched {
+		// Running + Runnable + Waiting should be <= Total
+		sum := s.ThreadsRunning + s.ThreadsRunnable + s.ThreadsWaiting
+		if sum > s.ThreadsTotal {
+			t.Errorf("PID %d: thread state sum (%d) > total (%d)", pid, sum, s.ThreadsTotal)
+		}
 
-	if status, ok := states[4]; ok {
-		t.Logf("PID 4 (System) status: %s", status)
-	} else {
-		t.Log("PID 4 not in states")
+		switch s.Status {
+		case protocol.ProcRunning:
+			if s.ThreadsRunning == 0 {
+				t.Errorf("PID %d: status=running but ThreadsRunning=0", pid)
+			}
+		case protocol.ProcRunnable:
+			if s.ThreadsRunnable == 0 {
+				t.Errorf("PID %d: status=runnable but ThreadsRunnable=0", pid)
+			}
+		case protocol.ProcWaiting:
+			if s.ThreadsWaiting == 0 {
+				t.Errorf("PID %d: status=waiting but ThreadsWaiting=0", pid)
+			}
+		}
 	}
 }
 
@@ -234,11 +331,33 @@ func TestProcessState_Constants(t *testing.T) {
 		{"StateStandby", StateStandby, 3},
 		{"StateTerminated", StateTerminated, 4},
 		{"StateWaiting", StateWaiting, 5},
+		{"StateTransition", StateTransition, 6},
+		{"StateDeferredReady", StateDeferredReady, 7},
+		{"StateGateWaitObsolete", StateGateWaitObsolete, 8},
+		{"StateWaitingForProcessInSwap", StateWaitingForProcessInSwap, 9},
 	}
 
 	for _, tt := range tests {
 		if uint32(tt.state) != tt.value {
 			t.Errorf("%s = %d, want %d", tt.name, tt.state, tt.value)
+		}
+	}
+}
+
+func TestProcStatus_Values(t *testing.T) {
+	tests := []struct {
+		status protocol.ProcStatus
+		want   string
+	}{
+		{protocol.ProcRunning, "running"},
+		{protocol.ProcRunnable, "runnable"},
+		{protocol.ProcWaiting, "waiting"},
+		{protocol.ProcOther, "other"},
+	}
+
+	for _, tt := range tests {
+		if string(tt.status) != tt.want {
+			t.Errorf("ProcStatus %v = %q, want %q", tt.status, string(tt.status), tt.want)
 		}
 	}
 }
@@ -257,14 +376,14 @@ func BenchmarkCollectProcesses(b *testing.B) {
 	}
 }
 
-func BenchmarkGetProcessStatus(b *testing.B) {
+func BenchmarkGetProcessSchedulerSummary(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
-		_, _ = getProcessStatus()
+		_, _ = getProcessSchedulerSummary()
 	}
 }
 
-func BenchmarkCollectProcesses_WithStatus(b *testing.B) {
+func BenchmarkCollectProcesses_NoScheduler(b *testing.B) {
 	lastWinProcessStates = make(map[uint32]winProcessState)
 	ctx := context.Background()
 
@@ -275,6 +394,5 @@ func BenchmarkCollectProcesses_WithStatus(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		_, _ = CollectProcesses(ctx)
-		_, _ = getProcessStatus()
 	}
 }

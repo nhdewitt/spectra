@@ -22,13 +22,26 @@ type winProcessState struct {
 // Global map to store previous CPU times per PID
 var lastWinProcessStates = make(map[uint32]winProcessState)
 
+// schedSummary is the desired data from NtQuerySystemInformation.
+type schedSummary struct {
+	Status          protocol.ProcStatus
+	ThreadsTotal    uint32
+	ThreadsRunning  uint32
+	ThreadsRunnable uint32
+	ThreadsWaiting  uint32
+}
+
 func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
+	// Grab scheduler summaries (thread counts + status)
+	sched, err := getProcessSchedulerSummary()
+	if err != nil {
+		sched = nil
+	}
+
 	// Get Total System Memory
 	var memStatus memoryStatusEx
 	memStatus.Length = uint32(unsafe.Sizeof(memStatus))
-
 	procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memStatus)))
-
 	totalMem := float64(memStatus.TotalPhys)
 
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
@@ -111,13 +124,34 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 
 		name := windows.UTF16ToString(pe32.ExeFile[:])
 
+		var status protocol.ProcStatus = protocol.ProcOther
+		var threadsTotal uint32
+		var threadsRunning, threadsRunnable, threadsWaiting *uint32
+
+		if sched != nil {
+			if s, ok := sched[pid]; ok {
+				status = s.Status
+				threadsTotal = s.ThreadsTotal
+				tr := s.ThreadsRunning
+				tu := s.ThreadsRunnable
+				tw := s.ThreadsWaiting
+				threadsRunning = &tr
+				threadsRunnable = &tu
+				threadsWaiting = &tw
+			}
+		}
+
 		results = append(results, protocol.ProcessMetric{
-			Pid:        int(pid),
-			Name:       name,
-			MemRSS:     memRSS,
-			MemPercent: memPercent,
-			CPUPercent: cpuPercent,
-			Status:     "Running",
+			Pid:             int(pid),
+			Name:            name,
+			MemRSS:          memRSS,
+			MemPercent:      memPercent,
+			CPUPercent:      cpuPercent,
+			Status:          status,
+			ThreadsTotal:    threadsTotal,
+			ThreadsRunning:  threadsRunning,
+			ThreadsRunnable: threadsRunnable,
+			ThreadsWaiting:  threadsWaiting,
 		})
 
 		if err := windows.Process32Next(snapshot, &pe32); err != nil {
@@ -131,7 +165,7 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 	}, nil
 }
 
-func getProcessStatus() (map[uint32]string, error) {
+func getProcessSchedulerSummary() (map[uint32]schedSummary, error) {
 	bufSize := uint32(1024 * 1024)
 	buf := make([]byte, bufSize)
 	var returnLen uint32
@@ -155,7 +189,7 @@ func getProcessStatus() (map[uint32]string, error) {
 		return nil, fmt.Errorf("NtQuerySystemInformation failed: %v", ret)
 	}
 
-	states := make(map[uint32]string)
+	out := make(map[uint32]schedSummary)
 	offset := uint32(0)
 
 	for {
@@ -164,21 +198,44 @@ func getProcessStatus() (map[uint32]string, error) {
 
 		// Thread state check
 		threadOffset := offset + uint32(unsafe.Sizeof(*proc))
-		allWaiting := true
-		hasThreads := proc.NumberOfThreads > 0
+
+		total := proc.NumberOfThreads
+		var running, runnable, waiting uint32
 
 		for i := uint32(0); i < proc.NumberOfThreads; i++ {
 			thread := (*systemThreadInformation)(unsafe.Pointer(&buf[threadOffset]))
-			if ProcessState(thread.ThreadState) != StateWaiting {
-				allWaiting = false
+			s := ProcessState(thread.ThreadState)
+
+			switch s {
+			case StateRunning:
+				running++
+			case StateReady, StateStandby, StateDeferredReady:
+				runnable++
+			case StateWaiting, StateGateWaitObsolete, StateWaitingForProcessInSwap:
+				waiting++
+			default:
+				// initialized, transition, terminated -> ignore
 			}
+
 			threadOffset += uint32(unsafe.Sizeof(*thread))
 		}
 
-		if hasThreads && allWaiting {
-			states[pid] = "Waiting"
-		} else {
-			states[pid] = "Running"
+		var status protocol.ProcStatus = protocol.ProcOther
+		switch {
+		case total > 0 && running > 0:
+			status = protocol.ProcRunning
+		case total > 0 && runnable > 0:
+			status = protocol.ProcRunnable
+		case total > 0 && waiting > 0:
+			status = protocol.ProcWaiting
+		}
+
+		out[pid] = schedSummary{
+			Status:          status,
+			ThreadsTotal:    total,
+			ThreadsRunning:  running,
+			ThreadsRunnable: runnable,
+			ThreadsWaiting:  waiting,
 		}
 
 		if proc.NextEntryOffset == 0 {
@@ -187,5 +244,5 @@ func getProcessStatus() (map[uint32]string, error) {
 		offset += proc.NextEntryOffset
 	}
 
-	return states, nil
+	return out, nil
 }

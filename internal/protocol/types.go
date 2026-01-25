@@ -172,3 +172,12 @@ type HostInfo struct {
 	BootTime int64    `json:"boot_time"`
 	IPs      []string `json:"ips"` // List of local interface IPs
 }
+
+type ProcStatus string
+
+const (
+	ProcRunning  ProcStatus = "running"
+	ProcRunnable ProcStatus = "runnable"
+	ProcWaiting  ProcStatus = "waiting"
+	ProcOther    ProcStatus = "other"
+)

@@ -37,6 +37,7 @@ type pidStatRaw struct {
 	STime      uint64
 	RSSPages   uint64
 	TotalTicks uint64
+	NumThreads uint32
 }
 
 var (
@@ -109,12 +110,13 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 		}
 
 		results = append(results, protocol.ProcessMetric{
-			Pid:        pid,
-			Name:       stat.Name,
-			Status:     stat.State,
-			MemRSS:     memRSS,
-			MemPercent: memPercent,
-			CPUPercent: cpuPercent,
+			Pid:          pid,
+			Name:         stat.Name,
+			Status:       normalizeLinuxProcState(stat.State, cpuPercent),
+			MemRSS:       memRSS,
+			MemPercent:   memPercent,
+			CPUPercent:   cpuPercent,
+			ThreadsTotal: stat.NumThreads,
 		})
 	}
 
@@ -174,14 +176,16 @@ func parsePidStatFrom(r io.Reader) (*pidStatRaw, error) {
 
 	// Indices shifted:
 	// State (2) -> 0
-	// PPID (3) -> 1
-	// utime (13) -> 11
-	// stime (14) -> 12
-	// rss (23) -> 21
+	// PPID (4) -> 1
+	// utime (14) -> 11
+	// stime (15) -> 12
+	// num_threads (20) -> 17
+	// rss (24) -> 21
 
 	ppid, _ := strconv.Atoi(fields[1])
 	utime := parse(11)
 	stime := parse(12)
+	numThreads := parse(17)
 	rss := parse(21)
 
 	return &pidStatRaw{
@@ -192,5 +196,31 @@ func parsePidStatFrom(r io.Reader) (*pidStatRaw, error) {
 		STime:      stime,
 		RSSPages:   rss,
 		TotalTicks: utime + stime,
+		NumThreads: uint32(numThreads),
 	}, nil
+}
+
+func normalizeLinuxProcState(state string, cpuPercent float64) protocol.ProcStatus {
+	if state == "" {
+		return protocol.ProcOther
+	}
+
+	switch state[0] {
+	case 'R':
+		// "running" or "runnable"
+		// If it used CPU in the sample -> running; otherwise -> runnable
+		if cpuPercent > 0 {
+			return protocol.ProcRunning
+		}
+		return protocol.ProcRunnable
+
+	case 'S', 'D', 'I', 'W':
+		return protocol.ProcWaiting
+
+	case 'T', 't', 'Z', 'X':
+		return protocol.ProcOther
+
+	default:
+		return protocol.ProcOther
+	}
 }

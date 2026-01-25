@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -30,7 +31,11 @@ func (a *Agent) runMetricSender() {
 
 	for {
 		select {
-		case envelope := <-a.metricsCh:
+		case envelope, ok := <-a.metricsCh:
+			if !ok {
+				flush()
+				return
+			}
 			batch = append(batch, envelope)
 			if len(batch) >= BatchSize {
 				flush()
@@ -59,8 +64,6 @@ func (a *Agent) uploadBatch(batch []protocol.Envelope) {
 // postCompressed marshals data to JSON, compresses it, and sends it to the server.
 func (a *Agent) postCompressed(url string, batch []protocol.Envelope) error {
 	a.gzipMu.Lock()
-	defer a.gzipMu.Unlock()
-
 	a.gzipBuf.Reset()
 	a.gzipW.Reset(&a.gzipBuf)
 
@@ -72,7 +75,10 @@ func (a *Agent) postCompressed(url string, batch []protocol.Envelope) error {
 		return fmt.Errorf("gzip close error: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(a.ctx, "POST", url, &a.gzipBuf)
+	payload := append([]byte(nil), a.gzipBuf.Bytes()...)
+	a.gzipMu.Unlock()
+
+	req, err := http.NewRequestWithContext(a.ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("create request error: %w", err)
 	}

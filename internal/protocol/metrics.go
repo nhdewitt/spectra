@@ -124,12 +124,16 @@ type DiskIOMetric struct {
 }
 
 type ProcessMetric struct {
-	Pid        int     `json:"pid"`
-	Name       string  `json:"name"`
-	CPUPercent float64 `json:"cpu_percent"`
-	MemPercent float64 `json:"mem_percent"`
-	MemRSS     uint64  `json:"mem_rss"`
-	Status     string  `json:"status"`
+	Pid             int        `json:"pid"`
+	Name            string     `json:"name"`
+	CPUPercent      float64    `json:"cpu_percent"`
+	MemPercent      float64    `json:"mem_percent"`
+	MemRSS          uint64     `json:"mem_rss"`
+	Status          ProcStatus `json:"status"`
+	ThreadsTotal    uint32     `json:"threads_total"`
+	ThreadsRunning  *uint32    `json:"threads_running,omitempty"`
+	ThreadsRunnable *uint32    `json:"threads_runnable,omitempty"`
+	ThreadsWaiting  *uint32    `json:"threads_waiting,omitempty"`
 }
 
 type ThrottleMetric struct {

@@ -62,12 +62,16 @@ const (
 
 	SystemProcessInformation = 5
 
-	StateInitialized ProcessState = 0
-	StateReady       ProcessState = 1
-	StateRunning     ProcessState = 2
-	StateStandby     ProcessState = 3
-	StateTerminated  ProcessState = 4
-	StateWaiting     ProcessState = 5
+	StateInitialized             ProcessState = 0
+	StateReady                   ProcessState = 1
+	StateRunning                 ProcessState = 2
+	StateStandby                 ProcessState = 3
+	StateTerminated              ProcessState = 4
+	StateWaiting                 ProcessState = 5
+	StateTransition              ProcessState = 6
+	StateDeferredReady           ProcessState = 7
+	StateGateWaitObsolete        ProcessState = 8
+	StateWaitingForProcessInSwap ProcessState = 9
 
 	statusInfoLengthMismatch = 0xC0000004
 
@@ -256,6 +260,7 @@ type systemProcessInformation struct {
 	KernelTime                   int64
 	ImageName                    unicodeString
 	BasePriority                 int32
+	_                            uint32 // Padding
 	UniqueProcessId              uintptr
 	InheritedFromUniqueProcessId uintptr
 	HandleCount                  uint32
@@ -268,6 +273,7 @@ type systemProcessInformation struct {
 	WorkingSetSize               uintptr
 	QuotaPeakPagedPoolUsage      uintptr
 	QuotaPagedPoolUsage          uintptr
+	QuotaPeakNonPagedPoolUsage   uintptr
 	QuotaNonPagedPoolUsage       uintptr
 	PagefileUsage                uintptr
 	PeakPagefileUsage            uintptr
@@ -288,13 +294,16 @@ type unicodeString struct {
 }
 
 type systemThreadInformation struct {
-	KernelTime      int64
-	UserTime        int64
-	CreateTime      int64
-	WaitTime        uint32
-	StartAddress    uintptr
-	ClientIdPid     uintptr
-	ClientIdTid     uintptr
+	KernelTime   int64
+	UserTime     int64
+	CreateTime   int64
+	WaitTime     uint32
+	_            uint32 // Padding
+	StartAddress uintptr
+	ClientId     struct {
+		UniqueProcess uintptr
+		UniqueThread  uintptr
+	}
 	Priority        int32
 	BasePriority    int32
 	ContextSwitches uint32
