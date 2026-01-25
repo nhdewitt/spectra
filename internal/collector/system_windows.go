@@ -66,5 +66,11 @@ func countQUserLines(out []byte) int {
 		return 0
 	}
 
-	return len(lines) - 1 // Total Users - Header
+	count := 0
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
 }
