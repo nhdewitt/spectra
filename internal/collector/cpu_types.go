@@ -27,18 +27,3 @@ type CPUDelta struct {
 	Total     uint64 // Sum of all time
 	Used      uint64 // Total - Idle - IOWait
 }
-
-type CPUDeltaWindows struct {
-	User      float64
-	Nice      float64
-	System    float64
-	Idle      float64
-	IOWait    float64
-	IRQ       float64
-	SoftIRQ   float64
-	Steal     float64
-	Guest     float64
-	GuestNice float64
-	Total     float64 // Sum of all time
-	Used      float64 // Total - Idle - IOWait
-}

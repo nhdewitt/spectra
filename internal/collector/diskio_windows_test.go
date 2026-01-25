@@ -384,6 +384,10 @@ func BenchmarkFormatDeviceName(b *testing.B) {
 }
 
 func BenchmarkCollectDiskIO(b *testing.B) {
+	// Reset global state
+	lastDiskPerf = make(map[uint32]diskPerformance)
+	lastDiskTime = time.Time{}
+
 	ctx := context.Background()
 	cache := &DriveCache{
 		AllowedDrives:  map[uint32]MountInfo{0: {Model: "BenchDrive"}},
@@ -394,7 +398,7 @@ func BenchmarkCollectDiskIO(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
-		_, _ = CollectDiskIO(ctx, cache)
 		*fakeTime = fakeTime.Add(1 * time.Second)
+		_, _ = CollectDiskIO(ctx, cache)
 	}
 }

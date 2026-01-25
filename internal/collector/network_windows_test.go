@@ -120,6 +120,10 @@ func BenchmarkFormatMAC(b *testing.B) {
 }
 
 func BenchmarkCollectNetwork(b *testing.B) {
+	// Reset global state
+	lastNetStats = make(map[uint32]interfaceState)
+	lastNetTime = time.Time{}
+
 	ctx := context.Background()
 
 	fakeTime := mockTime(b)
@@ -127,7 +131,7 @@ func BenchmarkCollectNetwork(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		_, _ = CollectNetwork(ctx)
 		*fakeTime = fakeTime.Add(1 * time.Second)
+		_, _ = CollectNetwork(ctx)
 	}
 }
