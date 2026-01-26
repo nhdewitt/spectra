@@ -33,6 +33,7 @@ func (a *Agent) startCollectors() {
 		{10 * time.Second, collector.CollectPiThrottle},
 		{60 * time.Second, collector.CollectPiVoltage},
 		{60 * time.Second, collector.CollectPiGPU},
+		{60 * time.Second, collector.CollectDocker},
 	}
 
 	for _, j := range jobs {

@@ -51,6 +51,8 @@ func (VoltageMetric) MetricType() string         { return "voltage" }
 func (WiFiMetric) MetricType() string            { return "wifi" }
 func (GPUMetric) MetricType() string             { return "gpu" }
 func (ApplicationListMetric) MetricType() string { return "application_list" }
+func (ContainerMetric) MetricType() string       { return "container" }
+func (ContainerListMetric) MetricType() string   { return "container_list" }
 
 type CPUMetric struct {
 	Usage     float64   `json:"usage"`
@@ -182,4 +184,21 @@ type Application struct {
 
 type ApplicationListMetric struct {
 	Applications []Application `json:"applications"`
+}
+
+type ContainerMetric struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Image       string  `json:"image"`
+	State       string  `json:"state"`
+	CPUPercent  float64 `json:"cpu_percent"`
+	NumProcs    uint32  `json:"num_procs"`
+	MemoryBytes uint64  `json:"memory_bytes"`
+	MemoryLimit uint64  `json:"memory_limit"`
+	NetRxBytes  uint64  `json:"net_rx_bytes"`
+	NetTxBytes  uint64  `json:"net_tx_bytes"`
+}
+
+type ContainerListMetric struct {
+	Containers []ContainerMetric `json:"containers"`
 }
