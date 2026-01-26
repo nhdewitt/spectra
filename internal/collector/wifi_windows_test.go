@@ -61,7 +61,7 @@ func TestParseDot11SSID(t *testing.T) {
 		{
 			name: "Normal SSID",
 			ssid: func() dot11Ssid {
-				s := dot11Ssid{USSIDLength: 10}
+				s := dot11Ssid{USSIDLength: 9}
 				copy(s.UcSSID[:], "MyNetwork")
 				return s
 			}(),

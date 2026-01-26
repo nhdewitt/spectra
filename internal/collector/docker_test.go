@@ -13,7 +13,6 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
 type mockDockerClient struct {
@@ -281,37 +280,29 @@ func TestInitDocker(t *testing.T) {
 	}
 }
 
-func TestCollectDocker_Integration(t *testing.T) {
+func TestCollectDockerContainers_Integration(t *testing.T) {
 	oldCli := dockerCli
 	dockerCli = nil
 	defer func() { dockerCli = oldCli }()
 
 	ctx := context.Background()
-	metrics, err := CollectDocker(ctx)
+	containers, err := collectDockerContainers(ctx)
 	if err != nil {
-		t.Logf("CollectDocker returned error: %v", err)
+		t.Logf("collectDockerContainers returned error: %v", err)
 		return
 	}
-	if metrics == nil {
-		t.Log("No metrics returned (Docker may not exist or may not be running)")
+	if len(containers) == 0 {
+		t.Log("No containers returned (Docker may not exist or may not be running)")
 		return
 	}
-	if len(metrics) != 1 {
-		t.Fatalf("expected 1 metric container, got %d", len(metrics))
-	}
 
-	listMetric, ok := metrics[0].(protocol.ContainerListMetric)
-	if !ok {
-		t.Fatalf("expected ContainerListMetric, got %T", metrics[0])
-	}
+	t.Logf("Found %d containers", len(containers))
 
-	t.Logf("Found %d containers", len(listMetric.Containers))
-
-	for _, c := range listMetric.Containers {
+	for _, c := range containers {
 		t.Logf("Container: %s (%s)", c.Name, c.ID)
 		t.Logf("  Image: %s", c.Image)
 		t.Logf("  State: %s", c.State)
-		t.Logf("  CPU: %.2f%% (%d cores)", c.CPUPercent, c.NumProcs)
+		t.Logf("  CPU: %.2f%% (%d cores)", c.CPUPercent, c.CPULimitCores)
 		t.Logf("  Memory: %d / %d bytes", c.MemoryBytes, c.MemoryLimit)
 		t.Logf("  Network: RX=%d TX=%d bytes", c.NetRxBytes, c.NetTxBytes)
 
@@ -320,6 +311,12 @@ func TestCollectDocker_Integration(t *testing.T) {
 		}
 		if c.Name == "" {
 			t.Error("Container name should not be empty")
+		}
+		if c.Source != "docker" {
+			t.Errorf("Source should be 'docker', got %s", c.Source)
+		}
+		if c.Kind != "container" {
+			t.Errorf("Kind should be 'container', got %s", c.Kind)
 		}
 		if c.CPUPercent < 0 {
 			t.Errorf("CPU percent should not be negative: %f", c.CPUPercent)
@@ -330,7 +327,7 @@ func TestCollectDocker_Integration(t *testing.T) {
 	}
 }
 
-func TestCollectDocker_NoDocker(t *testing.T) {
+func TestCollectDockerContainers_NoDocker(t *testing.T) {
 	// Test behavior when Docker is not available
 	oldCli := dockerCli
 	dockerCli = nil
@@ -341,21 +338,21 @@ func TestCollectDocker_NoDocker(t *testing.T) {
 	dockerCli = badCli
 
 	ctx := context.Background()
-	metrics, err := CollectDocker(ctx)
+	containers, err := collectDockerContainers(ctx)
 	// Should return nil, nil for connection failures (not spam errors)
 	if err != nil {
-		t.Logf("CollectDocker error: %v", err)
+		t.Logf("collectDockerContainers error: %v", err)
 	}
-	t.Logf("Returned %v metrics", metrics)
+	t.Logf("Returned %v containers", len(containers))
 }
 
-func TestCollectDocker_ContextCancel(t *testing.T) {
+func TestCollectDockerContainers_ContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := CollectDocker(ctx)
+	_, err := collectDockerContainers(ctx)
 	if err != nil {
-		t.Logf("CollectDocker with cancelled context: %v", err)
+		t.Logf("collectDockerContainers with cancelled context: %v", err)
 	}
 }
 
@@ -379,7 +376,7 @@ func TestContainerNameTrimming(t *testing.T) {
 	}
 }
 
-func TestCollectDocker_Parallel(t *testing.T) {
+func TestCollectDockerContainers_Parallel(t *testing.T) {
 	ctx := context.Background()
 	var wg sync.WaitGroup
 	errors := make(chan error, 10)
@@ -388,7 +385,7 @@ func TestCollectDocker_Parallel(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := CollectDocker(ctx)
+			_, err := collectDockerContainers(ctx)
 			if err != nil {
 				errors <- err
 			}
@@ -399,7 +396,7 @@ func TestCollectDocker_Parallel(t *testing.T) {
 	close(errors)
 
 	for err := range errors {
-		t.Errorf("concurrent CollectDocker error: %v", err)
+		t.Errorf("concurrent collectDockerContainers error: %v", err)
 	}
 }
 
@@ -477,7 +474,7 @@ func BenchmarkCalculateNet(b *testing.B) {
 	}
 }
 
-func BenchmarkCollectDocker(b *testing.B) {
+func BenchmarkCollectDockerContainers(b *testing.B) {
 	// Init once
 	if dockerCli == nil {
 		if err := InitDocker(); err != nil {
@@ -489,11 +486,11 @@ func BenchmarkCollectDocker(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		_, _ = CollectDocker(ctx)
+		_, _ = collectDockerContainers(ctx)
 	}
 }
 
-func BenchmarkCollectDocker_Mock25_1sLatency(b *testing.B) {
+func BenchmarkCollectDockerContainers_Mock25_1sLatency(b *testing.B) {
 	dockerCli = &mockDockerClient{
 		containers: makeMockContainers(25),
 		statsDelay: 1 * time.Second,
@@ -504,11 +501,11 @@ func BenchmarkCollectDocker_Mock25_1sLatency(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		_, _ = CollectDocker(ctx)
+		_, _ = collectDockerContainers(ctx)
 	}
 }
 
-func BenchmarkCollectDocker_Mock100_1sLatency(b *testing.B) {
+func BenchmarkCollectDockerContainers_Mock100_1sLatency(b *testing.B) {
 	dockerCli = &mockDockerClient{
 		containers: makeMockContainers(100),
 		statsDelay: 1 * time.Second,
@@ -519,11 +516,11 @@ func BenchmarkCollectDocker_Mock100_1sLatency(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		_, _ = CollectDocker(ctx)
+		_, _ = collectDockerContainers(ctx)
 	}
 }
 
-func BenchmarkCollectDocker_Mock200_1sLatency(b *testing.B) {
+func BenchmarkCollectDockerContainers_Mock200_1sLatency(b *testing.B) {
 	dockerCli = &mockDockerClient{
 		containers: makeMockContainers(200),
 		statsDelay: 1 * time.Second,
@@ -534,11 +531,11 @@ func BenchmarkCollectDocker_Mock200_1sLatency(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		_, _ = CollectDocker(ctx)
+		_, _ = collectDockerContainers(ctx)
 	}
 }
 
-func BenchmarkCollectDocker_Mock500_1sLatency(b *testing.B) {
+func BenchmarkCollectDockerContainers_Mock500_1sLatency(b *testing.B) {
 	dockerCli = &mockDockerClient{
 		containers: makeMockContainers(500),
 		statsDelay: 1 * time.Second,
@@ -549,6 +546,6 @@ func BenchmarkCollectDocker_Mock500_1sLatency(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		_, _ = CollectDocker(ctx)
+		_, _ = collectDockerContainers(ctx)
 	}
 }

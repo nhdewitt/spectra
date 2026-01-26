@@ -14,6 +14,9 @@ import (
 const (
 	// Limit concurrent requests to prevent choking the Docker daemon
 	DockerConcurrencyLimit = 32
+
+	dockerSource  = "docker"
+	kindContainer = "container"
 )
 
 type DockerClient interface {
@@ -57,7 +60,7 @@ func InitDocker() error {
 	return err
 }
 
-func CollectDocker(ctx context.Context) ([]protocol.Metric, error) {
+func collectDockerContainers(ctx context.Context) ([]protocol.ContainerMetric, error) {
 	if dockerCli == nil {
 		if err := InitDocker(); err != nil {
 			return nil, fmt.Errorf("docker init failed: %w", err)
@@ -76,9 +79,7 @@ func CollectDocker(ctx context.Context) ([]protocol.Metric, error) {
 	}
 
 	if len(containers) == 0 {
-		return []protocol.Metric{
-			protocol.ContainerListMetric{Containers: []protocol.ContainerMetric{}},
-		}, nil
+		return []protocol.ContainerMetric{}, nil
 	}
 
 	type result struct {
@@ -87,7 +88,6 @@ func CollectDocker(ctx context.Context) ([]protocol.Metric, error) {
 	}
 
 	results := make(chan result, len(containers))
-
 	sem := make(chan struct{}, DockerConcurrencyLimit)
 
 	for _, c := range containers {
@@ -133,16 +133,18 @@ func CollectDocker(ctx context.Context) ([]protocol.Metric, error) {
 
 			results <- result{
 				metric: protocol.ContainerMetric{
-					ID:          id,
-					Name:        strings.TrimPrefix(c.Names[0], "/"),
-					Image:       c.Image,
-					State:       c.State,
-					CPUPercent:  cpuPercent,
-					NumProcs:    numCores,
-					MemoryBytes: uint64(memUsage),
-					MemoryLimit: stats.MemoryStats.Limit,
-					NetRxBytes:  rxBytes,
-					NetTxBytes:  txBytes,
+					ID:            id,
+					Name:          strings.TrimPrefix(c.Names[0], "/"),
+					Image:         c.Image,
+					State:         c.State,
+					Source:        dockerSource,
+					Kind:          kindContainer,
+					CPUPercent:    cpuPercent,
+					CPULimitCores: numCores,
+					MemoryBytes:   uint64(memUsage),
+					MemoryLimit:   stats.MemoryStats.Limit,
+					NetRxBytes:    rxBytes,
+					NetTxBytes:    txBytes,
 				},
 				ok: true,
 			}
@@ -157,9 +159,7 @@ func CollectDocker(ctx context.Context) ([]protocol.Metric, error) {
 		}
 	}
 
-	return []protocol.Metric{
-		protocol.ContainerListMetric{Containers: metrics},
-	}, nil
+	return metrics, nil
 }
 
 func calculateCPUPercent(v *DockerStats) float64 {

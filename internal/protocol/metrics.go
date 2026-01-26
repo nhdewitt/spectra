@@ -187,16 +187,18 @@ type ApplicationListMetric struct {
 }
 
 type ContainerMetric struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Image       string  `json:"image"`
-	State       string  `json:"state"`
-	CPUPercent  float64 `json:"cpu_percent"`
-	NumProcs    uint32  `json:"num_procs"`
-	MemoryBytes uint64  `json:"memory_bytes"`
-	MemoryLimit uint64  `json:"memory_limit"`
-	NetRxBytes  uint64  `json:"net_rx_bytes"`
-	NetTxBytes  uint64  `json:"net_tx_bytes"`
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Image         string  `json:"image,omitempty"`
+	State         string  `json:"state"`
+	Source        string  `json:"source"` // "docker", "containerd", "proxmox"
+	Kind          string  `json:"kind"`   // "container", "lxc", "vm"
+	CPUPercent    float64 `json:"cpu_percent"`
+	CPULimitCores uint32  `json:"cpu_limit_cores,omitempty"`
+	MemoryBytes   uint64  `json:"memory_bytes"`
+	MemoryLimit   uint64  `json:"memory_limit,omitempty"`
+	NetRxBytes    uint64  `json:"net_rx_bytes,omitempty"`
+	NetTxBytes    uint64  `json:"net_tx_bytes,omitempty"`
 }
 
 type ContainerListMetric struct {
