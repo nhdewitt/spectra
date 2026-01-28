@@ -22,8 +22,8 @@ const (
 	proxmoxSource = "proxmox"
 	kindLXC       = "lxc"
 	kindVM        = "vm"
-
-	proxmoxConcurrency = 32
+	typeLXC       = "lxc"
+	typeQEMU      = "qemu"
 )
 
 var (
@@ -36,23 +36,19 @@ type pveNode struct {
 	Node string `json:"node"`
 }
 
-type proxmoxListRow struct {
-	VMID   int    `json:"vmid"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
-}
-
-type proxmoxResource struct {
-	Type   string  `json:"type"` // "lxc", "qemu", "node", "storage", "sdn"
+type proxmoxClusterRow struct {
+	ID     string  `json:"id"`   // "lxc/<vmid>" or "qemu/<vmid>"
+	Type   string  `json:"type"` // "lxc" or "qemu"
+	Node   string  `json:"node"`
 	VMID   int     `json:"vmid"`
 	Name   string  `json:"name"`
-	Status string  `json:"status"` // "running", "stopped", ...
-	CPU    float64 `json:"cpu"`    // fraction
-	CPUs   int     `json:"cpus"`   // assigned cores
-	Mem    uint64  `json:"mem"`    // bytes
-	MaxMem uint64  `json:"maxmem"` // bytes
-	NetIn  uint64  `json:"netin"`  // bytes
-	NetOut uint64  `json:"netout"` // bytes
+	Status string  `json:"status"`
+	CPU    float64 `json:"cpu"`
+	MaxCPU int     `json:"maxcpu"`
+	Mem    uint64  `json:"mem"`
+	MaxMem uint64  `json:"maxmem"`
+	NetIn  uint64  `json:"netin"`
+	NetOut uint64  `json:"netout"`
 }
 
 func localProxmoxNode(ctx context.Context) (string, error) {
@@ -104,77 +100,61 @@ func collectProxmoxGuests(ctx context.Context) ([]protocol.ContainerMetric, erro
 		return nil, err
 	}
 
-	lxcs, lxcErr := proxmoxList(ctx, node, kindLXC)
-	vms, vmErr := proxmoxList(ctx, node, kindVM)
-	if lxcErr != nil && vmErr != nil {
-		return nil, fmt.Errorf("proxmox list failed (lxc: %v, qemu: %v)", lxcErr, vmErr)
+	rows, err := proxmoxClusterResources(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	var out []protocol.ContainerMetric
+	out := make([]protocol.ContainerMetric, 0, len(rows))
+	for _, r := range rows {
+		if r.Node != node {
+			continue
+		}
+		if r.Type != typeLXC && r.Type != typeQEMU {
+			continue
+		}
 
-	out = append(out, collectProxmoxKind(ctx, node, kindLXC, lxcs)...)
-	out = append(out, collectProxmoxKind(ctx, node, kindVM, vms)...)
+		var kind string
+		switch r.Type {
+		case typeLXC:
+			kind = kindLXC
+		case typeQEMU:
+			kind = kindVM
+		}
+
+		cores := uint32(0)
+		if r.MaxCPU > 0 {
+			cores = uint32(r.MaxCPU)
+		}
+
+		cpuPct := 0.0
+		if r.CPU > 0 && r.MaxCPU > 0 {
+			cpuPct = r.CPU * float64(r.MaxCPU) * 100.0
+		}
+
+		out = append(out, protocol.ContainerMetric{
+			ID:            strconv.Itoa(r.VMID),
+			Name:          r.Name,
+			State:         r.Status,
+			Source:        proxmoxSource,
+			Kind:          kind,
+			CPUPercent:    cpuPct,
+			CPULimitCores: cores,
+			MemoryBytes:   r.Mem,
+			MemoryLimit:   r.MaxMem,
+			NetRxBytes:    r.NetIn,
+			NetTxBytes:    r.NetOut,
+		})
+	}
 
 	return out, nil
 }
 
-func collectProxmoxKind(ctx context.Context, node, kind string, rows []proxmoxListRow) []protocol.ContainerMetric {
-	type result struct {
-		m  protocol.ContainerMetric
-		ok bool
-	}
-
-	results := make(chan result, len(rows))
-	sem := make(chan struct{}, proxmoxConcurrency)
-
-	for _, row := range rows {
-		go func() {
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			vmid := strconv.Itoa(row.VMID)
-			if r, ok := proxmoxStatus(ctx, node, kind, vmid); ok {
-				results <- result{
-					m:  mapProxmoxStatus(r, kind),
-					ok: true,
-				}
-				return
-			}
-			results <- result{ok: false}
-		}()
-	}
-
-	var out []protocol.ContainerMetric
-	for range rows {
-		r := <-results
-		if r.ok {
-			out = append(out, r.m)
-		}
-	}
-
-	return out
-}
-
-func hasCommand(cmd string) bool {
-	_, err := exec.LookPath(cmd)
-	return err == nil
-}
-
-func proxmoxList(ctx context.Context, node, kind string) ([]proxmoxListRow, error) {
+func proxmoxClusterResources(ctx context.Context) ([]proxmoxClusterRow, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	var path string
-	switch kind {
-	case kindLXC:
-		path = "/nodes/" + node + "/lxc"
-	case kindVM:
-		path = "/nodes/" + node + "/qemu"
-	default:
-		return nil, fmt.Errorf("unknown kind %q", kind)
-	}
-
-	cmd := exec.CommandContext(ctx, "pvesh", "get", path, "--output-format", "json")
+	cmd := exec.CommandContext(ctx, "pvesh", "get", "/cluster/resources", "--type", "vm", "--output-format", "json")
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -190,72 +170,15 @@ func proxmoxList(ctx context.Context, node, kind string) ([]proxmoxListRow, erro
 		return nil, err
 	}
 
-	var rows []proxmoxListRow
+	var rows []proxmoxClusterRow
 	if err := json.Unmarshal(stdout.Bytes(), &rows); err != nil {
 		return nil, err
 	}
+
 	return rows, nil
 }
 
-func proxmoxStatus(ctx context.Context, node, kind, vmid string) (proxmoxResource, bool) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	var path string
-	switch kind {
-	case kindLXC:
-		path = "/nodes/" + node + "/lxc/" + vmid + "/status/current"
-	case kindVM:
-		path = "/nodes/" + node + "/qemu/" + vmid + "/status/current"
-	default:
-		return proxmoxResource{}, false
-	}
-
-	cmd := exec.CommandContext(ctx, "pvesh", "get", path, "--output-format", "json")
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return proxmoxResource{}, false
-		}
-		if stderr.Len() > 0 {
-			return proxmoxResource{}, false
-		}
-		return proxmoxResource{}, false
-	}
-
-	var out proxmoxResource
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-		return proxmoxResource{}, false
-	}
-	return out, true
-}
-
-func mapProxmoxStatus(r proxmoxResource, kind string) protocol.ContainerMetric {
-	cores := uint32(0)
-	if r.CPUs > 0 {
-		cores = uint32(r.CPUs)
-	}
-
-	cpuPct := 0.0
-	if r.CPU > 0 && r.CPUs > 0 {
-		cpuPct = r.CPU * float64(r.CPUs) * 100.0
-	}
-
-	return protocol.ContainerMetric{
-		ID:            strconv.Itoa(r.VMID),
-		Name:          r.Name,
-		State:         r.Status,
-		Source:        proxmoxSource,
-		Kind:          kind,
-		CPUPercent:    cpuPct,
-		CPULimitCores: cores,
-		MemoryBytes:   r.Mem,
-		MemoryLimit:   r.MaxMem,
-		NetRxBytes:    r.NetIn,
-		NetTxBytes:    r.NetOut,
-	}
+func hasCommand(cmd string) bool {
+	_, err := exec.LookPath(cmd)
+	return err == nil
 }

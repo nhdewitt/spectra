@@ -70,7 +70,7 @@ func parseThermalZoneFrom(typeR, tempR, maxR io.Reader) (*protocol.TemperatureMe
 	maxVal := 0.0
 	if maxR != nil {
 		if v, err := parseThermalValueFrom(maxR); err == nil {
-			maxVal = v
+			maxVal = normalizeMax(tempVal, v)
 		}
 	}
 
@@ -99,4 +99,11 @@ func parseThermalValueFrom(r io.Reader) (float64, error) {
 
 	// millidegrees -> degrees
 	return val / 1000.0, nil
+}
+
+func normalizeMax(temp, v float64) float64 {
+	if v <= 0 || v < temp || v >= 200 {
+		return 0
+	}
+	return v
 }

@@ -366,6 +366,94 @@ func TestParseThermalValueFrom_Precision(t *testing.T) {
 	}
 }
 
+func TestNormalizeMax(t *testing.T) {
+	tests := []struct {
+		name string
+		temp float64
+		max  float64
+		want float64
+	}{
+		{
+			name: "Valid max above temp",
+			temp: 45.0,
+			max:  95.0,
+			want: 95.0,
+		},
+		{
+			name: "Max equal to temp",
+			temp: 60.0,
+			max:  60.0,
+			want: 60.0,
+		},
+		{
+			name: "Max slightly above temp",
+			temp: 59.5,
+			max:  60.0,
+			want: 60.0,
+		},
+		{
+			name: "Max below temp",
+			temp: 70.0,
+			max:  65.0,
+			want: 0.0,
+		},
+		{
+			name: "Max zero (unset)",
+			temp: 40.0,
+			max:  0.0,
+			want: 0.0,
+		},
+		{
+			name: "Max negative (bogus)",
+			temp: 40.0,
+			max:  -274.0,
+			want: 0.0,
+		},
+		{
+			name: "Max extremely high",
+			temp: 40.0,
+			max:  500.0,
+			want: 0.0,
+		},
+		{
+			name: "Max just below upper bound",
+			temp: 40.0,
+			max:  199.9,
+			want: 199.9,
+		},
+		{
+			name: "Max exactly at upper bound",
+			temp: 40.0,
+			max:  200.0,
+			want: 0.0,
+		},
+		{
+			name: "Temp negative but max valid",
+			temp: -10.0,
+			max:  80.0,
+			want: 80.0,
+		},
+		{
+			name: "Both temp and max negative",
+			temp: -20.0,
+			max:  -10.0,
+			want: 0.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeMax(tt.temp, tt.max)
+			if got != tt.want {
+				t.Errorf(
+					"normalizeMax(temp=%.1f, max=%.1f) = %.1f, want %.1f",
+					tt.temp, tt.max, got, tt.want,
+				)
+			}
+		})
+	}
+}
+
 func BenchmarkParseThermalValueFrom(b *testing.B) {
 	input := "45000"
 	b.ReportAllocs()

@@ -3,3 +3,5 @@
 *.exe
 .env
 *.armv6
+*.sh
+bench*.log
