@@ -51,7 +51,8 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 	)
 
 	psCmd := fmt.Sprintf(
-		`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
+		`$ProgressPreference = 'SilentlyContinue';
+		[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
 		$query = "%s";
 		Get-WinEvent -LogName @('System','Application') -FilterXPath $query -MaxEvents %d -ErrorAction SilentlyContinue -Oldest |
 		Select-Object TimeCreated, LevelDisplayName, Message, ProviderName, ProcessId |
@@ -67,9 +68,20 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			fmt.Printf("PowerShell Error: %s\n", string(exitErr.Stderr))
+			stderr := string(exitErr.Stderr)
+			// Ignore progress/module loading messages
+			if strings.Contains(stderr, "Preparing modules") || strings.Contains(stderr, "CLIXML") {
+				// Continue processing stdout if it exists
+				if len(bytes.TrimSpace(out)) > 0 {
+					err = nil
+				} else {
+					return nil, nil
+				}
+			}
 		}
-		return nil, fmt.Errorf("powershell execution failed: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("powershell execution failed: %w", err)
+		}
 	}
 
 	if len(bytes.TrimSpace(out)) == 0 {
@@ -154,13 +166,14 @@ func mapWinLevel(l string) protocol.LogLevel {
 
 // parseWinDate converts "/Date(x)/" to Unix Seconds
 func parseWinDate(raw string) int64 {
-	s := strings.TrimPrefix(raw, "/Date(")
-	s = strings.TrimSuffix(s, ")/")
+	if !strings.HasPrefix(raw, "/Date(") || !strings.HasSuffix(raw, ")/") {
+		return 0
+	}
+	s := raw[6 : len(raw)-2] // Extract the number
 
 	if val, err := strconv.ParseInt(s, 10, 64); err == nil {
 		return val / 1000
 	}
-
 	return 0
 }
 
