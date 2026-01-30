@@ -27,19 +27,33 @@ var dmesgLevels = []string{
 	"emerg",
 }
 
-const MaxLogs = 25000
+const MaxLogs = 10000
+
+type journalEntry struct {
+	Message           string `json:"MESSAGE"`
+	SystemdUnit       string `json:"_SYSTEMD_UNIT"`
+	SyslogIdentifier  string `json:"SYSLOG_IDENTIFIER"`
+	Comm              string `json:"_COMM"`
+	PID               string `json:"_PID"`
+	Priority          string `json:"PRIORITY"`
+	RealtimeTimestamp string `json:"__REALTIME_TIMESTAMP"`
+}
 
 func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEntry, error) {
 	var results []protocol.LogEntry
+	remaining := MaxLogs
 
 	// Kernel Logs
-	if dmesg, err := getDmesg(ctx, opts.MinLevel); err == nil {
+	if dmesg, err := getDmesg(ctx, opts.MinLevel, remaining); err == nil {
 		results = append(results, dmesg...)
+		remaining -= len(dmesg)
 	}
 
 	// Journal Logs
-	if journal, err := getJournal(ctx, opts.MinLevel); err == nil {
-		results = append(results, journal...)
+	if remaining > 0 {
+		if journal, err := getJournal(ctx, opts.MinLevel, remaining); err == nil {
+			results = append(results, journal...)
+		}
 	}
 
 	if len(results) > MaxLogs {
@@ -49,7 +63,7 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 	return results, nil
 }
 
-func getDmesg(ctx context.Context, minLevel protocol.LogLevel) ([]protocol.LogEntry, error) {
+func getDmesg(ctx context.Context, minLevel protocol.LogLevel, limit int) ([]protocol.LogEntry, error) {
 	levelFlag := buildDmesgLevelFlag(minLevel)
 	cmd := exec.CommandContext(ctx, "dmesg", "-T", "-x", "--level="+levelFlag)
 
@@ -58,15 +72,16 @@ func getDmesg(ctx context.Context, minLevel protocol.LogLevel) ([]protocol.LogEn
 		return nil, err
 	}
 
-	return parseDmesgFrom(bytes.NewReader(out))
+	return parseDmesgFrom(bytes.NewReader(out), limit)
 }
 
-func getJournal(ctx context.Context, minLevel protocol.LogLevel) ([]protocol.LogEntry, error) {
+func getJournal(ctx context.Context, minLevel protocol.LogLevel, limit int) ([]protocol.LogEntry, error) {
 	priority := mapLogLevelToJournalPriority(minLevel)
 
 	cmd := exec.CommandContext(ctx, "journalctl",
 		"-b",
 		"-p", priority,
+		"-n", strconv.Itoa(limit),
 		"-o", "json",
 		"--no-pager",
 	)
@@ -76,7 +91,7 @@ func getJournal(ctx context.Context, minLevel protocol.LogLevel) ([]protocol.Log
 		return nil, err
 	}
 
-	return parseJournalFrom(bytes.NewReader(out))
+	return parseJournalFrom(bytes.NewReader(out), limit)
 }
 
 // buildDmesgLevelFlag returns a comma-separated string of all levels
@@ -107,7 +122,7 @@ func buildDmesgLevelFlag(min protocol.LogLevel) string {
 }
 
 // parseDmesgFrom parses the raw output of `dmesg -T -x`
-func parseDmesgFrom(r io.Reader) ([]protocol.LogEntry, error) {
+func parseDmesgFrom(r io.Reader, limit int) ([]protocol.LogEntry, error) {
 	var entries []protocol.LogEntry
 	scanner := bufio.NewScanner(r)
 
@@ -118,6 +133,9 @@ func parseDmesgFrom(r io.Reader) ([]protocol.LogEntry, error) {
 	var lastTimestamp int64 = 0
 
 	for scanner.Scan() {
+		if len(entries) >= limit {
+			break
+		}
 		line := scanner.Text()
 
 		parts := strings.SplitN(line, ":", 3)
@@ -208,7 +226,7 @@ func parseDmesgTimestampAndMsg(raw string) (int64, string) {
 }
 
 // parseJournalFrom reads JSON from journalctl -o json
-func parseJournalFrom(r io.Reader) ([]protocol.LogEntry, error) {
+func parseJournalFrom(r io.Reader, limit int) ([]protocol.LogEntry, error) {
 	var entries []protocol.LogEntry
 	scanner := bufio.NewScanner(r)
 	var sourceBuilder strings.Builder
@@ -217,55 +235,49 @@ func parseJournalFrom(r io.Reader) ([]protocol.LogEntry, error) {
 	sourceBuilder.Grow(64)
 
 	for scanner.Scan() {
+		if len(entries) >= limit {
+			break
+		}
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
 
-		var jEntry map[string]any
+		var jEntry journalEntry
 		if err := json.Unmarshal(line, &jEntry); err != nil {
 			continue
 		}
 
-		msg, _ := jEntry["MESSAGE"].(string)
-		if msg == "" {
+		if jEntry.Message == "" {
 			continue
 		}
 
 		sourceBuilder.Reset()
 		sourceBuilder.WriteString("journald:")
 
-		if unit, ok := jEntry["_SYSTEMD_UNIT"].(string); ok && unit != "" {
-			sourceBuilder.WriteString(unit)
-		} else if ident, ok := jEntry["SYSLOG_IDENTIFIER"].(string); ok && ident != "" {
-			sourceBuilder.WriteString(ident)
-		} else if comm, ok := jEntry["_COMM"].(string); ok && comm != "" {
-			sourceBuilder.WriteString(comm)
+		if jEntry.SystemdUnit != "" {
+			sourceBuilder.WriteString(jEntry.SystemdUnit)
+		} else if jEntry.SyslogIdentifier != "" {
+			sourceBuilder.WriteString(jEntry.SyslogIdentifier)
+		} else if jEntry.Comm != "" {
+			sourceBuilder.WriteString(jEntry.Comm)
 		} else {
 			sourceBuilder.WriteString("unknown")
 		}
 
-		cmd, _ := jEntry["_COMM"].(string)
-		pidStr, _ := jEntry["_PID"].(string)
-		pid, _ := strconv.Atoi(pidStr)
+		pid, _ := strconv.Atoi(jEntry.PID)
 
 		level := protocol.LevelInfo
-		if rawPriority, ok := jEntry["PRIORITY"]; ok {
-			priorityInt := -1
-			switch v := rawPriority.(type) {
-			case string:
-				priorityInt, _ = strconv.Atoi(v)
-			case float64:
-				priorityInt = int(v)
-			}
-			if l, exists := protocol.PriorityToLevel[priorityInt]; exists {
-				level = l
+		if jEntry.Priority != "" {
+			if priorityInt, err := strconv.Atoi(jEntry.Priority); err == nil {
+				if l, exists := protocol.PriorityToLevel[priorityInt]; exists {
+					level = l
+				}
 			}
 		}
 
-		timestampRaw, _ := jEntry["__REALTIME_TIMESTAMP"].(string)
 		var timestamp int64
-		if timestampInt, err := strconv.ParseInt(timestampRaw, 10, 64); err == nil {
+		if timestampInt, err := strconv.ParseInt(jEntry.RealtimeTimestamp, 10, 64); err == nil {
 			timestamp = timestampInt / 1000000
 		}
 
@@ -279,8 +291,8 @@ func parseJournalFrom(r io.Reader) ([]protocol.LogEntry, error) {
 			Timestamp:   timestamp,
 			Source:      sourceBuilder.String(),
 			Level:       level,
-			Message:     msg,
-			ProcessName: cmd,
+			Message:     jEntry.Message,
+			ProcessName: jEntry.Comm,
 			ProcessID:   pid,
 		})
 	}

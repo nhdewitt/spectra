@@ -3,6 +3,7 @@
 package diagnostics
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -209,11 +210,54 @@ daemon:info  : [Mon Jan  6 12:00:00 2025] Daemon msg`,
 				{Timestamp: 1736164800, Source: "dmesg:daemon", Level: protocol.LevelInfo, Message: "Daemon msg"},
 			},
 		},
+		{
+			name: "all severity levels",
+			input: `kern  :emerg : [Mon Jan  6 12:00:00 2025] Emergency
+kern  :alert : [Mon Jan  6 12:00:00 2025] Alert
+kern  :crit  : [Mon Jan  6 12:00:00 2025] Critical
+kern  :err   : [Mon Jan  6 12:00:00 2025] Error
+kern  :warn  : [Mon Jan  6 12:00:00 2025] Warning
+kern  :notice: [Mon Jan  6 12:00:00 2025] Notice
+kern  :info  : [Mon Jan  6 12:00:00 2025] Info
+kern  :debug : [Mon Jan  6 12:00:00 2025] Debug`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "dmesg:kernel", Level: protocol.LevelEmergency, Message: "Emergency"},
+				{Timestamp: 1736164800, Source: "dmesg:kernel", Level: protocol.LevelAlert, Message: "Alert"},
+				{Timestamp: 1736164800, Source: "dmesg:kernel", Level: protocol.LevelCritical, Message: "Critical"},
+				{Timestamp: 1736164800, Source: "dmesg:kernel", Level: protocol.LevelError, Message: "Error"},
+				{Timestamp: 1736164800, Source: "dmesg:kernel", Level: protocol.LevelWarning, Message: "Warning"},
+				{Timestamp: 1736164800, Source: "dmesg:kernel", Level: protocol.LevelNotice, Message: "Notice"},
+				{Timestamp: 1736164800, Source: "dmesg:kernel", Level: protocol.LevelInfo, Message: "Info"},
+				{Timestamp: 1736164800, Source: "dmesg:kernel", Level: protocol.LevelDebug, Message: "Debug"},
+			},
+		},
+		{
+			name: "mixed valid and invalid lines",
+			input: `kern  :info  : [Mon Jan  6 12:00:00 2025] Valid message
+invalid line without colons
+kern  :warn  : [Mon Jan  6 12:00:01 2025] Another valid message`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "dmesg:kernel", Level: protocol.LevelInfo, Message: "Valid message"},
+				{Timestamp: 1736164801, Source: "dmesg:kernel", Level: protocol.LevelWarning, Message: "Another valid message"},
+			},
+		},
+		{
+			name:     "only whitespace",
+			input:    "   \n   \n   ",
+			expected: nil,
+		},
+		{
+			name:  "message with colons",
+			input: `kern  :info  : [Mon Jan  6 12:00:00 2025] usb 1-1: Device: vendor=0x1234: product=0x5678`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "dmesg:kernel", Level: protocol.LevelInfo, Message: "usb 1-1: Device: vendor=0x1234: product=0x5678"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseDmesgFrom(strings.NewReader(tt.input))
+			got, err := parseDmesgFrom(strings.NewReader(tt.input), 10000)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -327,13 +371,6 @@ func TestParseJournalFrom(t *testing.T) {
 			expected: nil,
 		},
 		{
-			name:  "priority as float",
-			input: `{"MESSAGE":"Test","PRIORITY":3,"__REALTIME_TIMESTAMP":"1736164800000000"}`,
-			expected: []protocol.LogEntry{
-				{Timestamp: 1736164800, Source: "journald:unknown", Level: protocol.LevelError, Message: "Test"},
-			},
-		},
-		{
 			name: "timestamp fallback",
 			input: `{"MESSAGE":"First","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164800000000"}
 {"MESSAGE":"Second","PRIORITY":"6","__REALTIME_TIMESTAMP":""}`,
@@ -363,11 +400,73 @@ func TestParseJournalFrom(t *testing.T) {
 				{Timestamp: 1736164800, Source: "journald:unknown", Level: protocol.LevelDebug, Message: "debug"},
 			},
 		},
+		{
+			name:  "empty systemd unit falls back to syslog identifier",
+			input: `{"MESSAGE":"Test","_SYSTEMD_UNIT":"","SYSLOG_IDENTIFIER":"fallback","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164800000000"}`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "journald:fallback", Level: protocol.LevelInfo, Message: "Test"},
+			},
+		},
+		{
+			name: "mixed valid and invalid json",
+			input: `{"MESSAGE":"Valid","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164800000000"}
+{invalid json line}
+{"MESSAGE":"Also valid","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164801000000"}`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "journald:unknown", Level: protocol.LevelInfo, Message: "Valid"},
+				{Timestamp: 1736164801, Source: "journald:unknown", Level: protocol.LevelInfo, Message: "Also valid"},
+			},
+		},
+		{
+			name:  "unknown priority defaults to info",
+			input: `{"MESSAGE":"Test","PRIORITY":"99","__REALTIME_TIMESTAMP":"1736164800000000"}`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "journald:unknown", Level: protocol.LevelInfo, Message: "Test"},
+			},
+		},
+		{
+			name:  "message with special characters",
+			input: `{"MESSAGE":"Error: \"file not found\" at /path/to/file","PRIORITY":"3","__REALTIME_TIMESTAMP":"1736164800000000"}`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "journald:unknown", Level: protocol.LevelError, Message: `Error: "file not found" at /path/to/file`},
+			},
+		},
+		{
+			name:  "message with newlines encoded",
+			input: `{"MESSAGE":"Line1\nLine2\nLine3","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164800000000"}`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "journald:unknown", Level: protocol.LevelInfo, Message: "Line1\nLine2\nLine3"},
+			},
+		},
+		{
+			name: "empty lines between entries",
+			input: `{"MESSAGE":"First","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164800000000"}
+
+{"MESSAGE":"Second","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164801000000"}`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "journald:unknown", Level: protocol.LevelInfo, Message: "First"},
+				{Timestamp: 1736164801, Source: "journald:unknown", Level: protocol.LevelInfo, Message: "Second"},
+			},
+		},
+		{
+			name:  "pid as string",
+			input: `{"MESSAGE":"Test","_PID":"5678","_COMM":"proc","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164800000000"}`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "journald:proc", Level: protocol.LevelInfo, Message: "Test", ProcessName: "proc", ProcessID: 5678},
+			},
+		},
+		{
+			name:  "invalid pid ignored",
+			input: `{"MESSAGE":"Test","_PID":"notanumber","_COMM":"proc","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164800000000"}`,
+			expected: []protocol.LogEntry{
+				{Timestamp: 1736164800, Source: "journald:proc", Level: protocol.LevelInfo, Message: "Test", ProcessName: "proc", ProcessID: 0},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseJournalFrom(strings.NewReader(tt.input))
+			got, err := parseJournalFrom(strings.NewReader(tt.input), 10000)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -423,5 +522,322 @@ func TestMapLogLevelToJournalPriority(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestFetchLogs_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	logs, err := FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelError})
+	if err != nil {
+		t.Fatalf("FetchLogs failed: %v", err)
+	}
+
+	t.Logf("Fetched %d log entries", len(logs))
+
+	for i, entry := range logs {
+		if i > 10 {
+			break
+		}
+		if entry.Source == "" {
+			t.Errorf("entry %d: empty source", i)
+		}
+		if entry.Message == "" {
+			t.Errorf("entry %d: empty message", i)
+		}
+		if entry.Level == "" {
+			t.Errorf("entry %d: empty level", i)
+		}
+	}
+}
+
+func TestFetchLogs_ContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelError})
+	t.Logf("FetchLogs with cancelled context: %v", err)
+}
+
+func TestFetchLogs_MaxLogsLimit(t *testing.T) {
+	if MaxLogs != 10000 {
+		t.Errorf("MaxLogs changed from expected value: got %d, want 10000", MaxLogs)
+	}
+}
+
+func TestFetchLogs_RespectsMaxLogs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	logs, err := FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelInfo})
+	if err != nil {
+		t.Fatalf("FetchLogs failed: %v", err)
+	}
+
+	if len(logs) > MaxLogs {
+		t.Errorf("got %d logs, expected at most %d", len(logs), MaxLogs)
+	}
+}
+
+func BenchmarkParseDmesgLevel(b *testing.B) {
+	levels := []string{"emerg", "alert", "crit", "err", "warn", "notice", "info", "debug", "unknown"}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, level := range levels {
+			_ = parseDmesgLevel(level)
+		}
+	}
+}
+
+func BenchmarkParseDmesgTimestampAndMsg(b *testing.B) {
+	input := "[Mon Jan  6 12:00:00 2025] Some kernel message here with more text"
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = parseDmesgTimestampAndMsg(input)
+	}
+}
+
+func BenchmarkParseDmesgTimestampAndMsg_NoTimestamp(b *testing.B) {
+	input := "Message without any timestamp brackets"
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = parseDmesgTimestampAndMsg(input)
+	}
+}
+
+func BenchmarkBuildDmesgLevelFlag(b *testing.B) {
+	levels := []protocol.LogLevel{
+		protocol.LevelDebug,
+		protocol.LevelInfo,
+		protocol.LevelWarning,
+		protocol.LevelError,
+		protocol.LevelCritical,
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, level := range levels {
+			_ = buildDmesgLevelFlag(level)
+		}
+	}
+}
+
+func TestParseDmesgFrom_Limit(t *testing.T) {
+	input := `kern  :info  : [Mon Jan  6 12:00:00 2025] Message 1
+kern  :info  : [Mon Jan  6 12:00:01 2025] Message 2
+kern  :info  : [Mon Jan  6 12:00:02 2025] Message 3
+kern  :info  : [Mon Jan  6 12:00:03 2025] Message 4
+kern  :info  : [Mon Jan  6 12:00:04 2025] Message 5`
+
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{"limit 0", 0, 0},
+		{"limit 1", 1, 1},
+		{"limit 3", 3, 3},
+		{"limit exceeds entries", 100, 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseDmesgFrom(strings.NewReader(input), tt.limit)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != tt.want {
+				t.Errorf("got %d entries, want %d", len(got), tt.want)
+			}
+		})
+	}
+}
+
+func BenchmarkParseDmesgFrom_Small(b *testing.B) {
+	input := `kern  :info  : [Mon Jan  6 12:00:00 2025] Message one
+kern  :warn  : [Mon Jan  6 12:00:01 2025] Message two
+kern  :err   : [Mon Jan  6 12:00:02 2025] Message three`
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = parseDmesgFrom(strings.NewReader(input), 10000)
+	}
+}
+
+func BenchmarkParseDmesgFrom_Large(b *testing.B) {
+	var sb strings.Builder
+	for i := range 1000 {
+		sb.WriteString("kern  :info  : [Mon Jan  6 12:00:00 2025] Kernel message number ")
+		sb.WriteString(string(rune('0' + i%10)))
+		sb.WriteString(" with some additional text\n")
+	}
+	input := sb.String()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = parseDmesgFrom(strings.NewReader(input), 10000)
+	}
+}
+
+func TestParseJournalFrom_Limit(t *testing.T) {
+	input := `{"MESSAGE":"Msg 1","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164800000000"}
+{"MESSAGE":"Msg 2","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164801000000"}
+{"MESSAGE":"Msg 3","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164802000000"}
+{"MESSAGE":"Msg 4","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164803000000"}
+{"MESSAGE":"Msg 5","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164804000000"}`
+
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{"limit 0", 0, 0},
+		{"limit 1", 1, 1},
+		{"limit 3", 3, 3},
+		{"limit exceeds entries", 100, 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseJournalFrom(strings.NewReader(input), tt.limit)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != tt.want {
+				t.Errorf("got %d entries, want %d", len(got), tt.want)
+			}
+		})
+	}
+}
+
+func BenchmarkParseJournalFrom_Small(b *testing.B) {
+	input := `{"MESSAGE":"First message","_SYSTEMD_UNIT":"test.service","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164800000000","_COMM":"test","_PID":"1234"}
+{"MESSAGE":"Second message","_SYSTEMD_UNIT":"other.service","PRIORITY":"3","__REALTIME_TIMESTAMP":"1736164801000000","_COMM":"other","_PID":"5678"}`
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = parseJournalFrom(strings.NewReader(input), 10000)
+	}
+}
+
+func BenchmarkParseJournalFrom_Large(b *testing.B) {
+	var sb strings.Builder
+	for i := range 1000 {
+		sb.WriteString(`{"MESSAGE":"Log message number `)
+		sb.WriteString(string(rune('0' + i%10)))
+		sb.WriteString(`","_SYSTEMD_UNIT":"test.service","PRIORITY":"6","__REALTIME_TIMESTAMP":"1736164800000000","_COMM":"test","_PID":"1234"}`)
+		sb.WriteString("\n")
+	}
+	input := sb.String()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = parseJournalFrom(strings.NewReader(input), 10000)
+	}
+}
+
+func BenchmarkMapLogLevelToJournalPriority(b *testing.B) {
+	levels := []protocol.LogLevel{
+		protocol.LevelDebug,
+		protocol.LevelInfo,
+		protocol.LevelNotice,
+		protocol.LevelWarning,
+		protocol.LevelError,
+		protocol.LevelCritical,
+		protocol.LevelAlert,
+		protocol.LevelEmergency,
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, level := range levels {
+			_ = mapLogLevelToJournalPriority(level)
+		}
+	}
+}
+
+func BenchmarkFetchLogs_Integration(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping integration benchmark")
+	}
+
+	ctx := context.Background()
+
+	// Warm up and report count
+	logs, err := FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelError})
+	if err != nil {
+		b.Skipf("FetchLogs not available: %v", err)
+	}
+	b.Logf("Benchmarking with ~%d log entries", len(logs))
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelError})
+	}
+}
+
+func BenchmarkFetchLogs_Error(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping integration benchmark")
+	}
+	ctx := context.Background()
+	logs, _ := FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelError})
+	b.Logf("Error level: %d entries", len(logs))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelError})
+	}
+}
+
+func BenchmarkFetchLogs_Warning(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping integration benchmark")
+	}
+	ctx := context.Background()
+	logs, _ := FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelWarning})
+	b.Logf("Warning level: %d entries", len(logs))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelWarning})
+	}
+}
+
+func BenchmarkFetchLogs_Info(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping integration benchmark")
+	}
+	ctx := context.Background()
+	logs, _ := FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelInfo})
+	b.Logf("Info level: %d entries", len(logs))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelInfo})
+	}
+}
+
+func BenchmarkFetchLogs_AllLevels(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping integration benchmark")
+	}
+
+	ctx := context.Background()
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelDebug})
 	}
 }
