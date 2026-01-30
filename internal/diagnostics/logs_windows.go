@@ -63,20 +63,19 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 
 	encoded := encodePowerShell(psCmd)
 
-	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-EncodedCommand", encoded)
+	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-NoLogo", "-EncodedCommand", encoded)
 
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			stderr := string(exitErr.Stderr)
-			// Ignore progress/module loading messages
-			if strings.Contains(stderr, "Preparing modules") || strings.Contains(stderr, "CLIXML") {
-				// Continue processing stdout if it exists
-				if len(bytes.TrimSpace(out)) > 0 {
-					err = nil
-				} else {
-					return nil, nil
-				}
+			if len(bytes.TrimSpace(out)) > 0 {
+				err = nil // Ignore the error if output was received
+			} else if stderr == "" {
+				return nil, nil
+			} else if isBenignPowerShellError(stderr) {
+				// Ignore known noise
+				return nil, nil
 			}
 		}
 		if err != nil {
@@ -208,4 +207,21 @@ func getBootTime() time.Time {
 	ret, _, _ := procGetTickCount64.Call()
 	tickCount := uint64(ret)
 	return time.Now().Add(time.Duration(-tickCount) * time.Millisecond)
+}
+
+// isBenignPowerShellError filters out CLIXML and initialization messages sent to stderr.
+func isBenignPowerShellError(stderr string) bool {
+	ignored := []string{
+		"#< CLIXML",
+		"Preparing modules",
+		"No events were found",
+		"System.Management.Automation",
+	}
+
+	for _, s := range ignored {
+		if strings.Contains(stderr, s) {
+			return true
+		}
+	}
+	return false
 }
