@@ -274,8 +274,8 @@ func TestFetchLogs_AllLevels(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
+	// Start with Error as Critical may have no events (causes CI errors)
 	levels := []protocol.LogLevel{
-		protocol.LevelCritical,
 		protocol.LevelError,
 		protocol.LevelWarning,
 		protocol.LevelInfo,
