@@ -105,6 +105,16 @@ func TestParseWinDate(t *testing.T) {
 			input:    "/Date(abc)/",
 			expected: 0,
 		},
+		{
+			name:     "negative timestamp",
+			input:    "/Date(-1000)/",
+			expected: -1,
+		},
+		{
+			name:     "just wrapper no number",
+			input:    "/Date()/",
+			expected: 0,
+		},
 	}
 
 	for _, tt := range tests {
