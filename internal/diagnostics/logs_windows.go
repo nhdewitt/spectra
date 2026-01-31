@@ -42,7 +42,7 @@ var (
 func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEntry, error) {
 	levels := getWindowsLevelFlag(opts.MinLevel)
 
-	bootTime := getBootTime().Format(time.RFC3339)
+	bootTime := getBootTime().UTC().Format(time.RFC3339)
 
 	xpathQuery := fmt.Sprintf(
 		`*[System[(Level=%s) and TimeCreated[@SystemTime>='%s']]]`,
@@ -142,7 +142,7 @@ func getWindowsLevelFlag(min protocol.LogLevel) string {
 	case protocol.LevelWarning:
 		return "1,2,3"
 	case protocol.LevelNotice, protocol.LevelInfo, protocol.LevelDebug:
-		return "1,2,3,4"
+		return "0,4,1,2,3"
 	default:
 		return "1,2"
 	}
