@@ -133,7 +133,7 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 }
 
 func getWindowsLevelFlag(min protocol.LogLevel) string {
-	// 1=Critical, 2=Error, 3=Warning, 4=Info
+	// 1=Critical, 2=Error, 3=Warning, 4=Info, 0=LogAlways
 	switch min {
 	case protocol.LevelEmergency, protocol.LevelAlert, protocol.LevelCritical:
 		return "1"

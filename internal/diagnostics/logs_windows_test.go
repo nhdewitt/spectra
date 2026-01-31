@@ -20,9 +20,9 @@ func TestGetWindowsLevelFlag(t *testing.T) {
 		{"critical", protocol.LevelCritical, "1"},
 		{"error", protocol.LevelError, "1,2"},
 		{"warning", protocol.LevelWarning, "1,2,3"},
-		{"notice", protocol.LevelNotice, "1,2,3,4"},
-		{"info", protocol.LevelInfo, "1,2,3,4"},
-		{"debug", protocol.LevelDebug, "1,2,3,4"},
+		{"notice", protocol.LevelNotice, "0,4,1,2,3"},
+		{"info", protocol.LevelInfo, "0,4,1,2,3"},
+		{"debug", protocol.LevelDebug, "0,4,1,2,3"},
 		{"unknown defaults to error", protocol.LogLevel("unknown"), "1,2"},
 	}
 
