@@ -48,6 +48,7 @@ func TestRunTraceroute_External(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
+	requireRoot(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -73,6 +74,7 @@ func TestRunTraceroute_InvalidTarget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
+	requireRoot(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
