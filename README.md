@@ -1,3 +1,9 @@
+Thank you for the clarification. It is important that the documentation accurately reflects the debugging tools available, especially for memory profiling.
+
+Here is the updated **README.md** with the corrected description for the `DEBUG` environment variable.
+
+---
+
 # Spectra
 
 Spectra is a system monitoring agent and server written in Go. It collects metrics from Linux and Windows hosts and transmits them to a central server for aggregation and analysis.
@@ -6,6 +12,81 @@ Spectra is a system monitoring agent and server written in Go. It collects metri
 
 The agent runs on each monitored host, collecting metrics at configurable intervals and sending them in compressed batches to the server. The server receives metrics, processes them, and provides a command-and-control interface for on-demand diagnostics.
 
+## Motivation
+
+Most monitoring solutions treat all hosts the same—abstracting away the hardware until it becomes a "black box." Spectra was built to bridge the gap between high-level application monitoring (like Prometheus) and low-level hardware diagnostics.
+
+It is designed to address three specific gaps in the current ecosystem:
+
+1. **Hardware Awareness:** A Raspberry Pi has different critical metrics (voltage, throttling, SD card wear) than an Intel Server. Spectra treats these physical realities as first-class citizens.
+2. **Unified Workloads:** Whether a workload is a Docker container, an LXC container, or a QEMU VM, Spectra abstracts them into a single "Workload" entity, allowing for unified dashboards across heterogeneous virtualization clusters (Proxmox + Docker).
+3. **Active Diagnostics:** Passive monitoring tells you *that* something is wrong; Spectra allows you to *fix* it. By embedding safe, remote diagnostic primitives (Ping, Traceroute, Disk Usage Analysis) directly into the agent, administrators can troubleshoot outages without needing SSH/RDP access.
+
+## Quick Start
+
+Since the project is currently in the collector development phase, the quickest way to test Spectra is to run the agent locally and observe the metric collection logs.
+
+**Prerequisites:** Go 1.24+
+
+1. **Clone the repository:**
+```bash
+git clone https://github.com/nhdewitt/spectra.git
+cd spectra
+
+```
+
+
+2. **Start the Server (Terminal 1):**
+The server currently acts as a sink for metrics and an API for diagnostics.
+```bash
+go run ./cmd/server
+# Server listening on :8080
+
+```
+
+
+3. **Start the Agent (Terminal 2):**
+The agent will auto-detect your OS and start the appropriate collectors.
+```bash
+go run ./cmd/agent
+# Logs will show loaded collectors (e.g., "Starting CPU collector", "Starting Docker collector")
+
+```
+
+
+
+## Usage
+
+### Configuration
+
+Spectra is designed to be "zero-conf" for standard deployments, but it can be tuned via Environment Variables.
+
+**Agent Configuration:**
+
+* `SPECTRA_SERVER`: URL of the aggregation server (default: `http://127.0.0.1:8080`).
+* `HOSTNAME`: Override the auto-detected hostname (useful for containers/VMs).
+* `DEBUG`: Set to `true` to enable the **pprof server** on `localhost:6060` for memory leak detection and CPU profiling.
+
+### Triggering Diagnostics
+
+While the Web UI is in development, you can interact with the active diagnostics using `curl` against the Server API.
+
+**Example: Remote Ping**
+Ask the agent on `webserver-01` to ping `google.com`:
+
+```bash
+curl -X POST "http://localhost:8080/admin/trigger_network?hostname=webserver-01&action=ping&target=google.com"
+
+```
+
+**Example: Disk Usage Analysis**
+Ask the agent to find the top 10 largest directories in `/var/log`:
+
+```bash
+curl -X POST "http://localhost:8080/admin/trigger_disk?hostname=webserver-01&path=/var/log&top_n=10"
+
+```
+
 ## Current Status
 
 The agent and server are functional with the following capabilities implemented:
@@ -13,7 +94,7 @@ The agent and server are functional with the following capabilities implemented:
 ### Metric Collectors (Agent)
 
 | Collector | Linux | Windows | Interval | Description |
-|-----------|:-----:|:-------:|----------|-------------|
+| --- | --- | --- | --- | --- |
 | CPU | ✓ | ✓ | 5s | Usage percentage, per-core usage, load averages |
 | Memory | ✓ | ✓ | 10s | RAM total/used/available, swap usage |
 | Disk | ✓ | ✓ | 60s | Per-mount usage, filesystem type, inodes (Linux) |
@@ -33,7 +114,7 @@ The agent and server are functional with the following capabilities implemented:
 The container collector supports multiple runtimes:
 
 | Source | Type | Requirements |
-|--------|------|--------------|
+| --- | --- | --- |
 | Docker | Containers | Docker daemon running |
 | Proxmox | LXC | pvesh CLI available (runs on Proxmox node) |
 | Proxmox | VM | pvesh CLI available (runs on Proxmox node) |
@@ -43,7 +124,7 @@ Container metrics include CPU usage, memory usage/limits, and network I/O. Proxm
 ### On-Demand Diagnostics (Server-Triggered)
 
 | Command | Linux | Windows | Description |
-|---------|:-----:|:-------:|-------------|
+| --- | --- | --- | --- |
 | Fetch Logs | ✓ | ✓ | Retrieve system logs filtered by severity |
 | Disk Usage | ✓ | ✓ | Scan directories for largest files/folders |
 | List Mounts | ✓ | ✓ | Return available mount points |
@@ -54,20 +135,20 @@ Container metrics include CPU usage, memory usage/limits, and network I/O. Proxm
 
 ### Server Components
 
-- HTTP API for metric ingestion (`/api/v1/metrics`)
-- Agent registration endpoint (`/api/v1/agent/register`)
-- Command queue with long-polling (`/api/v1/agent/command`)
-- Command result receiver (`/api/v1/agent/command_result`)
-- Admin endpoints for triggering diagnostics
+* HTTP API for metric ingestion (`/api/v1/metrics`)
+* Agent registration endpoint (`/api/v1/agent/register`)
+* Command queue with long-polling (`/api/v1/agent/command`)
+* Command result receiver (`/api/v1/agent/command_result`)
+* Admin endpoints for triggering diagnostics
 
 ### Protocol
 
 Metrics are transmitted as JSON with gzip compression. Each metric is wrapped in an envelope containing:
 
-- `type`: Metric type identifier
-- `timestamp`: Collection timestamp
-- `hostname`: Source host identifier
-- `data`: Metric-specific payload
+* `type`: Metric type identifier
+* `timestamp`: Collection timestamp
+* `hostname`: Source host identifier
+* `data`: Metric-specific payload
 
 ## Building
 
@@ -79,6 +160,7 @@ go build -o spectra-agent ./cmd/agent
 
 # Build server
 go build -o spectra-server ./cmd/server
+
 ```
 
 ### Cross-Compilation
@@ -95,6 +177,7 @@ GOOS=linux GOARCH=arm64 go build -o spectra-agent ./cmd/agent
 
 # ARMv6 (Raspberry Pi 1/Zero)
 GOOS=linux GOARCH=arm GOARM=6 go build -o spectra-agent ./cmd/agent
+
 ```
 
 ## Running
@@ -104,6 +187,7 @@ GOOS=linux GOARCH=arm GOARM=6 go build -o spectra-agent ./cmd/agent
 ```bash
 ./spectra-server
 # Listens on :8080 by default
+
 ```
 
 ### Agent
@@ -118,23 +202,17 @@ SPECTRA_SERVER=http://10.0.0.5:8080 ./spectra-agent
 # Override hostname
 HOSTNAME=webserver-01 ./spectra-agent
 
-# Enable pprof debugging
-./spectra-agent -debug
+# Enable pprof debugging server on :6060
+DEBUG=true ./spectra-agent
+
 ```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SPECTRA_SERVER` | `http://127.0.0.1:8080` | Server URL |
-| `HOSTNAME` | System hostname | Override reported hostname |
 
 ## API Reference
 
 ### Agent Endpoints
 
 | Method | Path | Description |
-|--------|------|-------------|
+| --- | --- | --- |
 | POST | `/api/v1/metrics` | Submit metric batch |
 | POST | `/api/v1/agent/register` | Register agent with host info |
 | GET | `/api/v1/agent/command` | Long-poll for pending commands |
@@ -143,7 +221,7 @@ HOSTNAME=webserver-01 ./spectra-agent
 ### Admin Endpoints
 
 | Method | Path | Query Parameters | Description |
-|--------|------|------------------|-------------|
+| --- | --- | --- | --- |
 | POST | `/admin/trigger_logs` | `hostname` | Request log fetch from agent |
 | POST | `/admin/trigger_disk` | `hostname`, `path`, `top_n` | Request disk usage scan |
 | POST | `/admin/trigger_network` | `hostname`, `action`, `target` | Request network diagnostic |
@@ -167,6 +245,7 @@ go test -v ./...
 
 # Run benchmarks
 go test -bench=. -benchmem ./internal/collector/...
+
 ```
 
 Tests use table-driven patterns with mock data. Platform-specific tests use build tags to run only on their target OS.
@@ -176,17 +255,18 @@ Tests use table-driven patterns with mock data. Platform-specific tests use buil
 ```
 spectra/
 ├── cmd/
-│   ├── agent/          # Agent entry point
-│   └── server/         # Server entry point
+│   ├── agent/          # Agent entry point
+│   └── server/         # Server entry point
 ├── internal/
-│   ├── agent/          # Agent runtime, collector orchestration
-│   ├── collector/      # Metric collection implementations
-│   ├── diagnostics/    # On-demand diagnostic tools
-│   ├── protocol/       # Shared types and metric definitions
-│   ├── sender/         # HTTP transport with compression
-│   └── server/         # Server handlers, routing, storage
+│   ├── agent/          # Agent runtime, collector orchestration
+│   ├── collector/      # Metric collection implementations
+│   ├── diagnostics/    # On-demand diagnostic tools
+│   ├── protocol/       # Shared types and metric definitions
+│   ├── sender/         # HTTP transport with compression
+│   └── server/         # Server handlers, routing, storage
 └── .github/
-    └── workflows/      # CI configuration
+    └── workflows/      # CI configuration
+
 ```
 
 ## Performance
@@ -194,12 +274,12 @@ spectra/
 Collector benchmarks on Intel i7-13700K (Windows) and Raspberry Pi 1 (Linux):
 
 | Collector | i7-13700K | Pi 1 | Notes |
-|-----------|-----------|------|-------|
-| CPU | 30-60µs | 2.5ms | |
-| Memory | 420ns | 930µs | |
-| Disk | 0.7-1.6ms | 125µs | |
-| Disk I/O | 9-11µs | 2.2ms | |
-| Network | 1.1ms | 8.4ms | |
+| --- | --- | --- | --- |
+| CPU | 30-60µs | 2.5ms |  |
+| Memory | 420ns | 930µs |  |
+| Disk | 0.7-1.6ms | 125µs |  |
+| Disk I/O | 9-11µs | 2.2ms |  |
+| Network | 1.1ms | 8.4ms |  |
 | Processes | 58ms | 71ms | Parallel on Windows |
 | System | 45-52ms | N/A | WMI overhead on Windows |
 
@@ -215,57 +295,66 @@ Proxmox VE guest metrics via pvesh CLI with parallel collection.
 
 Replace in-memory storage with persistent database:
 
-- [ ] Select database (PostgreSQL, TimescaleDB, or InfluxDB)
-- [ ] Design schema for time-series metric storage
-- [ ] Implement metric ingestion pipeline
-- [ ] Add data retention policies
-- [ ] Create indexes for common query patterns
-- [ ] Implement historical data queries API
+* [ ] Select database (PostgreSQL, TimescaleDB, or InfluxDB)
+* [ ] Design schema for time-series metric storage
+* [ ] Implement metric ingestion pipeline
+* [ ] Add data retention policies
+* [ ] Create indexes for common query patterns
+* [ ] Implement historical data queries API
 
 ### Phase 3: Agent Registration System
 
 Formalize agent lifecycle management:
 
-- [ ] Agent authentication (API keys or certificates)
-- [ ] Agent registration workflow with approval
-- [ ] Agent heartbeat tracking
-- [ ] Agent status (online/offline/stale)
-- [ ] Agent metadata storage (OS, version, capabilities)
-- [ ] Agent deregistration/cleanup
+* [ ] Agent authentication (API keys or certificates)
+* [ ] Agent registration workflow with approval
+* [ ] Agent heartbeat tracking
+* [ ] Agent status (online/offline/stale)
+* [ ] Agent metadata storage (OS, version, capabilities)
+* [ ] Agent deregistration/cleanup
 
 ### Phase 4: Web Interface
 
 Build administrative dashboard:
 
-- [ ] Agent inventory view
-- [ ] Real-time metric visualization
-- [ ] Historical metric charts
-- [ ] Alert configuration
-- [ ] Diagnostic command interface
-- [ ] User authentication
-- [ ] Multi-tenancy support
+* [ ] Agent inventory view
+* [ ] Real-time metric visualization
+* [ ] Historical metric charts
+* [ ] Alert configuration
+* [ ] Diagnostic command interface
+* [ ] User authentication
+* [ ] Multi-tenancy support
 
 ### Future Considerations
 
-- Alert rules engine with notification integrations
-- Metric aggregation and rollup
-- Agent auto-update mechanism
-- Configuration management
-- Log aggregation
-- Distributed tracing integration
+* Alert rules engine with notification integrations
+* Metric aggregation and rollup
+* Agent auto-update mechanism
+* Configuration management
+* Log aggregation
+* Distributed tracing integration
 
 ## Dependencies
 
 Core:
 
-- `golang.org/x/sys` - Low-level system calls
-- `github.com/tklauser/go-sysconf` - System configuration values
-- `github.com/docker/docker` - Docker API client
+* `golang.org/x/sys` - Low-level system calls
+* `github.com/tklauser/go-sysconf` - System configuration values
+* `github.com/docker/docker` - Docker API client
 
 Windows-specific:
 
-- `github.com/yusufpapurcu/wmi` - WMI queries
+* `github.com/yusufpapurcu/wmi` - WMI queries
+
+## Contributing
+
+We welcome contributions! Please see the following guidelines:
+
+1. **Fork and Branch**: Create a feature branch for your changes.
+2. **Style**: Ensure code adheres to standard Go formatting (`gofmt`).
+3. **Testing**: New collectors or logic must include unit tests. Please run the full test suite (`go test ./...`) before submitting.
+4. **Benchmarks**: If modifying high-frequency collectors (CPU, Process), please include benchmark comparisons to ensure no regression in memory allocation or execution time.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](https://www.google.com/search?q=LICENSE) for details.
