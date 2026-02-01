@@ -5,3 +5,4 @@
 *.armv6
 *.sh
 bench*.log
+coverage.out
