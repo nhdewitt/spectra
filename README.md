@@ -1,9 +1,3 @@
-Thank you for the clarification. It is important that the documentation accurately reflects the debugging tools available, especially for memory profiling.
-
-Here is the updated **README.md** with the corrected description for the `DEBUG` environment variable.
-
----
-
 # Spectra
 
 Spectra is a system monitoring agent and server written in Go. It collects metrics from Linux and Windows hosts and transmits them to a central server for aggregation and analysis.
