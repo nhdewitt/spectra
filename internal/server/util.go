@@ -61,10 +61,11 @@ func (s *Server) queueHelper(w http.ResponseWriter, hostname string, cmdType pro
 		Payload: payload,
 	}
 
-	if s.Store.QueueCommand(hostname, cmd) {
-		fmt.Fprintln(w, successMsg)
-	} else {
+	err := s.Store.QueueCommand(hostname, cmd)
+	if err != nil {
 		http.Error(w, "Queue full or agent not found", http.StatusServiceUnavailable)
+	} else {
+		fmt.Fprintln(w, successMsg)
 	}
 }
 

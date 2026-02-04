@@ -7,7 +7,8 @@ import (
 )
 
 type Config struct {
-	Port int
+	Port           int
+	CommandTimeout time.Duration
 }
 
 type Server struct {
@@ -17,6 +18,10 @@ type Server struct {
 }
 
 func New(cfg Config) *Server {
+	if cfg.CommandTimeout == 0 {
+		cfg.CommandTimeout = 30 * time.Second
+	}
+
 	s := &Server{
 		Config: cfg,
 		Store:  NewAgentStore(),

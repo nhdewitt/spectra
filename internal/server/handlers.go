@@ -32,8 +32,10 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.Store.Register(info.Hostname)
+
 	// TODO: DB agent registration
-	log.Printf("Registered Agent: %s (%s, %d cores, %s RAM)", info.Hostname, info.Platform, info.CPUCores, formatBytes(info.RAMTotal))
+	// log.Printf("Registered Agent: %s (%s, %d cores, %s RAM)", info.Hostname, info.Platform, info.CPUCores, formatBytes(info.RAMTotal))
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -67,8 +69,8 @@ func (s *Server) handleAgentCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd, found := s.Store.WaitForCommand(hostname, 30*time.Second)
-	if !found {
+	cmd, err := s.Store.WaitForCommand(r.Context(), hostname, s.Config.CommandTimeout)
+	if err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -102,6 +104,12 @@ func (s *Server) handleCommandResult(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminTriggerLogs(w http.ResponseWriter, r *http.Request) {
 	hostname, ok := getHostname(w, r)
 	if !ok {
+		http.Error(w, "Hostname required", http.StatusBadRequest)
+		return
+	}
+
+	if !s.Store.Exists(hostname) {
+		http.Error(w, fmt.Sprintf("Agent '%s' is not registered", hostname), http.StatusBadRequest)
 		return
 	}
 
@@ -114,6 +122,12 @@ func (s *Server) handleAdminTriggerLogs(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleAdminTriggerDisk(w http.ResponseWriter, r *http.Request) {
 	hostname, ok := getHostname(w, r)
 	if !ok {
+		http.Error(w, "Hostname required", http.StatusBadRequest)
+		return
+	}
+
+	if !s.Store.Exists(hostname) {
+		http.Error(w, fmt.Sprintf("Agent '%s' is not registered", hostname), http.StatusBadRequest)
 		return
 	}
 
@@ -134,6 +148,12 @@ func (s *Server) handleAdminTriggerDisk(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleAdminTriggerNetwork(w http.ResponseWriter, r *http.Request) {
 	hostname, ok := getHostname(w, r)
 	if !ok {
+		http.Error(w, "Hostname required", http.StatusBadRequest)
+		return
+	}
+
+	if !s.Store.Exists(hostname) {
+		http.Error(w, fmt.Sprintf("Agent '%s' is not registerd", hostname), http.StatusBadRequest)
 		return
 	}
 
