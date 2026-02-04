@@ -83,3 +83,10 @@ func cleanVendor(v string) string {
 	}
 	return v
 }
+
+func normalizeMax(temp, v float64) float64 {
+	if v <= 0 || v < temp || v >= 200 {
+		return 0
+	}
+	return v
+}

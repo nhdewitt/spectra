@@ -36,7 +36,8 @@ func CollectTemperature(ctx context.Context) ([]protocol.Metric, error) {
 		// Calc Max Temp: CriticalTripPoint
 		maxCelsius := 0.0
 		if v.CriticalTripPoint > 0 {
-			maxCelsius = (float64(v.CriticalTripPoint) - 2732.0) / 10.0
+			raw := (float64(v.CriticalTripPoint) - 2732.0) / 10.0
+			maxCelsius = normalizeMax(celsius, raw)
 		}
 
 		// Clean Name
