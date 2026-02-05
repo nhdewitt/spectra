@@ -6,3 +6,4 @@
 *.sh
 bench*.log
 coverage.out
+bench_binaries/

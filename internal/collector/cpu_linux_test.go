@@ -13,6 +13,22 @@ import (
 	"testing"
 )
 
+func parseFixture(t *testing.T, key string) map[string]CPURaw {
+	t.Helper()
+
+	s, ok := procStatSamples[key]
+	if !ok {
+		t.Fatalf("unknown fixture %q", key)
+	}
+
+	r := strings.NewReader(s)
+	got, err := parseProcStatFrom(r)
+	if err != nil {
+		t.Fatalf("parsing fixture %q: %v", key, err)
+	}
+	return got
+}
+
 func BenchmarkCollectCPU(b *testing.B) {
 	ctx := context.Background()
 
@@ -844,27 +860,26 @@ func TestCalculateDelta_CounterRegression(t *testing.T) {
 func TestParseProcStatFrom(t *testing.T) {
 	tests := []struct {
 		name      string
-		file      string
+		fixture   string
 		wantCores int
 		wantErr   bool
 	}{
-		{"4-core standard", "testdata/proc_stat_4core.txt", 4, false},
-		{"single core", "testdata/proc_stat_single_core.txt", 1, false},
-		{"8-core loaded", "testdata/proc_stat_8core_loaded.txt", 8, false},
-		{"high values", "testdata/proc_stat_high_values.txt", 4, false},
-		{"fresh boot", "testdata/proc_stat_fresh_boot.txt", 2, false},
-		{"old kernel", "testdata/proc_stat_old_kernel.txt", 0, false},
+		{"4-core standard", "proc_stat_4core", 4, false},
+		{"single core", "proc_stat_single_core", 1, false},
+		{"8-core loaded", "proc_stat_8core_loaded", 8, false},
+		{"high values", "proc_stat_high_values", 4, false},
+		{"fresh boot", "proc_stat_fresh_boot", 2, false},
+		{"old kernel", "proc_stat_old_kernel", 0, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f, err := os.Open(tt.file)
-			if err != nil {
-				t.Fatalf("opening test file: %v", err)
+			s, ok := procStatSamples[tt.fixture]
+			if !ok {
+				t.Fatalf("unknown fixture %q", tt.fixture)
 			}
-			defer f.Close()
 
-			got, err := parseProcStatFrom(f)
+			got, err := parseProcStatFrom(strings.NewReader(s))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -900,54 +915,54 @@ func parseTestFile(t *testing.T, path string) map[string]CPURaw {
 func TestProcStatFromDeltas(t *testing.T) {
 	tests := []struct {
 		name      string
-		files     []string
+		fixtures  []string
 		wantOK    bool
 		wantDelta CPUDelta
 		wantUsage float64
 	}{
 		{
-			name:   "normal usage",
-			files:  []string{"testdata/proc_stat_delta_test_normal_t0.txt", "testdata/proc_stat_delta_test_normal_t1.txt"},
-			wantOK: true,
+			name:     "normal usage",
+			fixtures: []string{"delta_normal_t0", "delta_normal_t1"},
+			wantOK:   true,
 			wantDelta: CPUDelta{
 				User: 1000, Nice: 100, System: 500, Idle: 8000, IOWait: 200, IRQ: 10, SoftIRQ: 20, Steal: 5, Total: 9835, Used: 1635,
 			},
 			wantUsage: 16.62,
 		},
 		{
-			name:   "high cpu",
-			files:  []string{"testdata/proc_stat_delta_test_high_cpu_t0.txt", "testdata/proc_stat_delta_test_high_cpu_t1.txt"},
-			wantOK: true,
+			name:     "high cpu",
+			fixtures: []string{"delta_high_cpu_t0", "delta_high_cpu_t1"},
+			wantOK:   true,
 			wantDelta: CPUDelta{
 				User: 9000, Nice: 100, System: 800, Idle: 100, IOWait: 50, IRQ: 20, SoftIRQ: 30, Steal: 0, Total: 10100, Used: 9950,
 			},
 			wantUsage: 98.51,
 		},
 		{
-			name:   "idle system",
-			files:  []string{"testdata/proc_stat_delta_test_idle_t0.txt", "testdata/proc_stat_delta_test_idle_t1.txt"},
-			wantOK: true,
+			name:     "idle system",
+			fixtures: []string{"delta_idle_t0", "delta_idle_t1"},
+			wantOK:   true,
 			wantDelta: CPUDelta{
 				User: 10, Nice: 0, System: 5, Idle: 10000, IOWait: 5, IRQ: 0, SoftIRQ: 0, Steal: 0, Total: 10020, Used: 15,
 			},
 			wantUsage: 0.15,
 		},
 		{
-			name:   "counter reset",
-			files:  []string{"testdata/proc_stat_delta_test_reset_t0.txt", "testdata/proc_stat_delta_test_reset_t1.txt"},
-			wantOK: false,
+			name:     "counter reset",
+			fixtures: []string{"delta_reset_t0", "delta_reset_t1"},
+			wantOK:   false,
 		},
 		{
-			name:   "cpu hotplug",
-			files:  []string{"testdata/proc_stat_delta_test_hotplug_t0.txt", "testdata/proc_stat_delta_test_hotplug_t1.txt"},
-			wantOK: false,
+			name:     "cpu hotplug",
+			fixtures: []string{"delta_hotplug_t0", "delta_hotplug_t1"},
+			wantOK:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			prev := parseTestFile(t, tt.files[0])
-			cur := parseTestFile(t, tt.files[1])
+			prev := parseFixture(t, tt.fixtures[0])
+			cur := parseFixture(t, tt.fixtures[1])
 
 			deltaMap, ok := calculateCPUDeltas(cur, prev)
 			if ok != tt.wantOK {
@@ -971,14 +986,11 @@ func TestProcStatFromDeltas(t *testing.T) {
 }
 
 func BenchmarkParseProcStatFrom(b *testing.B) {
-	data, err := os.ReadFile("testdata/proc_stat_8core_loaded.txt")
-	if err != nil {
-		b.Fatal(err)
-	}
+	data := []byte(procStatSamples["proc_stat_8core_loaded"])
 
 	b.ResetTimer()
 	for b.Loop() {
 		r := bytes.NewReader(data)
-		parseProcStatFrom(r)
+		_, _ = parseProcStatFrom(r)
 	}
 }
