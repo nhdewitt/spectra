@@ -4,8 +4,6 @@ import (
 	"math"
 	"testing"
 	"time"
-
-	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
 func TestPercent(t *testing.T) {
@@ -104,41 +102,6 @@ func TestDelta(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestSingleMetric(t *testing.T) {
-	t.Run("Valid Metric", func(t *testing.T) {
-		m := protocol.SystemMetric{Uptime: 1000}
-		result, err := singleMetric(m, nil)
-		if err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-		if len(result) != 1 {
-			t.Errorf("expected 1 metric, got %d", len(result))
-		}
-	})
-
-	t.Run("Nil Metric", func(t *testing.T) {
-		result, err := singleMetric(nil, nil)
-		if err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-		if result != nil {
-			t.Errorf("expected nil result for nil metric, got %v", result)
-		}
-	})
-
-	t.Run("With Error", func(t *testing.T) {
-		m := protocol.SystemMetric{Uptime: 1000}
-		testErr := &testError{"test error"}
-		result, err := singleMetric(m, testErr)
-		if err != testErr {
-			t.Errorf("expected error to pass through, got %v", err)
-		}
-		if result != nil {
-			t.Errorf("expected nil result when error present, got %v", result)
-		}
-	})
 }
 
 type testError struct {

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nhdewitt/spectra/internal/protocol"
 	"golang.org/x/exp/constraints"
 )
 
@@ -36,13 +35,6 @@ func delta(curr, prev uint64) uint64 {
 		return 0
 	}
 	return curr - prev
-}
-
-func singleMetric(m protocol.Metric, err error) ([]protocol.Metric, error) {
-	if err != nil || m == nil {
-		return nil, err
-	}
-	return []protocol.Metric{m}, nil
 }
 
 // makeUintParser returns a function that parses fields[i] as uint64,
