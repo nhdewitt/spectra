@@ -5,5 +5,7 @@
 *.armv6
 *.sh
 bench*.log
+pi*.log
 coverage.out
 bench_binaries/
+nodefacts_binaries/

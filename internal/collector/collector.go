@@ -51,7 +51,6 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, collect Col
 
 		data, err := collect(ctx)
 		if err != nil {
-			log.Printf("collection failed: %v", err)
 			return
 		}
 

@@ -12,8 +12,6 @@ import (
 
 // Register gathers host info and sends it to the server.
 func (a *Agent) Register() error {
-	fmt.Println("Collecting system inventory...")
-
 	info := collector.CollectHostInfo()
 	info.Hostname = a.Config.Hostname
 
@@ -27,9 +25,8 @@ func (a *Agent) Register() error {
 
 	url := fmt.Sprintf("%s/api/v1/agent/register", a.Config.BaseURL)
 
-	// Request with retries
-	for range 3 {
-		req, _ := http.NewRequestWithContext(a.ctx, "POST", url, bytes.NewReader(payload))
+	for attempt := range a.RetryConfig.MaxAttempts {
+		req, _ := http.NewRequestWithContext(a.ctx, http.MethodPost, url, bytes.NewReader(payload))
 		a.setHeaders(req)
 		req.Header.Del("Content-Encoding")
 
@@ -41,7 +38,10 @@ func (a *Agent) Register() error {
 		if resp != nil {
 			resp.Body.Close()
 		}
-		time.Sleep(2 * time.Second)
+
+		if attempt < a.RetryConfig.MaxAttempts-1 {
+			time.Sleep(a.RetryConfig.Delay(attempt))
+		}
 	}
 
 	if reqErr != nil {
@@ -52,9 +52,6 @@ func (a *Agent) Register() error {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("server rejected registration: %s", resp.Status)
 	}
-
-	fmt.Printf("Agent Registered Successfully as '%s'", info.Hostname)
-	fmt.Printf("   OS: %s %s | CPU: %s (%d Cores)\n", info.Platform, info.PlatVer, info.CPUModel, info.CPUCores)
 
 	return nil
 }

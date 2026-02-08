@@ -40,6 +40,40 @@ type Agent struct {
 	gzipW   *gzip.Writer
 
 	commonHeaders map[string]string
+
+	RetryConfig RetryConfig
+}
+
+type RetryConfig struct {
+	MaxAttempts  int
+	InitialDelay time.Duration
+	MaxDelay     time.Duration
+	Multiplier   float64
+}
+
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxAttempts:  3,
+		InitialDelay: 1 * time.Second,
+		MaxDelay:     30 * time.Second,
+		Multiplier:   2.0,
+	}
+}
+
+func (rc RetryConfig) Delay(attempt int) time.Duration {
+	if attempt <= 0 {
+		return rc.InitialDelay
+	}
+
+	delay := float64(rc.InitialDelay)
+	for range attempt {
+		delay *= rc.Multiplier
+	}
+
+	if time.Duration(delay) > rc.MaxDelay {
+		return rc.MaxDelay
+	}
+	return time.Duration(delay)
 }
 
 // New creates a configured Agent instance
@@ -64,6 +98,7 @@ func New(cfg Config) *Agent {
 			"Content-Encoding": "gzip",
 			"User-Agent":       "Spectra-Agent/1.0",
 		},
+		RetryConfig: DefaultRetryConfig(),
 	}
 }
 
@@ -104,10 +139,10 @@ func (a *Agent) Start() error {
 
 // Shutdown gracefully stops all background tasks
 func (a *Agent) Shutdown() {
-	fmt.Println("Agent shutting down...")
+	// fmt.Println("Agent shutting down...")
 	a.cancel()
 	a.wg.Wait()
-	fmt.Println("Agent stopped.")
+	// fmt.Println("Agent stopped.")
 }
 
 // setHeaders sets common headers for an http.Request
