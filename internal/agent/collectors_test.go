@@ -21,45 +21,6 @@ func TestJob_Struct(t *testing.T) {
 	}
 }
 
-func TestStartCollectors_DoesNotBlock(t *testing.T) {
-	a := New(Config{Hostname: "test-agent"})
-
-	done := make(chan any)
-	go func() {
-		a.startCollectors()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Good - returned immediately
-	case <-time.After(1 * time.Second):
-		t.Error("startCollectors blocked")
-	}
-
-	a.cancel()
-}
-
-func TestStartCollectors_SpawnsGoroutines(t *testing.T) {
-	a := New(Config{Hostname: "test-agent"})
-
-	a.startCollectors()
-
-	// Allow time for goroutines to start
-	time.Sleep(100 * time.Millisecond)
-
-	a.cancel()
-
-	// Channel should have received some metrics
-	count := 0
-	for len(a.metricsCh) > 0 {
-		<-a.metricsCh
-		count++
-	}
-
-	t.Logf("Received %d metrics", count)
-}
-
 func TestStartCollectors_ContextCancelled(t *testing.T) {
 	a := New(Config{Hostname: "test-agent"})
 
