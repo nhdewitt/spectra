@@ -97,12 +97,12 @@ func CollectNetwork(ctx context.Context) ([]protocol.Metric, error) {
 			Speed:     curr.Speed,
 			RxBytes:   rate(delta(curr.RxBytes, prev.RxBytes), elapsed),
 			RxPackets: rate(delta(curr.RxPackets, prev.RxPackets), elapsed),
-			RxErrors:  delta(curr.RxErrors, prev.RxErrors),
+			RxErrors:  rate(delta(curr.RxErrors, prev.RxErrors), elapsed),
 			RxDrops:   rate(delta(curr.RxDrops, prev.RxDrops), elapsed),
 			TxBytes:   rate(delta(curr.TxBytes, prev.TxBytes), elapsed),
-			TxPackets: delta(curr.TxPackets, prev.TxPackets),
-			TxErrors:  delta(curr.TxErrors, prev.TxErrors),
-			TxDrops:   delta(curr.TxDrops, prev.TxDrops),
+			TxPackets: rate(delta(curr.TxPackets, prev.TxPackets), elapsed),
+			TxErrors:  rate(delta(curr.TxErrors, prev.TxErrors), elapsed),
+			TxDrops:   rate(delta(curr.TxDrops, prev.TxDrops), elapsed),
 		}
 
 		results = append(results, metric)
