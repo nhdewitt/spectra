@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build linux
 
 package collector
 
@@ -56,21 +56,6 @@ func getKernel() string {
 	}
 
 	return charsToString(uname.Release[:])
-}
-
-// charsToString converts a NUL-terminated C char buffer to a Go string.
-// It accepts both signed and unsigned byte representations.
-func charsToString[T ~int8 | ~uint8](ca []T) string {
-	buf := make([]byte, 0, len(ca))
-
-	for _, c := range ca {
-		if c == 0 {
-			break
-		}
-		buf = append(buf, byte(c))
-	}
-
-	return string(buf)
 }
 
 func getCPUModel() string {
