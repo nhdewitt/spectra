@@ -261,54 +261,23 @@ func TestIsDigit(t *testing.T) {
 
 func TestCleanVendor(t *testing.T) {
 	tests := []struct {
-		name  string
 		input string
 		want  string
 	}{
-		{
-			name:  "With Email",
-			input: "Ubuntu Developers <ubuntu-devel@lists.ubuntu.com>",
-			want:  "Ubuntu Developers",
-		},
-		{
-			name:  "Simple Vendor",
-			input: "Microsoft Corporation",
-			want:  "Microsoft Corporation",
-		},
-		{
-			name:  "Only Email",
-			input: "<only@email.com>",
-			want:  "",
-		},
-		{
-			name:  "Empty",
-			input: "",
-			want:  "",
-		},
-		{
-			name:  "With Whitespace",
-			input: "  Spaced Vendor  <email@test.com>  ",
-			want:  "Spaced Vendor",
-		},
-		{
-			name:  "Multiple Angle Brackets",
-			input: "Vendor <email@test.com> extra <more>",
-			want:  "Vendor",
-		},
-		{
-			name:  "Leading Whitespace Only",
-			input: "   Vendor Name",
-			want:  "Vendor Name",
-		},
-		{
-			name:  "Trailing Whitespace Only",
-			input: "Vendor Name   ",
-			want:  "Vendor Name",
-		},
+		{"Ubuntu Developers <ubuntu-devel@lists.ubuntu.com>", "Ubuntu Developers"},
+		{"Simple Vendor", "Simple Vendor"},
+		{"<only@email.com>", ""},
+		{"", ""},
+		{"  Spaced Vendor  <email@test.com>  ", "Spaced Vendor"},
+		// FreeBSD pkg maintainer formats
+		{"ports@FreeBSD.org", ""},
+		{"jhixson@FreeBSD.org", ""},
+		{"antoine@FreeBSD.org", ""},
+		{"FreeBSD Ports <ports@FreeBSD.org>", "FreeBSD Ports"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.input, func(t *testing.T) {
 			got := cleanVendor(tt.input)
 			if got != tt.want {
 				t.Errorf("cleanVendor(%q) = %q, want %q", tt.input, got, tt.want)

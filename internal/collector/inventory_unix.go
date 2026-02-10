@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || freebsd
 
 package collector
 
@@ -22,6 +22,13 @@ func GetInstalledApps(ctx context.Context) ([]protocol.Application, error) {
 		defaultVendor string
 		separator     string
 	}{
+		{
+			name:          "pkg",
+			exe:           "pkg",
+			args:          []string{"query", "%n,%v,%m"},
+			defaultVendor: "freebsd",
+			separator:     ",",
+		},
 		{
 			name:          "dpkg",
 			exe:           "dpkg-query",

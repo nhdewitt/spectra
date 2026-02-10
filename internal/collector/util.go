@@ -81,6 +81,9 @@ func cleanVendor(v string) string {
 	if idx := strings.Index(v, "<"); idx >= 0 {
 		v = strings.TrimSpace(v[:idx])
 	}
+	if strings.Contains(v, "@") {
+		return ""
+	}
 	return v
 }
 
