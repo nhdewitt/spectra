@@ -4,6 +4,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -137,20 +138,24 @@ func TestCollectTemperature_Integration(t *testing.T) {
 			continue
 		}
 
-		t.Logf("Sensor: %s, Temp: %.1f°C, Max: %.1f°C", temp.Sensor, temp.Temp, temp.Max)
+		maxStr := "N/A"
+		if temp.Max != nil {
+			maxStr = fmt.Sprintf("%.1f°C", *temp.Max)
+		}
+		t.Logf("Sensor: %s, Temp: %.1f°C, Max: %s", temp.Sensor, temp.Temp, maxStr)
 
 		// Sanity checks
 		if temp.Temp < -40 || temp.Temp > 150 {
 			t.Errorf("Sensor %s: temperature %.1f°C seems unreasonable", temp.Sensor, temp.Temp)
 		}
 
-		if temp.Max != 0 && temp.Max < temp.Temp {
-			t.Logf("Warning: Sensor %s: max %.1f°C is less than current %.1f°C", temp.Sensor, temp.Max, temp.Temp)
+		if temp.Max != nil && *temp.Max < temp.Temp {
+			t.Logf("Warning: Sensor %s: max %.1f°C is less than current %.1f°C", temp.Sensor, *temp.Max, temp.Temp)
 		}
 
 		// Max should be reasonable if present
-		if temp.Max != 0 && (temp.Max < 50 || temp.Max > 150) {
-			t.Logf("Warning: Sensor %s: max temp %.1f°C seems unusual", temp.Sensor, temp.Max)
+		if temp.Max != nil && (*temp.Max < 50 || *temp.Max > 150) {
+			t.Logf("Warning: Sensor %s: max temp %.1f°C seems unusual", temp.Sensor, *temp.Max)
 		}
 	}
 }

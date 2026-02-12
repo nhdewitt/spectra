@@ -4,6 +4,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -118,7 +119,7 @@ func TestParseThermalZoneFrom(t *testing.T) {
 			want: &protocol.TemperatureMetric{
 				Sensor: "x86_pkg_temp",
 				Temp:   45.0,
-				Max:    100.0,
+				Max:    float64Ptr(100.0),
 			},
 		},
 		{
@@ -129,7 +130,7 @@ func TestParseThermalZoneFrom(t *testing.T) {
 			want: &protocol.TemperatureMetric{
 				Sensor: "acpitz",
 				Temp:   55.0,
-				Max:    0.0,
+				Max:    nil,
 			},
 		},
 		{
@@ -141,7 +142,7 @@ func TestParseThermalZoneFrom(t *testing.T) {
 			want: &protocol.TemperatureMetric{
 				Sensor: "cpu-thermal",
 				Temp:   62.5,
-				Max:    95.0,
+				Max:    float64Ptr(95.0),
 			},
 		},
 		{
@@ -153,7 +154,7 @@ func TestParseThermalZoneFrom(t *testing.T) {
 			want: &protocol.TemperatureMetric{
 				Sensor: "gpu-thermal",
 				Temp:   70.0,
-				Max:    105.0,
+				Max:    float64Ptr(105.0),
 			},
 		},
 		{
@@ -164,7 +165,7 @@ func TestParseThermalZoneFrom(t *testing.T) {
 			want: &protocol.TemperatureMetric{
 				Sensor: "x86_pkg_temp",
 				Temp:   45.0,
-				Max:    0.0,
+				Max:    nil,
 			},
 		},
 		{
@@ -176,7 +177,7 @@ func TestParseThermalZoneFrom(t *testing.T) {
 			want: &protocol.TemperatureMetric{
 				Sensor: "acpitz",
 				Temp:   55.0,
-				Max:    0.0, // Invalid max is ignored
+				Max:    nil, // Invalid max is ignored
 			},
 		},
 		{
@@ -194,7 +195,7 @@ func TestParseThermalZoneFrom(t *testing.T) {
 			want: &protocol.TemperatureMetric{
 				Sensor: "",
 				Temp:   45.0,
-				Max:    0.0,
+				Max:    nil,
 			},
 		},
 	}
@@ -228,8 +229,13 @@ func TestParseThermalZoneFrom(t *testing.T) {
 			if got.Temp != tt.want.Temp {
 				t.Errorf("Temp = %v, want %v", got.Temp, tt.want.Temp)
 			}
-			if got.Max != tt.want.Max {
+			switch {
+			case got.Max == nil && tt.want.Max == nil:
+				// good
+			case got.Max == nil || tt.want.Max == nil:
 				t.Errorf("Max = %v, want %v", got.Max, tt.want.Max)
+			case *got.Max != *tt.want.Max:
+				t.Errorf("Max = %v, want %v", *got.Max, *tt.want.Max)
 			}
 		})
 	}
@@ -261,15 +267,18 @@ func TestCollectTemperature_Integration(t *testing.T) {
 			continue
 		}
 
-		t.Logf("Sensor: %s, Temp: %.1f°C, Max: %.1f°C", temp.Sensor, temp.Temp, temp.Max)
-
 		// Sanity checks
 		if temp.Temp < -40 || temp.Temp > 150 {
 			t.Errorf("Sensor %s: temperature %.1f°C seems unreasonable", temp.Sensor, temp.Temp)
 		}
 
-		if temp.Max != 0 && temp.Max < temp.Temp {
-			t.Errorf("Sensor %s: max %.1f°C is less than current %.1f°C", temp.Sensor, temp.Max, temp.Temp)
+		maxStr := "N/A"
+		if temp.Max != nil {
+			maxStr = fmt.Sprintf("%.1f°C", *temp.Max)
+		}
+		t.Logf("Sensor: %s, Temp: %.1f°C, Max: %s", temp.Sensor, temp.Temp, maxStr)
+		if temp.Max != nil && *temp.Max < temp.Temp {
+			t.Errorf("Sensor %s: max %.1f°C is less than current %.1f°C", temp.Sensor, *temp.Max, temp.Temp)
 		}
 	}
 }
@@ -305,7 +314,7 @@ func TestReadThermalZone_Integration(t *testing.T) {
 		t.Fatalf("readThermalZone(%s) failed: %v", zone, err)
 	}
 
-	t.Logf("Zone %s: Sensor=%s, Temp=%.1f°C, Max=%.1f°C", zone, m.Sensor, m.Temp, m.Max)
+	t.Logf("Zone %s: Sensor=%s, Temp=%.1f°C, Max=%.1f°C", zone, m.Sensor, m.Temp, *m.Max)
 
 	if m.Sensor == "" {
 		t.Error("Sensor name is empty")
@@ -371,88 +380,92 @@ func TestNormalizeMax(t *testing.T) {
 		name string
 		temp float64
 		max  float64
-		want float64
+		want *float64
 	}{
 		{
 			name: "Valid max above temp",
 			temp: 45.0,
 			max:  95.0,
-			want: 95.0,
+			want: float64Ptr(95.0),
 		},
 		{
 			name: "Max equal to temp",
 			temp: 60.0,
 			max:  60.0,
-			want: 60.0,
+			want: float64Ptr(60.0),
 		},
 		{
 			name: "Max slightly above temp",
 			temp: 59.5,
 			max:  60.0,
-			want: 60.0,
+			want: float64Ptr(60.0),
 		},
 		{
 			name: "Max below temp",
 			temp: 70.0,
 			max:  65.0,
-			want: 0.0,
+			want: nil,
 		},
 		{
 			name: "Max zero (unset)",
 			temp: 40.0,
 			max:  0.0,
-			want: 0.0,
+			want: nil,
 		},
 		{
 			name: "Max negative (bogus)",
 			temp: 40.0,
 			max:  -274.0,
-			want: 0.0,
+			want: nil,
 		},
 		{
 			name: "Max extremely high",
 			temp: 40.0,
 			max:  500.0,
-			want: 0.0,
+			want: nil,
 		},
 		{
 			name: "Max just below upper bound",
 			temp: 40.0,
 			max:  199.9,
-			want: 199.9,
+			want: float64Ptr(199.9),
 		},
 		{
 			name: "Max exactly at upper bound",
 			temp: 40.0,
 			max:  200.0,
-			want: 0.0,
+			want: nil,
 		},
 		{
 			name: "Temp negative but max valid",
 			temp: -10.0,
 			max:  80.0,
-			want: 80.0,
+			want: float64Ptr(80.0),
 		},
 		{
 			name: "Both temp and max negative",
 			temp: -20.0,
 			max:  -10.0,
-			want: 0.0,
+			want: nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := normalizeMax(tt.temp, tt.max)
-			if got != tt.want {
-				t.Errorf(
-					"normalizeMax(temp=%.1f, max=%.1f) = %.1f, want %.1f",
-					tt.temp, tt.max, got, tt.want,
-				)
+			switch {
+			case got == nil && tt.want == nil:
+				// pass
+			case got == nil || tt.want == nil:
+				t.Errorf("normalizeMax(temp=%.1f, max=%.1f) = %v, want %v", tt.temp, tt.max, got, tt.want)
+			case *got != *tt.want:
+				t.Errorf("normalizeMax(temp=%.1f, max=%.1f) = %v, want %v", tt.temp, tt.max, *got, *tt.want)
 			}
 		})
 	}
 }
+
+func float64Ptr(v float64) *float64 { return &v }
 
 func BenchmarkParseThermalValueFrom(b *testing.B) {
 	input := "45000"

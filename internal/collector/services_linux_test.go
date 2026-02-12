@@ -140,7 +140,7 @@ docker.service loaded active running Docker`,
 			}
 
 			// 3. Type Assert to the List Wrapper
-			listMetric, ok := metrics[0].(*protocol.ServiceListMetric)
+			listMetric, ok := metrics[0].(protocol.ServiceListMetric)
 			if !ok {
 				t.Fatalf("Expected *protocol.ServiceListMetric, got %T", metrics[0])
 			}
@@ -169,7 +169,7 @@ notfound.service not-found inactive dead Not Found Service`
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	listMetric := metrics[0].(*protocol.ServiceListMetric)
+	listMetric := metrics[0].(protocol.ServiceListMetric)
 
 	expected := []struct {
 		name      string
@@ -244,7 +244,7 @@ func TestParseSystemctlFrom_LongDescription(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	listMetric := metrics[0].(*protocol.ServiceListMetric)
+	listMetric := metrics[0].(protocol.ServiceListMetric)
 	svc := listMetric.Services[0]
 
 	expected := "This is a very long description that spans many words and should be preserved exactly as provided by systemctl"
@@ -262,7 +262,7 @@ func TestParseSystemctlFrom_SpecialCharactersInDescription(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	listMetric := metrics[0].(*protocol.ServiceListMetric)
+	listMetric := metrics[0].(protocol.ServiceListMetric)
 	svc := listMetric.Services[0]
 
 	expected := "D-Bus (Desktop Bus) message broker"
@@ -286,7 +286,7 @@ func TestCollectServices_Integration(t *testing.T) {
 		t.Fatalf("Expected 1 metric, got %d", len(metrics))
 	}
 
-	listMetric, ok := metrics[0].(*protocol.ServiceListMetric)
+	listMetric, ok := metrics[0].(protocol.ServiceListMetric)
 	if !ok {
 		t.Fatalf("Expected *protocol.ServiceListMetric, got %T", metrics[0])
 	}

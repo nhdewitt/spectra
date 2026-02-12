@@ -80,7 +80,7 @@ func randomMetric() protocol.Metric {
 		return protocol.TemperatureMetric{
 			Sensor: "coretemp-isa-0000",
 			Temp:   40 + rand.Float64()*40,
-			Max:    100,
+			Max:    float64Ptr(100),
 		}
 	case 6:
 		return protocol.SystemMetric{
@@ -159,6 +159,8 @@ func randomMetric() protocol.Metric {
 		return protocol.CPUMetric{Usage: rand.Float64() * 100}
 	}
 }
+
+func float64Ptr(v float64) *float64 { return &v }
 
 func randomEnvelope() protocol.Envelope {
 	metric := randomMetric()

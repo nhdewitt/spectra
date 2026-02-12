@@ -66,18 +66,17 @@ func parseThermalZoneFrom(typeR, tempR, maxR io.Reader) (*protocol.TemperatureMe
 		return nil, err
 	}
 
-	// Max Temp (if not nil)
-	maxVal := 0.0
+	var max *float64
 	if maxR != nil {
 		if v, err := parseThermalValueFrom(maxR); err == nil {
-			maxVal = normalizeMax(tempVal, v)
+			max = normalizeMax(tempVal, v)
 		}
 	}
 
 	return &protocol.TemperatureMetric{
 		Sensor: name,
 		Temp:   tempVal,
-		Max:    maxVal,
+		Max:    max,
 	}, nil
 }
 

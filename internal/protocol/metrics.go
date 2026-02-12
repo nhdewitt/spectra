@@ -103,9 +103,9 @@ type NetworkMetric struct {
 }
 
 type TemperatureMetric struct {
-	Sensor string  `json:"sensor"`
-	Temp   float64 `json:"temperature"`
-	Max    float64 `json:"max_temp"`
+	Sensor string   `json:"sensor"`
+	Temp   float64  `json:"temperature"`
+	Max    *float64 `json:"max_temp"`
 }
 
 type SystemMetric struct {
