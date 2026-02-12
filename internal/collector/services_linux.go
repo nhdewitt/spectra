@@ -81,7 +81,7 @@ func parseSystemctlFrom(r io.Reader) ([]protocol.Metric, error) {
 	}
 
 	return []protocol.Metric{
-		&protocol.ServiceListMetric{Services: services},
+		protocol.ServiceListMetric{Services: services},
 	}, nil
 }
 

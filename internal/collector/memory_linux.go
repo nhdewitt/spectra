@@ -27,6 +27,7 @@ func CollectMemory(ctx context.Context) ([]protocol.Metric, error) {
 	if err != nil {
 		return nil, err
 	}
+	cachedMemTotal.Store(raw.Total)
 
 	used := raw.Total - raw.Available
 	swapUsed := raw.SwapTotal - raw.SwapFree

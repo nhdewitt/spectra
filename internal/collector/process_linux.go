@@ -47,15 +47,13 @@ var (
 
 func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 	// Get Total Memory
-	memFile, err := os.Open("/proc/meminfo")
-	if err != nil {
-		return nil, err
-	}
-	defer memFile.Close()
-
-	totalMem, err := parseProcessMemInfoFrom(memFile)
-	if err != nil {
-		return nil, err
+	totalMem := MemTotal()
+	// First cycle, CollectMemory hasn't run yet - read directly
+	if totalMem == 0 {
+		if raw, err := parseMemInfo(); err == nil {
+			totalMem = raw.Total
+			cachedMemTotal.Store(totalMem)
+		}
 	}
 
 	// List PIDs
@@ -124,30 +122,6 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 	return []protocol.Metric{
 		protocol.ProcessListMetric{Processes: results},
 	}, nil
-}
-
-// parseMemInfoFrom parses /proc/meminfo to find MemTotal in bytes.
-func parseProcessMemInfoFrom(r io.Reader) (uint64, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return 0, err
-	}
-
-	lines := strings.SplitSeq(string(data), "\n")
-	for line := range lines {
-		if strings.HasPrefix(line, "MemTotal:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				kb, err := strconv.ParseUint(fields[1], 10, 64)
-				if err != nil {
-					return 0, err
-				}
-				return kb * 1024, nil
-			}
-		}
-	}
-
-	return 0, fmt.Errorf("MemTotal not found")
 }
 
 // parsePidStatFrom parses a single line from /proc/[pid]/stat

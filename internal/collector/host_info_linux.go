@@ -101,34 +101,16 @@ func getCPUModelFrom(r io.Reader) string {
 }
 
 func getRAMTotal() uint64 {
-	f, err := os.Open("/proc/meminfo")
+	if v := MemTotal(); v > 0 {
+		return v
+	}
+
+	raw, err := parseMemInfo()
 	if err != nil {
 		return 0
 	}
-	defer f.Close()
-
-	return getRAMTotalFrom(f)
-}
-
-func getRAMTotalFrom(r io.Reader) uint64 {
-	scanner := bufio.NewScanner(r)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		if strings.HasPrefix(line, "MemTotal:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				kb, err := strconv.ParseUint(fields[1], 10, 64)
-				if err != nil {
-					return 0
-				}
-				return kb * 1024
-			}
-		}
-	}
-
-	return 0
+	cachedMemTotal.Store(raw.Total)
+	return raw.Total
 }
 
 func getBootTime() int64 {
