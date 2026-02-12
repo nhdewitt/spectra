@@ -37,6 +37,7 @@ func CollectCPU(ctx context.Context) ([]protocol.Metric, error) {
 	lastCPURawData = cur
 
 	usage := percent(deltaMap["cpu"].Used, deltaMap["cpu"].Total)
+	iowait := percent(deltaMap["cpu"].IOWait, deltaMap["cpu"].Total)
 	coreUsage := calcCoreUsage(deltaMap)
 
 	load1, load5, load15, err := parseLoadAvg()
@@ -47,6 +48,7 @@ func CollectCPU(ctx context.Context) ([]protocol.Metric, error) {
 	return []protocol.Metric{protocol.CPUMetric{
 		Usage:     usage,
 		CoreUsage: coreUsage,
+		IOWait:    iowait,
 		LoadAvg1:  load1,
 		LoadAvg5:  load5,
 		LoadAvg15: load15,

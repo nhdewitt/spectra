@@ -57,6 +57,7 @@ func (ContainerListMetric) MetricType() string   { return "container_list" }
 type CPUMetric struct {
 	Usage     float64   `json:"usage"`
 	CoreUsage []float64 `json:"cores"`
+	IOWait    float64   `json:"iowait"`
 	LoadAvg1  float64   `json:"load_1m"`
 	LoadAvg5  float64   `json:"load_5m,omitempty"`
 	LoadAvg15 float64   `json:"load_15m,omitempty"`
