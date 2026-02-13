@@ -118,12 +118,12 @@ func CollectNetwork(ctx context.Context) ([]protocol.Metric, error) {
 			Speed:     speed,
 			RxBytes:   uint64(rxDelta / secondsElapsed),
 			RxPackets: uint64(rxPackets / secondsElapsed),
-			RxErrors:  errsIn,
-			RxDrops:   dropIn,
+			RxErrors:  rate(errsIn, secondsElapsed),
+			RxDrops:   rate(dropIn, secondsElapsed),
 			TxBytes:   uint64(txDelta / secondsElapsed),
 			TxPackets: uint64(txPackets / secondsElapsed),
-			TxErrors:  errsOut,
-			TxDrops:   dropOut,
+			TxErrors:  rate(errsOut, secondsElapsed),
+			TxDrops:   rate(dropOut, secondsElapsed),
 		})
 	}
 

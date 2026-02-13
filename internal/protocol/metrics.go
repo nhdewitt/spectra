@@ -87,6 +87,8 @@ type DiskMetric struct {
 	InodesPct   float64 `json:"inodes_pct,omitempty"`
 }
 
+// NetworkMetric holds per-interface network statistics.
+// All counter fields are per-second rates.
 type NetworkMetric struct {
 	Interface string `json:"interface"`
 	MAC       string `json:"mac_address"`
