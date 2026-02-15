@@ -24,6 +24,25 @@ var statusIntern = map[string]string{
 	"exited":    "exited",
 }
 
+func MakeServiceCollector(systemctlPath string) CollectFunc {
+	return func(ctx context.Context) ([]protocol.Metric, error) {
+		if systemctlPath == "" {
+			return nil, nil
+		}
+		cmd := exec.CommandContext(ctx,
+			systemctlPath, "list-units",
+			"--type=service", "--all",
+			"--no-pager", "--no-legend",
+			"--plain",
+		)
+		out, err := cmd.Output()
+		if err != nil {
+			return nil, err
+		}
+		return parseSystemctlFrom(bytes.NewReader(out))
+	}
+}
+
 func CollectServices(ctx context.Context) ([]protocol.Metric, error) {
 	cmd := exec.CommandContext(ctx,
 		"systemctl", "list-units",

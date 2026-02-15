@@ -13,6 +13,10 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
+func MakeServiceCollector(_ string) CollectFunc {
+	return CollectServices
+}
+
 func CollectServices(ctx context.Context) ([]protocol.Metric, error) {
 	m, err := mgr.Connect()
 	if err != nil {

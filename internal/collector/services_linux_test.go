@@ -325,6 +325,17 @@ func TestCollectServices_ContextCancel(t *testing.T) {
 	}
 }
 
+func TestMakeServiceCollector_EmptyPath(t *testing.T) {
+	col := MakeServiceCollector("")
+	metrics, err := col(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if metrics != nil {
+		t.Errorf("expected nil metrics for empty path, got %v", metrics)
+	}
+}
+
 func BenchmarkParseSystemctlFrom_Small(b *testing.B) {
 	input := `ssh.service loaded active running OpenBSD Secure Shell server
 cron.service loaded active running Regular background program processing daemon
@@ -357,7 +368,7 @@ func BenchmarkParseSystemctlFrom_Medium(b *testing.B) {
 
 func BenchmarkParseSystemctlFrom_Large(b *testing.B) {
 	var sb strings.Builder
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		sb.WriteString("service-with-longer-name-")
 		sb.WriteString(string(rune('0' + i/100)))
 		sb.WriteString(string(rune('0' + (i/10)%10)))
@@ -375,7 +386,7 @@ func BenchmarkParseSystemctlFrom_Large(b *testing.B) {
 
 func BenchmarkParseSystemctlFrom_WithFiltering(b *testing.B) {
 	var sb strings.Builder
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		if i%3 == 0 {
 			sb.WriteString("snap-package")
 			sb.WriteString(string(rune('0' + i%10)))

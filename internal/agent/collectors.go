@@ -19,6 +19,7 @@ func (a *Agent) startCollectors() {
 
 	diskCol := collector.MakeDiskCollector(a.DriveCache)
 	diskIOCol := collector.MakeDiskIOCollector(a.DriveCache)
+	svcCol := collector.MakeServiceCollector(a.Platform.SystemctlPath)
 	tempCol := collector.MakeTemperatureCollector(a.Platform.ThermalZones)
 
 	jobs := []job{
@@ -28,11 +29,10 @@ func (a *Agent) startCollectors() {
 		{300 * time.Second, collector.CollectSystem},
 		{60 * time.Second, diskCol},
 		{5 * time.Second, diskIOCol},
-		{60 * time.Second, collector.CollectServices},
+		{60 * time.Second, svcCol},
 		{15 * time.Second, collector.CollectProcesses},
 		{10 * time.Second, tempCol},
 		{30 * time.Second, collector.CollectWiFi},
-		{60 * time.Second, collector.CollectPiGPU},
 		{60 * time.Second, collector.CollectContainers},
 	}
 
