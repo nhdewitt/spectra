@@ -467,6 +467,44 @@ func TestNormalizeMax(t *testing.T) {
 
 func float64Ptr(v float64) *float64 { return &v }
 
+func TestMakeTemperatureCollector_NoZones(t *testing.T) {
+	col := MakeTemperatureCollector(nil)
+	metrics, err := col(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(metrics) != 0 {
+		t.Errorf("expected 0 metrics for nil zones, got %d", len(metrics))
+	}
+}
+
+func TestMakeTemperatureCollector_InvalidZones(t *testing.T) {
+	col := MakeTemperatureCollector([]string{"/nonexistent/zone"})
+	metrics, err := col(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(metrics) != 0 {
+		t.Errorf("expected 0 metrics for invalid zones, got %d", len(metrics))
+	}
+}
+
+func TestMakeTemperatureCollector_Integration(t *testing.T) {
+	zones, _ := filepath.Glob("/sys/class/thermal/thermal_zone*")
+	if len(zones) == 0 {
+		t.Skip("no thermal zones available")
+	}
+
+	col := MakeTemperatureCollector(zones)
+	metrics, err := col(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(metrics) == 0 {
+		t.Error("expected metrics from real thermal zones")
+	}
+}
+
 func BenchmarkParseThermalValueFrom(b *testing.B) {
 	input := "45000"
 	b.ReportAllocs()
@@ -529,9 +567,17 @@ func BenchmarkCollectTemperature(b *testing.B) {
 	}
 }
 
-func BenchmarkFilepathGlob_ThermalZones(b *testing.B) {
+func BenchmarkMakeTemperatureCollector(b *testing.B) {
+	zones, _ := filepath.Glob("/sys/class/thermal/thermal_zone*")
+	if len(zones) == 0 {
+		b.Skip("No thermal zones available")
+	}
+
+	col := MakeTemperatureCollector(zones)
+	ctx := context.Background()
 	b.ReportAllocs()
+	b.ResetTimer()
 	for b.Loop() {
-		_, _ = filepath.Glob("/sys/class/thermal/thermal_zone*")
+		_, _ = col(ctx)
 	}
 }

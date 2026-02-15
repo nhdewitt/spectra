@@ -18,6 +18,12 @@ type MSAcpi_ThermalZoneTemperature struct {
 	InstanceName       string
 }
 
+// MakeTemperatureCollector returns CollectTemperature unchanged on Windows.
+// Thermal zones are detected via WMI, not sysfs paths.
+func MakeTemperatureCollector(_ []string) CollectFunc {
+	return CollectTemperature
+}
+
 func CollectTemperature(ctx context.Context) ([]protocol.Metric, error) {
 	var dst []MSAcpi_ThermalZoneTemperature
 

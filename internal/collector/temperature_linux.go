@@ -13,6 +13,20 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
+// MakeTemperatureCollector returns a CollectFunc that reads from the
+// provided thermal zone paths, avoiding a filepath.Glob on every cycle.
+func MakeTemperatureCollector(zones []string) CollectFunc {
+	return func(ctx context.Context) ([]protocol.Metric, error) {
+		var results []protocol.Metric
+		for _, zone := range zones {
+			if m, err := readThermalZone(zone); err == nil {
+				results = append(results, *m)
+			}
+		}
+		return results, nil
+	}
+}
+
 func CollectTemperature(ctx context.Context) ([]protocol.Metric, error) {
 	zones, err := filepath.Glob("/sys/class/thermal/thermal_zone*")
 	if err != nil {
