@@ -19,7 +19,7 @@ func Detect() Info {
 	info.InitSystem, info.SystemctlPath = detectInitSystem()
 	info.HasPSI = fileExists("/proc/pressure/memory")
 	info.CgroupVersion = detectCgroupVersion()
-	if data, err := os.ReadFile("/proc/sys/kernal/osrelease"); err == nil {
+	if data, err := os.ReadFile("/proc/sys/kernel/osrelease"); err == nil {
 		info.KernelVersion = strings.TrimSpace(string(data))
 	}
 	info.IsRaspberryPi, info.PiModel = detectPi()
