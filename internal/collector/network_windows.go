@@ -94,12 +94,6 @@ func CollectNetwork(ctx context.Context) ([]protocol.Metric, error) {
 			continue
 		}
 
-		// Calculate Deltas
-		rxDelta := float64(curr.raw.InOctets - prev.raw.InOctets)
-		txDelta := float64(curr.raw.OutOctets - prev.raw.OutOctets)
-		rxPackets := float64(curr.raw.InUcastPkts - prev.raw.InUcastPkts)
-		txPackets := float64(curr.raw.OutUcastPkts - prev.raw.OutUcastPkts)
-
 		errsIn := curr.raw.InErrors - prev.raw.InErrors
 		errsOut := curr.raw.OutErrors - prev.raw.OutErrors
 		dropIn := curr.raw.InDiscards - prev.raw.InDiscards
@@ -116,12 +110,12 @@ func CollectNetwork(ctx context.Context) ([]protocol.Metric, error) {
 			MAC:       strings.ToUpper(formatMAC(curr.raw.PhysicalAddress, curr.raw.PhysicalAddressLength)),
 			MTU:       curr.raw.Mtu,
 			Speed:     speed,
-			RxBytes:   uint64(rxDelta / secondsElapsed),
-			RxPackets: uint64(rxPackets / secondsElapsed),
+			RxBytes:   rate(curr.raw.InOctets-prev.raw.InOctets, secondsElapsed),
+			RxPackets: rate(curr.raw.InUcastPkts-prev.raw.InUcastPkts, secondsElapsed),
 			RxErrors:  rate(errsIn, secondsElapsed),
 			RxDrops:   rate(dropIn, secondsElapsed),
-			TxBytes:   uint64(txDelta / secondsElapsed),
-			TxPackets: uint64(txPackets / secondsElapsed),
+			TxBytes:   rate(curr.raw.OutOctets-prev.raw.OutOctets, secondsElapsed),
+			TxPackets: rate(curr.raw.OutUcastPkts-prev.raw.OutUcastPkts, secondsElapsed),
 			TxErrors:  rate(errsOut, secondsElapsed),
 			TxDrops:   rate(dropOut, secondsElapsed),
 		})
