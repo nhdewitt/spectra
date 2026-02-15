@@ -31,15 +31,24 @@ func (a *Agent) startCollectors() {
 		{15 * time.Second, collector.CollectProcesses},
 		{10 * time.Second, collector.CollectTemperature},
 		{30 * time.Second, collector.CollectWiFi},
-		{15 * time.Second, collector.CollectPiClocks},
-		{10 * time.Second, collector.CollectPiThrottle},
-		{60 * time.Second, collector.CollectPiVoltage},
 		{60 * time.Second, collector.CollectPiGPU},
 		{60 * time.Second, collector.CollectContainers},
 	}
 
 	for _, j := range jobs {
 		go c.Run(a.ctx, j.Interval, j.Fn)
+	}
+
+	if a.Platform.IsRaspberryPi {
+		piJobs := []job{
+			{15 * time.Second, collector.CollectPiClocks},
+			{10 * time.Second, collector.CollectPiThrottle},
+			{60 * time.Second, collector.CollectPiVoltage},
+			{60 * time.Second, collector.CollectPiGPU},
+		}
+		for _, j := range piJobs {
+			go c.Run(a.ctx, j.Interval, j.Fn)
+		}
 	}
 
 	// Nightly tasks
