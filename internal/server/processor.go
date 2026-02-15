@@ -64,6 +64,8 @@ func (s *Server) unmarshalMetric(typ string, data []byte) (protocol.Metric, erro
 		metric = &protocol.ContainerMetric{}
 	case "container_list":
 		metric = &protocol.ContainerListMetric{}
+	case "update_status":
+		metric = &protocol.UpdateMetric{}
 	default:
 		return nil, fmt.Errorf("unknown metric type: %s", typ)
 	}
@@ -94,6 +96,8 @@ func (s *Server) logMetric(env RawEnvelope, metric protocol.Metric) {
 		for _, c := range m.Containers {
 			fmt.Println(c)
 		}
+	case *protocol.UpdateMetric:
+		log.Printf(" [%s] update_status: %d pending (%d security), reboot=%v [%s]", ts, m.PendingCount, m.SecurityCount, m.RebootRequired, m.PackageManager)
 	default:
 		fmt.Printf(" [%s] %s: %v\n", ts, env.Type, metric)
 	}

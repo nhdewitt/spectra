@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"log"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/collector"
+	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
 // job is a helper struct for internal use.
@@ -41,5 +43,33 @@ func (a *Agent) startCollectors() {
 	}
 
 	// Nightly tasks
-	go a.runNightly(2, 0, collector.GetInstalledApps)
+	go a.runNightly(2, 0, func() {
+		apps, err := collector.GetInstalledApps(a.ctx)
+		if err != nil {
+			log.Printf("nightly apps failed: %v", err)
+			return
+		}
+		a.metricsCh <- protocol.Envelope{
+			Type:      "application_list",
+			Timestamp: time.Now(),
+			Hostname:  a.Config.Hostname,
+			Data:      &protocol.ApplicationListMetric{Applications: apps},
+		}
+	})
+
+	go a.runNightly(2, 5, func() {
+		metrics, err := collector.CollectUpdates(a.ctx)
+		if err != nil {
+			log.Printf("nightly updates failed: %v", err)
+			return
+		}
+		for _, m := range metrics {
+			a.metricsCh <- protocol.Envelope{
+				Type:      m.MetricType(),
+				Timestamp: time.Now(),
+				Hostname:  a.Config.Hostname,
+				Data:      m,
+			}
+		}
+	})
 }
