@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/collector"
+	"github.com/nhdewitt/spectra/internal/platform"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
@@ -42,6 +43,8 @@ type Agent struct {
 	commonHeaders map[string]string
 
 	RetryConfig RetryConfig
+
+	Platform platform.Info
 }
 
 type RetryConfig struct {
@@ -99,6 +102,7 @@ func New(cfg Config) *Agent {
 			"User-Agent":       "Spectra-Agent/1.0",
 		},
 		RetryConfig: DefaultRetryConfig(),
+		Platform:    platform.Detect(),
 	}
 }
 
