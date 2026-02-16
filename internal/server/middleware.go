@@ -1,6 +1,10 @@
 package server
 
-import "net/http"
+import (
+	"net/http"
+
+	"golang.org/x/crypto/bcrypt"
+)
 
 func (s *Server) requireAgentAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -11,13 +15,19 @@ func (s *Server) requireAgentAuth(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "missing agent credentials", http.StatusUnauthorized)
 			return
 		}
-		if !s.Store.Authenticate(agentID, secret) {
+
+		hash, err := s.DB.GetAgentSecret(r.Context(), uuidParam(agentID))
+		if err != nil {
 			http.Error(w, "invalid agent credentials", http.StatusUnauthorized)
 			return
 		}
 
-		s.Store.TouchLastSeen(agentID)
+		if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(secret)); err != nil {
+			http.Error(w, "invalid agent credentials", http.StatusUnauthorized)
+			return
+		}
 
+		s.DB.TouchLastSeen(r.Context(), uuidParam(agentID))
 		next(w, r)
 	}
 }

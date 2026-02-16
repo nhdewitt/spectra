@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nhdewitt/spectra/internal/database"
 	"github.com/nhdewitt/spectra/internal/protocol"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // RawEnvelope is used for unmarshalling metrics
@@ -45,7 +47,29 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	hashedSecret, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	s.Store.Register(agentID, secret, req.Info)
+
+	if s.DB != nil {
+		if err := s.DB.RegisterAgent(r.Context(), database.RegisterAgentParams{
+			ID:         uuidParam(agentID),
+			SecretHash: string(hashedSecret),
+			Hostname:   req.Info.Hostname,
+			Os:         pgText(req.Info.OS),
+			Platform:   pgText(req.Info.Platform),
+			Arch:       pgText(req.Info.Arch),
+			CpuModel:   pgText(req.Info.CPUModel),
+			CpuCores:   pgInt4(int32(req.Info.CPUCores)),
+			RamTotal:   pgInt8(int64(req.Info.RAMTotal)),
+		}); err != nil {
+			log.Printf("Error persisting agent registration: %v", err)
+		}
+	}
 
 	log.Printf("Registered agent %s (%s, %d cores, %s)", req.Info.Hostname, agentID, req.Info.CPUCores, req.Info.Platform)
 
@@ -70,7 +94,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		log.Printf("--- Received Batch of %d Metrics from %s ---", len(rawEnvelopes), agentID)
 
 		for _, env := range rawEnvelopes {
-			s.processMetric(env)
+			s.processMetric(agentID, env)
 		}
 	}()
 }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,7 +12,7 @@ import (
 )
 
 // processMetric is the entry point for handling a raw metric envelope
-func (s *Server) processMetric(env RawEnvelope) {
+func (s *Server) processMetric(agentID string, env RawEnvelope) {
 	metric, err := s.unmarshalMetric(env.Type, env.Data)
 	if err != nil {
 		log.Printf("Error processing metric from %s: %v", env.Hostname, err)
@@ -19,6 +20,7 @@ func (s *Server) processMetric(env RawEnvelope) {
 	}
 
 	s.logMetric(env, metric)
+	s.persistMetric(context.Background(), agentID, env.Timestamp, metric)
 }
 
 // unmarshalMetric converts raw JSON into a concrete protocol.Metric struct

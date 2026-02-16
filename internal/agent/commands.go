@@ -37,6 +37,8 @@ func (a *Agent) pollOnce(url string) {
 		fmt.Printf("Error creating request: %v\n", err)
 		return
 	}
+	a.setHeaders(req)
+	req.Header.Del("Content-Encoding")
 
 	resp, err := a.Client.Do(req)
 	if err != nil {

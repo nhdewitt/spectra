@@ -1,0 +1,15 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/database/queries"
+    schema:
+      - "internal/database/migrations/001_core.up.sql"
+      - "internal/database/migrations/002_metrics.up.sql"
+      - "internal/database/migrations/003_retention_and_indexes.up.sql"
+    gen:
+      go:
+        package: "database"
+        out: "internal/database"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_empty_slices: true
