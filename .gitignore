@@ -9,3 +9,5 @@ pi*.log
 coverage.out
 bench_binaries/
 nodefacts_binaries/
+agent
+server

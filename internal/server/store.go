@@ -100,7 +100,7 @@ func (s *AgentStore) WaitForCommand(ctx context.Context, hostname string, timeou
 	case cmd := <-ch:
 		return cmd, nil
 	case <-time.After(timeout):
-		return protocol.Command{}, nil
+		return protocol.Command{}, fmt.Errorf("timeout waiting for command")
 	case <-ctx.Done():
 		return protocol.Command{}, ctx.Err()
 	}
