@@ -14,6 +14,7 @@ type Config struct {
 type Server struct {
 	Config Config
 	Store  *AgentStore
+	Tokens *TokenStore
 	Router *http.ServeMux
 }
 
@@ -25,6 +26,7 @@ func New(cfg Config) *Server {
 	s := &Server{
 		Config: cfg,
 		Store:  NewAgentStore(),
+		Tokens: NewTokenStore(),
 		Router: http.NewServeMux(),
 	}
 	s.routes()
@@ -32,13 +34,14 @@ func New(cfg Config) *Server {
 }
 
 func (s *Server) routes() {
-	s.Router.HandleFunc("/api/v1/metrics", s.handleMetrics)
-	s.Router.HandleFunc("/api/v1/agent/command", s.handleAgentCommand)
-	s.Router.HandleFunc("/api/v1/agent/command_result", s.handleCommandResult)
+	s.Router.HandleFunc("/api/v1/agent/metrics", s.requireAgentAuth(s.handleMetrics))
+	s.Router.HandleFunc("/api/v1/agent/command", s.requireAgentAuth(s.handleAgentCommand))
+	s.Router.HandleFunc("/api/v1/agent/command/result", s.requireAgentAuth(s.handleCommandResult))
 	s.Router.HandleFunc("/api/v1/agent/register", s.handleAgentRegister)
-	s.Router.HandleFunc("/admin/trigger_logs", s.handleAdminTriggerLogs)
-	s.Router.HandleFunc("/admin/trigger_disk", s.handleAdminTriggerDisk)
-	s.Router.HandleFunc("/admin/trigger_network", s.handleAdminTriggerNetwork)
+	s.Router.HandleFunc("/api/v1/admin/logs", s.handleAdminTriggerLogs)
+	s.Router.HandleFunc("/api/v1/admin/disk", s.handleAdminTriggerDisk)
+	s.Router.HandleFunc("/api/v1/admin/network", s.handleAdminTriggerNetwork)
+	s.Router.HandleFunc("/api/v1/admin/tokens", s.handleGenerateToken)
 }
 
 func (s *Server) Start() error {

@@ -173,6 +173,16 @@ type HostInfo struct {
 	IPs      []string `json:"ips"` // List of local interface IPs
 }
 
+type RegisterRequest struct {
+	Token string   `json:"token"`
+	Info  HostInfo `json:"info"`
+}
+
+type RegisterResponse struct {
+	AgentID string `json:"agent_id"`
+	Secret  string `json:"secret"`
+}
+
 type ProcStatus string
 
 const (
