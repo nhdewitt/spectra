@@ -16,6 +16,7 @@ import (
 func main() {
 	// DEBUGGING
 	debugMode := flag.Bool("debug", false, "Enable pprof debug server on localhost:6060")
+	regToken := flag.String("token", "", "Registration token for initial agent registration")
 	flag.Parse()
 
 	if *debugMode {
@@ -40,11 +41,12 @@ func main() {
 	}
 
 	cfg := agent.Config{
-		BaseURL:      baseURL,
-		Hostname:     hostname,
-		MetricsPath:  "/api/v1/metrics",
-		CommandPath:  "/api/v1/agent/command",
-		PollInterval: 5 * time.Second,
+		BaseURL:           baseURL,
+		Hostname:          hostname,
+		MetricsPath:       "/api/v1/agent/metrics",
+		CommandPath:       "/api/v1/agent/command",
+		PollInterval:      5 * time.Second,
+		RegistrationToken: *regToken,
 	}
 
 	a := agent.New(cfg)

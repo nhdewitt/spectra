@@ -15,7 +15,7 @@ import (
 
 // runCommandLoop long-polls the server for tasks
 func (a *Agent) runCommandLoop() {
-	url := fmt.Sprintf("%s%s?hostname=%s", a.Config.BaseURL, a.Config.CommandPath, a.Config.Hostname)
+	url := fmt.Sprintf("%s%s", a.Config.BaseURL, a.Config.CommandPath)
 	fmt.Println("Starting Command & Control loop at", url)
 
 	ticker := time.NewTicker(5 * time.Second)
@@ -160,7 +160,7 @@ func (a *Agent) uploadCommandResult(cmd protocol.Command, data any, cmdErr error
 		return fmt.Errorf("compression failed: %v", err)
 	}
 
-	url := fmt.Sprintf("%s/api/v1/agent/command_result?hostname=%s", a.Config.BaseURL, a.Config.Hostname)
+	url := fmt.Sprintf("%s/api/v1/agent/command/result", a.Config.BaseURL)
 
 	req, err := http.NewRequestWithContext(a.ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {

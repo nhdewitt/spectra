@@ -6,7 +6,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -17,11 +19,12 @@ import (
 
 // Config holds the runtime configuration
 type Config struct {
-	BaseURL      string
-	Hostname     string
-	MetricsPath  string
-	CommandPath  string
-	PollInterval time.Duration
+	BaseURL           string
+	Hostname          string
+	MetricsPath       string
+	CommandPath       string
+	PollInterval      time.Duration
+	RegistrationToken string
 }
 
 // Agent is the main application controller
@@ -45,6 +48,7 @@ type Agent struct {
 	RetryConfig RetryConfig
 
 	Platform platform.Info
+	Identity AgentIdentity
 }
 
 type RetryConfig struct {
@@ -86,6 +90,12 @@ func New(cfg Config) *Agent {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	id, err := loadIdentity()
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("warning: failed to load identity: %v", err)
+		}
+	}
 
 	return &Agent{
 		Config:     cfg,
@@ -103,6 +113,7 @@ func New(cfg Config) *Agent {
 		},
 		RetryConfig: DefaultRetryConfig(),
 		Platform:    platform.Detect(),
+		Identity:    id,
 	}
 }
 
@@ -110,6 +121,12 @@ func New(cfg Config) *Agent {
 func (a *Agent) Start() error {
 	fmt.Printf("Spectra Agent starting on %s...\n", a.Config.Hostname)
 	fmt.Printf("Server: %s\n", a.Config.BaseURL)
+
+	if a.Identity.ID == "" {
+		if err := a.Register(); err != nil {
+			return fmt.Errorf("registration failed: %w", err)
+		}
+	}
 
 	// Mount Manager (Windows disk mapping)
 	go collector.RunMountManager(a.ctx, a.DriveCache, 30*time.Second)
@@ -131,11 +148,6 @@ func (a *Agent) Start() error {
 		a.runCommandLoop()
 	}()
 
-	// Register Identity
-	if err := a.Register(); err != nil {
-		fmt.Printf("Initial registration failed: %v", err)
-	}
-
 	// Block until shutdown called
 	<-a.ctx.Done()
 	return nil
@@ -153,5 +165,9 @@ func (a *Agent) Shutdown() {
 func (a *Agent) setHeaders(req *http.Request) {
 	for k, v := range a.commonHeaders {
 		req.Header.Set(k, v)
+	}
+	if a.Identity.ID != "" {
+		req.Header.Set("X-Agent-ID", a.Identity.ID)
+		req.Header.Set("X-Agent-Secret", a.Identity.Secret)
 	}
 }

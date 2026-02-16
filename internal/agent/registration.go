@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/collector"
+	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
 // Register gathers host info and sends it to the server.
@@ -15,12 +16,17 @@ func (a *Agent) Register() error {
 	info := collector.CollectHostInfo()
 	info.Hostname = a.Config.Hostname
 
-	payload, err := json.Marshal(info)
+	regReq := protocol.RegisterRequest{
+		Token: a.Config.RegistrationToken,
+		Info:  info,
+	}
+
+	payload, err := json.Marshal(regReq)
 	if err != nil {
 		return fmt.Errorf("json marshal failed: %w", err)
 	}
 
-	var resp *http.Response
+	var httpResp *http.Response
 	var reqErr error
 
 	url := fmt.Sprintf("%s/api/v1/agent/register", a.Config.BaseURL)
@@ -30,13 +36,13 @@ func (a *Agent) Register() error {
 		a.setHeaders(req)
 		req.Header.Del("Content-Encoding")
 
-		resp, reqErr = a.Client.Do(req)
-		if reqErr == nil && (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated) {
+		httpResp, reqErr = a.Client.Do(req)
+		if reqErr == nil && (httpResp.StatusCode == http.StatusOK || httpResp.StatusCode == http.StatusCreated) {
 			break
 		}
 
-		if resp != nil {
-			resp.Body.Close()
+		if httpResp != nil {
+			httpResp.Body.Close()
 		}
 
 		if attempt < a.RetryConfig.MaxAttempts-1 {
@@ -47,10 +53,24 @@ func (a *Agent) Register() error {
 	if reqErr != nil {
 		return fmt.Errorf("network error during registration: %w", reqErr)
 	}
-	defer resp.Body.Close()
+	defer httpResp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("server rejected registration: %s", resp.Status)
+	if httpResp.StatusCode != http.StatusOK && httpResp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("server rejected registration: %s", httpResp.Status)
+	}
+
+	var resp protocol.RegisterResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+
+	a.Identity = AgentIdentity{
+		ID:     resp.AgentID,
+		Secret: resp.Secret,
+	}
+
+	if err := saveIdentity(a.Identity); err != nil {
+		return fmt.Errorf("saving identity: %w", err)
 	}
 
 	return nil

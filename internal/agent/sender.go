@@ -52,7 +52,7 @@ func (a *Agent) runMetricSender() {
 }
 
 func (a *Agent) uploadBatch(batch []protocol.Envelope) {
-	url := fmt.Sprintf("%s%s?hostname=%s", a.Config.BaseURL, a.Config.MetricsPath, a.Config.Hostname)
+	url := fmt.Sprintf("%s%s", a.Config.BaseURL, a.Config.MetricsPath)
 
 	if err := a.postCompressed(url, batch); err != nil {
 		fmt.Printf("Error sending batch of %d metrics: %v\n", len(batch), err)
