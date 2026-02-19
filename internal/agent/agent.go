@@ -25,6 +25,7 @@ type Config struct {
 	CommandPath       string
 	PollInterval      time.Duration
 	RegistrationToken string
+	IdentityPath      string
 }
 
 // Agent is the main application controller
@@ -89,8 +90,12 @@ func New(cfg Config) *Agent {
 		Timeout: 45 * time.Second,
 	}
 
+	if cfg.IdentityPath == "" {
+		cfg.IdentityPath = identityPath()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
-	id, err := loadIdentity()
+	id, err := loadIdentity(cfg.IdentityPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("warning: failed to load identity: %v", err)

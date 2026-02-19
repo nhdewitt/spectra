@@ -14,7 +14,7 @@ import (
 
 func TestNew(t *testing.T) {
 	cfg := Config{Port: 8080}
-	s := New(cfg)
+	s := New(cfg, NewMockDB())
 
 	if s.Config.Port != 8080 {
 		t.Errorf("port: got %d, want 8080", s.Config.Port)
@@ -28,10 +28,13 @@ func TestNew(t *testing.T) {
 	if s.Router == nil {
 		t.Error("router should not be nil")
 	}
+	if s.DB == nil {
+		t.Error("DB should not be nil")
+	}
 }
 
 func TestNew_DefaultCommandTimeout(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	if s.Config.CommandTimeout != 30*time.Second {
 		t.Errorf("CommandTimeout: got %v, want 30s", s.Config.CommandTimeout)
@@ -39,7 +42,7 @@ func TestNew_DefaultCommandTimeout(t *testing.T) {
 }
 
 func TestNew_CustomCommandTimeout(t *testing.T) {
-	s := New(Config{Port: 8080, CommandTimeout: 5 * time.Second})
+	s := New(Config{Port: 8080, CommandTimeout: 5 * time.Second}, NewMockDB())
 
 	if s.Config.CommandTimeout != 5*time.Second {
 		t.Errorf("CommandTimeout: got %v, want 5s", s.Config.CommandTimeout)
@@ -47,12 +50,7 @@ func TestNew_CustomCommandTimeout(t *testing.T) {
 }
 
 func TestRoutes_Registered(t *testing.T) {
-	s := New(Config{Port: 8080})
-
-	// Register an agent for auth tests
-	agentID := "route-test-agent"
-	secret := "route-test-secret"
-	s.Store.Register(agentID, secret, protocol.HostInfo{Hostname: "test"})
+	s, agentID, secret, _ := newTestServer()
 
 	tests := []struct {
 		name       string
@@ -89,7 +87,7 @@ func TestRoutes_Registered(t *testing.T) {
 }
 
 func TestRoutes_AuthRequired(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s, _, _, _ := newTestServer()
 
 	authedRoutes := []struct {
 		method, path string
@@ -123,7 +121,7 @@ func TestConfig_Defaults(t *testing.T) {
 // --- Benchmarks ---
 
 func BenchmarkHandleMetrics_SingleEnvelope(b *testing.B) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	batch := []RawEnvelope{
 		{
@@ -146,7 +144,7 @@ func BenchmarkHandleMetrics_SingleEnvelope(b *testing.B) {
 }
 
 func BenchmarkHandleMetrics_LargeBatch(b *testing.B) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	batch := make([]RawEnvelope, 50)
 	for i := range batch {
@@ -171,7 +169,7 @@ func BenchmarkHandleMetrics_LargeBatch(b *testing.B) {
 }
 
 func BenchmarkHandleAgentRegister(b *testing.B) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	info := protocol.HostInfo{
 		Hostname: "bench-agent",
@@ -198,10 +196,8 @@ func BenchmarkHandleAgentRegister(b *testing.B) {
 }
 
 func BenchmarkHandleAgentCommand_NoCommand(b *testing.B) {
-	s := New(Config{Port: 8080, CommandTimeout: 1 * time.Millisecond})
-	agentID := "bench-agent"
-	secret := "bench-secret"
-	s.Store.Register(agentID, secret, protocol.HostInfo{Hostname: "bench"})
+	s, agentID, secret, _ := newTestServer()
+	s.Config.CommandTimeout = 1 * time.Millisecond
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -215,10 +211,8 @@ func BenchmarkHandleAgentCommand_NoCommand(b *testing.B) {
 }
 
 func BenchmarkHandleAgentCommand_WithCommand(b *testing.B) {
-	s := New(Config{Port: 8080, CommandTimeout: 1 * time.Second})
-	agentID := "bench-agent"
-	secret := "bench-secret"
-	s.Store.Register(agentID, secret, protocol.HostInfo{Hostname: "bench"})
+	s, agentID, secret, _ := newTestServer()
+	s.Config.CommandTimeout = 1 * time.Second
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -239,7 +233,7 @@ func BenchmarkHandleAgentCommand_WithCommand(b *testing.B) {
 }
 
 func BenchmarkHandleCommandResult(b *testing.B) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	result := protocol.CommandResult{
 		ID:      "cmd-123",
@@ -260,7 +254,7 @@ func BenchmarkHandleCommandResult(b *testing.B) {
 }
 
 func BenchmarkRequireAgentAuth(b *testing.B) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	body := []byte("[]")
 

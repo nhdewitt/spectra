@@ -167,7 +167,7 @@ func TestGenerateSecret_DifferentLengths(t *testing.T) {
 }
 
 func TestGetTargetAgent_Success(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 	registerTestAgent(s.Store, "agent-1")
 
 	req := httptest.NewRequest(http.MethodGet, "/?agent=agent-1", nil)
@@ -184,7 +184,7 @@ func TestGetTargetAgent_Success(t *testing.T) {
 }
 
 func TestGetTargetAgent_Missing(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -200,7 +200,7 @@ func TestGetTargetAgent_Missing(t *testing.T) {
 }
 
 func TestGetTargetAgent_NotRegistered(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/?agent=nonexistent", nil)
 	rec := httptest.NewRecorder()
@@ -262,7 +262,7 @@ func TestRespondJSON_Struct(t *testing.T) {
 }
 
 func TestQueueHelper_Success(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 	registerTestAgent(s.Store, "agent-1")
 
 	rec := httptest.NewRecorder()
@@ -277,7 +277,7 @@ func TestQueueHelper_Success(t *testing.T) {
 }
 
 func TestQueueHelper_UnregisteredAgent(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	rec := httptest.NewRecorder()
 	s.queueHelper(rec, "unknown-agent", protocol.CmdFetchLogs, []byte(`{}`), "Queued!")
@@ -288,7 +288,7 @@ func TestQueueHelper_UnregisteredAgent(t *testing.T) {
 }
 
 func TestQueueHelper_QueueFull(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 	registerTestAgent(s.Store, "agent-1")
 
 	for range 10 {
@@ -441,7 +441,7 @@ func BenchmarkFormatBytes(b *testing.B) {
 }
 
 func BenchmarkQueueHelper(b *testing.B) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 	registerTestAgent(s.Store, "agent-1")
 
 	payload := []byte(`{"min_level":"ERROR"}`)

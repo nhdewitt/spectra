@@ -6,6 +6,7 @@ sql:
       - "internal/database/migrations/001_core.up.sql"
       - "internal/database/migrations/002_metrics.up.sql"
       - "internal/database/migrations/003_retention_and_indexes.up.sql"
+      - "internal/database/migrations/004_schema_additions.up.sql"
     gen:
       go:
         package: "database"

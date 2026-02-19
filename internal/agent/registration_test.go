@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -23,6 +24,24 @@ func fakeRegisterServer(t *testing.T) *httptest.Server {
 			Secret:  "test-agent-secret",
 		})
 	}))
+}
+
+func testConfig(t *testing.T, serverURL string) Config {
+	return Config{
+		BaseURL:           serverURL,
+		Hostname:          "test-agent",
+		RegistrationToken: "tok-123",
+		IdentityPath:      filepath.Join(t.TempDir(), "agent-id.json"),
+	}
+}
+
+func benchConfig(b *testing.B, serverURL string) Config {
+	return Config{
+		BaseURL:           serverURL,
+		Hostname:          "bench-agent",
+		RegistrationToken: "bench-123",
+		IdentityPath:      filepath.Join(b.TempDir(), "agent-id.json"),
+	}
 }
 
 func TestRegister_Success(t *testing.T) {
@@ -49,11 +68,7 @@ func TestRegister_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "test-agent",
-		RegistrationToken: "tok-123",
-	})
+	a := New(testConfig(t, server.URL))
 
 	err := a.Register()
 	if err != nil {
@@ -72,11 +87,7 @@ func TestRegister_SuccessCreated(t *testing.T) {
 	server := fakeRegisterServer(t)
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "test-agent",
-		RegistrationToken: "tok-123",
-	})
+	a := New(testConfig(t, server.URL))
 
 	err := a.Register()
 	if err != nil {
@@ -93,11 +104,7 @@ func TestRegister_ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "test-agent",
-		RegistrationToken: "tok-123",
-	})
+	a := New(testConfig(t, server.URL))
 	a.RetryConfig = RetryConfig{
 		MaxAttempts:  3,
 		InitialDelay: 1 * time.Millisecond,
@@ -159,11 +166,7 @@ func TestRegister_RetrySuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "test-agent",
-		RegistrationToken: "tok-123",
-	})
+	a := New(testConfig(t, server.URL))
 	a.RetryConfig = RetryConfig{
 		MaxAttempts:  3,
 		InitialDelay: 1 * time.Millisecond,
@@ -184,11 +187,9 @@ func TestRegister_RetrySuccess(t *testing.T) {
 }
 
 func TestRegister_ConnectionError(t *testing.T) {
-	a := New(Config{
-		BaseURL:           "http://localhost:59999",
-		Hostname:          "test-agent",
-		RegistrationToken: "tok-123",
-	})
+	cfg := testConfig(t, "http://localhost:59999")
+	a := New(cfg)
+
 	a.RetryConfig = RetryConfig{
 		MaxAttempts:  3,
 		InitialDelay: 1 * time.Millisecond,
@@ -214,11 +215,7 @@ func TestRegister_ContextCancelled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "test-agent",
-		RegistrationToken: "tok-123",
-	})
+	a := New(testConfig(t, server.URL))
 	a.RetryConfig = RetryConfig{
 		MaxAttempts:  3,
 		InitialDelay: 1 * time.Millisecond,
@@ -250,11 +247,8 @@ func TestRegister_PayloadStructure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "test-agent",
-		RegistrationToken: "my-token",
-	})
+	a := New(testConfig(t, server.URL))
+	a.Config.RegistrationToken = "my-token"
 
 	err := a.Register()
 	if err != nil {
@@ -290,11 +284,7 @@ func TestRegister_UserAgent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "test-agent",
-		RegistrationToken: "tok-123",
-	})
+	a := New(testConfig(t, server.URL))
 
 	a.Register()
 	if receivedUA != "Spectra-Agent/1.0" {
@@ -308,11 +298,7 @@ func TestRegister_BadRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "test-agent",
-		RegistrationToken: "tok-123",
-	})
+	a := New(testConfig(t, server.URL))
 
 	err := a.Register()
 	if err == nil {
@@ -326,11 +312,7 @@ func TestRegister_Unauthorized(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "test-agent",
-		RegistrationToken: "bad-token",
-	})
+	a := New(testConfig(t, server.URL))
 
 	err := a.Register()
 	if err == nil {
@@ -342,41 +324,32 @@ func TestRegister_SavesIdentity(t *testing.T) {
 	server := fakeRegisterServer(t)
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "test-agent",
-		RegistrationToken: "tok-123",
-	})
+	a := New(testConfig(t, server.URL))
 
 	err := a.Register()
 	if err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
 
-	// Verify identity was persisted
-	path := identityPath()
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Errorf("identity file should exist at %s", path)
+	if _, err := os.Stat(a.Config.IdentityPath); os.IsNotExist(err) {
+		t.Errorf("identity file should exist at %s", a.Config.IdentityPath)
 	}
-
-	// Clean up
-	os.Remove(path)
-	os.Remove("/etc/spectra") // clean up dir if empty
 }
 
 func TestIdentity_LoadSaveRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent-id.json")
+
 	original := AgentIdentity{
 		ID:     "roundtrip-id",
 		Secret: "roundtrip-secret",
 	}
 
-	err := saveIdentity(original)
+	err := saveIdentity(original, path)
 	if err != nil {
 		t.Fatalf("saveIdentity failed: %v", err)
 	}
-	defer os.Remove(identityPath())
 
-	loaded, err := loadIdentity()
+	loaded, err := loadIdentity(path)
 	if err != nil {
 		t.Fatalf("loadIdentity failed: %v", err)
 	}
@@ -390,7 +363,9 @@ func TestIdentity_LoadSaveRoundTrip(t *testing.T) {
 }
 
 func TestLoadIdentity_NotFound(t *testing.T) {
-	_, err := loadIdentity()
+	path := filepath.Join(t.TempDir(), "non-existent-file.json")
+
+	_, err := loadIdentity(path)
 	if err == nil {
 		t.Error("expected error when identity file doesn't exist")
 	}
@@ -407,11 +382,7 @@ func BenchmarkRegister(b *testing.B) {
 	}))
 	defer server.Close()
 
-	a := New(Config{
-		BaseURL:           server.URL,
-		Hostname:          "bench-agent",
-		RegistrationToken: "tok-123",
-	})
+	a := New(benchConfig(b, server.URL))
 
 	b.ReportAllocs()
 	b.ResetTimer()

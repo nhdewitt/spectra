@@ -35,5 +35,5 @@ INSERT INTO metrics_container (time, agent_id, container_id, name, image, state,
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
 
 -- name: InsertPi :exec
-INSERT INTO metrics_pi (time, agent_id, metric_type, arm_freq_hz, core_freq_hz, gpu_freq_hz, core_volts, sdram_c_volts, sdram_i_volts, sdram_p_volts, throttled, under_voltage, freq_capped, gpu_mem_total, gpu_mem_used, gpu_temp)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16);
+INSERT INTO metrics_pi (time, agent_id, metric_type, arm_freq_hz, core_freq_hz, gpu_freq_hz, core_volts, sdram_c_volts, sdram_i_volts, sdram_p_volts, soft_temp_limit, throttled, under_voltage, freq_capped, undervoltage_occurred, freq_cap_occurred, throttled_occurred, soft_temp_limit_occurred, gpu_mem_total, gpu_mem_used, gpu_temp)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21);

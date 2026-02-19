@@ -3,6 +3,8 @@
 package collector
 
 import (
+	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -20,7 +22,15 @@ func getPlatformInfo() (platform, version string) {
 
 	if val, _, err := k.GetStringValue("ProductName"); err == nil {
 		platform = val
+		if strings.Contains(platform, "Windows 10") {
+			if build, _, err := k.GetStringValue("CurrentBuildNumber"); err == nil {
+				if n, _ := strconv.Atoi(build); n >= 22000 {
+					platform = strings.Replace(platform, "Windows 10", "Windows 11", 1)
+				}
+			}
+		}
 	}
+
 	if val, _, err := k.GetStringValue("DisplayVersion"); err == nil {
 		version = val
 	}

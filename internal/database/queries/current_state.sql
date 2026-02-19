@@ -54,3 +54,18 @@ SELECT agent_id, name, version, updated_at
 FROM current_applications
 WHERE agent_id = $1
 ORDER BY name;
+
+-- name: UpsertUpdates :exec
+INSERT INTO current_updates (agent_id, pending_count, security_count, reboot_required, package_manager, updated_at)
+VALUES ($1, $2, $3, $4, $5, NOW())
+ON CONFLICT (agent_id) DO UPDATE
+SET pending_count = EXCLUDED.pending_count,
+    security_count = EXCLUDED.security_count,
+    reboot_required = EXCLUDED.reboot_required,
+    package_manager = EXCLUDED.package_manager,
+    updated_at = NOW();
+
+-- name: GetUpdates :one
+SELECT agent_id, pending_count, security_count, reboot_required, package_manager, updated_at
+FROM current_updates
+WHERE agent_id = $1;

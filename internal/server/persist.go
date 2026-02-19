@@ -232,12 +232,17 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 
 	case *protocol.ThrottleMetric:
 		err = s.DB.InsertPi(ctx, database.InsertPiParams{
-			Time:         t,
-			AgentID:      uid,
-			MetricType:   "throttle",
-			Throttled:    pgBool(m.Throttled),
-			UnderVoltage: pgBool(m.Undervoltage),
-			FreqCapped:   pgBool(m.ArmFreqCapped),
+			Time:                  t,
+			AgentID:               uid,
+			MetricType:            "throttle",
+			Throttled:             pgBool(m.Throttled),
+			UnderVoltage:          pgBool(m.Undervoltage),
+			FreqCapped:            pgBool(m.ArmFreqCapped),
+			SoftTempLimit:         pgBool(m.SoftTempLimit),
+			UndervoltageOccurred:  pgBool(m.UndervoltageOccurred),
+			FreqCapOccurred:       pgBool(m.FreqCapOccurred),
+			ThrottledOccurred:     pgBool(m.ThrottledOccurred),
+			SoftTempLimitOccurred: pgBool(m.SoftTempLimitOccurred),
 		})
 
 	case *protocol.GPUMetric:
@@ -247,6 +252,15 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			MetricType:  "gpu",
 			GpuMemTotal: pgInt8(int64(m.MemoryTotal)),
 			GpuMemUsed:  pgInt8(int64(m.MemoryUsed)),
+		})
+
+	case *protocol.UpdateMetric:
+		err = s.DB.UpsertUpdates(ctx, database.UpsertUpdatesParams{
+			AgentID:        uid,
+			PendingCount:   int32(m.PendingCount),
+			SecurityCount:  int32(m.SecurityCount),
+			RebootRequired: m.RebootRequired,
+			PackageManager: pgText(m.PackageManager),
 		})
 
 	default:

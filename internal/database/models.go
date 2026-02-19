@@ -49,6 +49,15 @@ type CurrentService struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type CurrentUpdate struct {
+	AgentID        pgtype.UUID        `json:"agent_id"`
+	PendingCount   int32              `json:"pending_count"`
+	SecurityCount  int32              `json:"security_count"`
+	RebootRequired bool               `json:"reboot_required"`
+	PackageManager pgtype.Text        `json:"package_manager"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type MetricsContainer struct {
 	Time        pgtype.Timestamptz `json:"time"`
 	AgentID     pgtype.UUID        `json:"agent_id"`
@@ -136,22 +145,27 @@ type MetricsNetwork struct {
 }
 
 type MetricsPi struct {
-	Time         pgtype.Timestamptz `json:"time"`
-	AgentID      pgtype.UUID        `json:"agent_id"`
-	MetricType   string             `json:"metric_type"`
-	ArmFreqHz    pgtype.Int8        `json:"arm_freq_hz"`
-	CoreFreqHz   pgtype.Int8        `json:"core_freq_hz"`
-	GpuFreqHz    pgtype.Int8        `json:"gpu_freq_hz"`
-	CoreVolts    pgtype.Float8      `json:"core_volts"`
-	SdramCVolts  pgtype.Float8      `json:"sdram_c_volts"`
-	SdramIVolts  pgtype.Float8      `json:"sdram_i_volts"`
-	SdramPVolts  pgtype.Float8      `json:"sdram_p_volts"`
-	Throttled    pgtype.Bool        `json:"throttled"`
-	UnderVoltage pgtype.Bool        `json:"under_voltage"`
-	FreqCapped   pgtype.Bool        `json:"freq_capped"`
-	GpuMemTotal  pgtype.Int8        `json:"gpu_mem_total"`
-	GpuMemUsed   pgtype.Int8        `json:"gpu_mem_used"`
-	GpuTemp      pgtype.Float8      `json:"gpu_temp"`
+	Time                  pgtype.Timestamptz `json:"time"`
+	AgentID               pgtype.UUID        `json:"agent_id"`
+	MetricType            string             `json:"metric_type"`
+	ArmFreqHz             pgtype.Int8        `json:"arm_freq_hz"`
+	CoreFreqHz            pgtype.Int8        `json:"core_freq_hz"`
+	GpuFreqHz             pgtype.Int8        `json:"gpu_freq_hz"`
+	CoreVolts             pgtype.Float8      `json:"core_volts"`
+	SdramCVolts           pgtype.Float8      `json:"sdram_c_volts"`
+	SdramIVolts           pgtype.Float8      `json:"sdram_i_volts"`
+	SdramPVolts           pgtype.Float8      `json:"sdram_p_volts"`
+	Throttled             pgtype.Bool        `json:"throttled"`
+	UnderVoltage          pgtype.Bool        `json:"under_voltage"`
+	FreqCapped            pgtype.Bool        `json:"freq_capped"`
+	GpuMemTotal           pgtype.Int8        `json:"gpu_mem_total"`
+	GpuMemUsed            pgtype.Int8        `json:"gpu_mem_used"`
+	GpuTemp               pgtype.Float8      `json:"gpu_temp"`
+	SoftTempLimit         pgtype.Bool        `json:"soft_temp_limit"`
+	UndervoltageOccurred  pgtype.Bool        `json:"undervoltage_occurred"`
+	FreqCapOccurred       pgtype.Bool        `json:"freq_cap_occurred"`
+	ThrottledOccurred     pgtype.Bool        `json:"throttled_occurred"`
+	SoftTempLimitOccurred pgtype.Bool        `json:"soft_temp_limit_occurred"`
 }
 
 type MetricsSystem struct {
@@ -181,6 +195,7 @@ type MetricsWifi struct {
 	SignalDbm    pgtype.Int4        `json:"signal_dbm"`
 	NoiseDbm     pgtype.Int4        `json:"noise_dbm"`
 	BitrateMbps  pgtype.Float8      `json:"bitrate_mbps"`
+	LinkQuality  pgtype.Int4        `json:"link_quality"`
 }
 
 type RegistrationToken struct {

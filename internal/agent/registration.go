@@ -69,7 +69,7 @@ func (a *Agent) Register() error {
 		Secret: resp.Secret,
 	}
 
-	if err := saveIdentity(a.Identity); err != nil {
+	if err := saveIdentity(a.Identity, a.Config.IdentityPath); err != nil {
 		return fmt.Errorf("saving identity: %w", err)
 	}
 

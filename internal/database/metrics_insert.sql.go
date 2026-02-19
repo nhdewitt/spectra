@@ -232,27 +232,32 @@ func (q *Queries) InsertNetwork(ctx context.Context, arg InsertNetworkParams) er
 }
 
 const insertPi = `-- name: InsertPi :exec
-INSERT INTO metrics_pi (time, agent_id, metric_type, arm_freq_hz, core_freq_hz, gpu_freq_hz, core_volts, sdram_c_volts, sdram_i_volts, sdram_p_volts, throttled, under_voltage, freq_capped, gpu_mem_total, gpu_mem_used, gpu_temp)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+INSERT INTO metrics_pi (time, agent_id, metric_type, arm_freq_hz, core_freq_hz, gpu_freq_hz, core_volts, sdram_c_volts, sdram_i_volts, sdram_p_volts, soft_temp_limit, throttled, under_voltage, freq_capped, undervoltage_occurred, freq_cap_occurred, throttled_occurred, soft_temp_limit_occurred, gpu_mem_total, gpu_mem_used, gpu_temp)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 `
 
 type InsertPiParams struct {
-	Time         pgtype.Timestamptz `json:"time"`
-	AgentID      pgtype.UUID        `json:"agent_id"`
-	MetricType   string             `json:"metric_type"`
-	ArmFreqHz    pgtype.Int8        `json:"arm_freq_hz"`
-	CoreFreqHz   pgtype.Int8        `json:"core_freq_hz"`
-	GpuFreqHz    pgtype.Int8        `json:"gpu_freq_hz"`
-	CoreVolts    pgtype.Float8      `json:"core_volts"`
-	SdramCVolts  pgtype.Float8      `json:"sdram_c_volts"`
-	SdramIVolts  pgtype.Float8      `json:"sdram_i_volts"`
-	SdramPVolts  pgtype.Float8      `json:"sdram_p_volts"`
-	Throttled    pgtype.Bool        `json:"throttled"`
-	UnderVoltage pgtype.Bool        `json:"under_voltage"`
-	FreqCapped   pgtype.Bool        `json:"freq_capped"`
-	GpuMemTotal  pgtype.Int8        `json:"gpu_mem_total"`
-	GpuMemUsed   pgtype.Int8        `json:"gpu_mem_used"`
-	GpuTemp      pgtype.Float8      `json:"gpu_temp"`
+	Time                  pgtype.Timestamptz `json:"time"`
+	AgentID               pgtype.UUID        `json:"agent_id"`
+	MetricType            string             `json:"metric_type"`
+	ArmFreqHz             pgtype.Int8        `json:"arm_freq_hz"`
+	CoreFreqHz            pgtype.Int8        `json:"core_freq_hz"`
+	GpuFreqHz             pgtype.Int8        `json:"gpu_freq_hz"`
+	CoreVolts             pgtype.Float8      `json:"core_volts"`
+	SdramCVolts           pgtype.Float8      `json:"sdram_c_volts"`
+	SdramIVolts           pgtype.Float8      `json:"sdram_i_volts"`
+	SdramPVolts           pgtype.Float8      `json:"sdram_p_volts"`
+	SoftTempLimit         pgtype.Bool        `json:"soft_temp_limit"`
+	Throttled             pgtype.Bool        `json:"throttled"`
+	UnderVoltage          pgtype.Bool        `json:"under_voltage"`
+	FreqCapped            pgtype.Bool        `json:"freq_capped"`
+	UndervoltageOccurred  pgtype.Bool        `json:"undervoltage_occurred"`
+	FreqCapOccurred       pgtype.Bool        `json:"freq_cap_occurred"`
+	ThrottledOccurred     pgtype.Bool        `json:"throttled_occurred"`
+	SoftTempLimitOccurred pgtype.Bool        `json:"soft_temp_limit_occurred"`
+	GpuMemTotal           pgtype.Int8        `json:"gpu_mem_total"`
+	GpuMemUsed            pgtype.Int8        `json:"gpu_mem_used"`
+	GpuTemp               pgtype.Float8      `json:"gpu_temp"`
 }
 
 func (q *Queries) InsertPi(ctx context.Context, arg InsertPiParams) error {
@@ -267,9 +272,14 @@ func (q *Queries) InsertPi(ctx context.Context, arg InsertPiParams) error {
 		arg.SdramCVolts,
 		arg.SdramIVolts,
 		arg.SdramPVolts,
+		arg.SoftTempLimit,
 		arg.Throttled,
 		arg.UnderVoltage,
 		arg.FreqCapped,
+		arg.UndervoltageOccurred,
+		arg.FreqCapOccurred,
+		arg.ThrottledOccurred,
+		arg.SoftTempLimitOccurred,
 		arg.GpuMemTotal,
 		arg.GpuMemUsed,
 		arg.GpuTemp,

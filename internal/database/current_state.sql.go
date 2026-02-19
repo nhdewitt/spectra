@@ -177,6 +177,26 @@ func (q *Queries) GetServices(ctx context.Context, agentID pgtype.UUID) ([]Curre
 	return items, nil
 }
 
+const getUpdates = `-- name: GetUpdates :one
+SELECT agent_id, pending_count, security_count, reboot_required, package_manager, updated_at
+FROM current_updates
+WHERE agent_id = $1
+`
+
+func (q *Queries) GetUpdates(ctx context.Context, agentID pgtype.UUID) (CurrentUpdate, error) {
+	row := q.db.QueryRow(ctx, getUpdates, agentID)
+	var i CurrentUpdate
+	err := row.Scan(
+		&i.AgentID,
+		&i.PendingCount,
+		&i.SecurityCount,
+		&i.RebootRequired,
+		&i.PackageManager,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const upsertApplication = `-- name: UpsertApplication :exec
 INSERT INTO current_applications (agent_id, name, version, updated_at)
 VALUES ($1, $2, $3, NOW())
@@ -256,6 +276,36 @@ func (q *Queries) UpsertService(ctx context.Context, arg UpsertServiceParams) er
 		arg.Name,
 		arg.Status,
 		arg.SubStatus,
+	)
+	return err
+}
+
+const upsertUpdates = `-- name: UpsertUpdates :exec
+INSERT INTO current_updates (agent_id, pending_count, security_count, reboot_required, package_manager, updated_at)
+VALUES ($1, $2, $3, $4, $5, NOW())
+ON CONFLICT (agent_id) DO UPDATE
+SET pending_count = EXCLUDED.pending_count,
+    security_count = EXCLUDED.security_count,
+    reboot_required = EXCLUDED.reboot_required,
+    package_manager = EXCLUDED.package_manager,
+    updated_at = NOW()
+`
+
+type UpsertUpdatesParams struct {
+	AgentID        pgtype.UUID `json:"agent_id"`
+	PendingCount   int32       `json:"pending_count"`
+	SecurityCount  int32       `json:"security_count"`
+	RebootRequired bool        `json:"reboot_required"`
+	PackageManager pgtype.Text `json:"package_manager"`
+}
+
+func (q *Queries) UpsertUpdates(ctx context.Context, arg UpsertUpdatesParams) error {
+	_, err := q.db.Exec(ctx, upsertUpdates,
+		arg.AgentID,
+		arg.PendingCount,
+		arg.SecurityCount,
+		arg.RebootRequired,
+		arg.PackageManager,
 	)
 	return err
 }

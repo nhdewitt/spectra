@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ func TestNew(t *testing.T) {
 		MetricsPath:  "/api/v1/metrics",
 		CommandPath:  "/api/v1/agent/command",
 		PollInterval: 5 * time.Second,
+		IdentityPath: filepath.Join(t.TempDir(), "agent-id.json"),
 	}
 
 	a := New(cfg)
@@ -78,7 +80,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestNew_CommonHeaders(t *testing.T) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
 	expected := map[string]string{
 		"Content-Type":     "application/json",
@@ -99,7 +101,7 @@ func TestNew_CommonHeaders(t *testing.T) {
 }
 
 func TestAgent_SetHeaders(t *testing.T) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
 	req, _ := http.NewRequest(http.MethodPost, "http://example.com", nil)
 	a.setHeaders(req)
@@ -116,7 +118,7 @@ func TestAgent_SetHeaders(t *testing.T) {
 }
 
 func TestAgent_Shutdown(t *testing.T) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
 	done := make(chan struct{})
 	go func() {
@@ -140,7 +142,7 @@ func TestAgent_Shutdown(t *testing.T) {
 }
 
 func TestAgent_Shutdown_WithWaitGroup(t *testing.T) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
 	a.wg.Add(1)
 	go func() {
@@ -163,7 +165,7 @@ func TestAgent_Shutdown_WithWaitGroup(t *testing.T) {
 }
 
 func TestAgent_MetricsChannel(t *testing.T) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
 	for i := range 100 {
 		select {
@@ -187,7 +189,7 @@ func TestAgent_MetricsChannel(t *testing.T) {
 }
 
 func TestAgent_ContextCancellation(t *testing.T) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
 	select {
 	case <-a.ctx.Done():
@@ -211,8 +213,8 @@ func TestAgent_ContextCancellation(t *testing.T) {
 }
 
 func TestAgent_MultipleNew(t *testing.T) {
-	a1 := New(Config{Hostname: "agent-1"})
-	a2 := New(Config{Hostname: "agent-2"})
+	a1 := New(Config{Hostname: "agent-1", IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
+	a2 := New(Config{Hostname: "agent-2", IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
 	if a1.Config.Hostname == a2.Config.Hostname {
 		t.Error("agents should have different hostnames")
@@ -236,7 +238,7 @@ func TestAgent_MultipleNew(t *testing.T) {
 }
 
 func TestConfig_Defaults(t *testing.T) {
-	cfg := Config{}
+	cfg := Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")}
 
 	if cfg.BaseURL != "" {
 		t.Errorf("default BaseURL should be empty, got %s", cfg.BaseURL)
@@ -250,7 +252,7 @@ func TestConfig_Defaults(t *testing.T) {
 }
 
 func TestAgent_GzipBufferConcurrency(t *testing.T) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
 	var wg sync.WaitGroup
 	for range 10 {
@@ -305,6 +307,7 @@ func BenchmarkNew(b *testing.B) {
 		MetricsPath:  "/api/v1/metrics",
 		CommandPath:  "/api/v1/agent/command",
 		PollInterval: 5 * time.Second,
+		IdentityPath: filepath.Join(b.TempDir(), "agent-id.json"),
 	}
 
 	b.ReportAllocs()
@@ -314,7 +317,7 @@ func BenchmarkNew(b *testing.B) {
 }
 
 func BenchmarkAgent_SetHeaders(b *testing.B) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(b.TempDir(), "agent-id.json")})
 	req, _ := http.NewRequest(http.MethodPost, "http://example.com", nil)
 
 	b.ReportAllocs()
@@ -325,7 +328,7 @@ func BenchmarkAgent_SetHeaders(b *testing.B) {
 }
 
 func BenchmarkAgent_MetricsChannel_Send(b *testing.B) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(b.TempDir(), "agent-id.json")})
 
 	env := protocol.Envelope{Type: "cpu", Hostname: "test"}
 
@@ -350,7 +353,7 @@ func BenchmarkAgent_MetricsChannel_Send(b *testing.B) {
 }
 
 func BenchmarkAgent_MetricsChannel_SendReceive(b *testing.B) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(b.TempDir(), "agent-id.json")})
 
 	env := protocol.Envelope{Type: "cpu", Hostname: "test"}
 
@@ -362,7 +365,7 @@ func BenchmarkAgent_MetricsChannel_SendReceive(b *testing.B) {
 }
 
 func BenchmarkAgent_GzipBuffer_Lock(b *testing.B) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(b.TempDir(), "agent-id.json")})
 
 	b.ReportAllocs()
 	for b.Loop() {
@@ -373,7 +376,7 @@ func BenchmarkAgent_GzipBuffer_Lock(b *testing.B) {
 }
 
 func BenchmarkAgent_GzipBuffer_WriteReset(b *testing.B) {
-	a := New(Config{})
+	a := New(Config{IdentityPath: filepath.Join(b.TempDir(), "agent-id.json")})
 	data := []byte(`{"type":"cpu","hostname":"test","data":{"usage":50.5}}`)
 
 	b.ReportAllocs()
@@ -392,6 +395,7 @@ func BenchmarkConfig_Copy(b *testing.B) {
 		MetricsPath:  "/api/v1/metrics",
 		CommandPath:  "/api/v1/agent/command",
 		PollInterval: 5 * time.Second,
+		IdentityPath: filepath.Join(b.TempDir(), "agent-id.json"),
 	}
 
 	b.ReportAllocs()

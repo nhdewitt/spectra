@@ -12,8 +12,11 @@ type AgentIdentity struct {
 	Secret string `json:"secret"`
 }
 
-func loadIdentity() (AgentIdentity, error) {
-	data, err := os.ReadFile(identityPath())
+func loadIdentity(path string) (AgentIdentity, error) {
+	if path == "" {
+		path = identityPath()
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return AgentIdentity{}, err
 	}
@@ -29,8 +32,8 @@ func loadIdentity() (AgentIdentity, error) {
 	return id, nil
 }
 
-func saveIdentity(id AgentIdentity) error {
-	dir := filepath.Dir(identityPath())
+func saveIdentity(id AgentIdentity, path string) error {
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("creating identity dir: %w", err)
 	}
@@ -38,5 +41,5 @@ func saveIdentity(id AgentIdentity) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(identityPath(), data, 0600)
+	return os.WriteFile(path, data, 0600)
 }

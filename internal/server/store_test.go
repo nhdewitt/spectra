@@ -10,14 +10,6 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-// registerTestAgent is a helper that registers an agent with default test values.
-func registerTestAgent(store *AgentStore, agentID string) {
-	store.Register(agentID, "secret-"+agentID, protocol.HostInfo{
-		Hostname: "host-" + agentID,
-		OS:       "linux",
-	})
-}
-
 func TestNewAgentStore(t *testing.T) {
 	store := NewAgentStore()
 
@@ -301,12 +293,9 @@ func TestAgentStore_WaitForCommand_Timeout(t *testing.T) {
 	registerTestAgent(store, "agent-1")
 
 	ctx := context.Background()
-	cmd, err := store.WaitForCommand(ctx, "agent-1", 10*time.Millisecond)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if cmd.ID != "" {
-		t.Errorf("expected empty command on timeout, got %+v", cmd)
+	_, err := store.WaitForCommand(ctx, "agent-1", 10*time.Millisecond)
+	if err == nil {
+		t.Error("expected error on timeout")
 	}
 }
 

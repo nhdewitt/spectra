@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	"github.com/nhdewitt/spectra/internal/database"
 )
 
 type Config struct {
@@ -17,11 +15,11 @@ type Server struct {
 	Config Config
 	Store  *AgentStore
 	Tokens *TokenStore
-	DB     *database.Queries
+	DB     DB
 	Router *http.ServeMux
 }
 
-func New(cfg Config, db *database.Queries) *Server {
+func New(cfg Config, db DB) *Server {
 	if cfg.CommandTimeout == 0 {
 		cfg.CommandTimeout = 30 * time.Second
 	}

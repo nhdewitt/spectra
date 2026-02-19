@@ -11,30 +11,10 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-// newTestServer creates a server with a pre-registered agent and valid token infrastructure.
-func newTestServer() (*Server, string, string) {
-	s := New(Config{Port: 8080, CommandTimeout: 100 * time.Millisecond})
-	agentID := "test-agent-id"
-	secret := "test-secret"
-	s.Store.Register(agentID, secret, protocol.HostInfo{
-		Hostname: "test-host",
-		OS:       "linux",
-		Platform: "ubuntu",
-		Arch:     "amd64",
-	})
-	return s, agentID, secret
-}
-
-// setAgentAuth sets the auth headers on a request.
-func setAgentAuth(req *http.Request, agentID, secret string) {
-	req.Header.Set("X-Agent-ID", agentID)
-	req.Header.Set("X-Agent-Secret", secret)
-}
-
 // --- Registration ---
 
 func TestHandleAgentRegister_Success(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 	token := s.Tokens.Generate(24 * time.Hour)
 
 	regReq := protocol.RegisterRequest{
@@ -76,7 +56,7 @@ func TestHandleAgentRegister_Success(t *testing.T) {
 }
 
 func TestHandleAgentRegister_InvalidToken(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	regReq := protocol.RegisterRequest{
 		Token: "invalid-token",
@@ -96,7 +76,7 @@ func TestHandleAgentRegister_InvalidToken(t *testing.T) {
 }
 
 func TestHandleAgentRegister_ExpiredToken(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 	token := s.Tokens.Generate(1 * time.Nanosecond)
 	time.Sleep(2 * time.Millisecond)
 
@@ -118,7 +98,7 @@ func TestHandleAgentRegister_ExpiredToken(t *testing.T) {
 }
 
 func TestHandleAgentRegister_TokenSingleUse(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 	token := s.Tokens.Generate(24 * time.Hour)
 
 	regReq := protocol.RegisterRequest{
@@ -149,7 +129,7 @@ func TestHandleAgentRegister_TokenSingleUse(t *testing.T) {
 }
 
 func TestHandleAgentRegister_MethodNotAllowed(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/register", nil)
 	rec := httptest.NewRecorder()
@@ -162,7 +142,7 @@ func TestHandleAgentRegister_MethodNotAllowed(t *testing.T) {
 }
 
 func TestHandleAgentRegister_InvalidJSON(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", bytes.NewReader([]byte("invalid")))
 	req.Header.Set("Content-Type", "application/json")
@@ -178,7 +158,7 @@ func TestHandleAgentRegister_InvalidJSON(t *testing.T) {
 // --- Auth Middleware ---
 
 func TestRequireAgentAuth_Success(t *testing.T) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	batch := []RawEnvelope{}
 	body, _ := json.Marshal(batch)
@@ -196,7 +176,7 @@ func TestRequireAgentAuth_Success(t *testing.T) {
 }
 
 func TestRequireAgentAuth_MissingHeaders(t *testing.T) {
-	s, _, _ := newTestServer()
+	s, _, _, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader([]byte("[]")))
 	req.Header.Set("Content-Type", "application/json")
@@ -210,7 +190,7 @@ func TestRequireAgentAuth_MissingHeaders(t *testing.T) {
 }
 
 func TestRequireAgentAuth_WrongSecret(t *testing.T) {
-	s, agentID, _ := newTestServer()
+	s, agentID, _, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader([]byte("[]")))
 	req.Header.Set("Content-Type", "application/json")
@@ -225,7 +205,7 @@ func TestRequireAgentAuth_WrongSecret(t *testing.T) {
 }
 
 func TestRequireAgentAuth_UnknownAgent(t *testing.T) {
-	s, _, _ := newTestServer()
+	s, _, _, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader([]byte("[]")))
 	req.Header.Set("Content-Type", "application/json")
@@ -242,7 +222,7 @@ func TestRequireAgentAuth_UnknownAgent(t *testing.T) {
 // --- Metrics ---
 
 func TestHandleMetrics_Success(t *testing.T) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	batch := []RawEnvelope{
 		{
@@ -266,7 +246,7 @@ func TestHandleMetrics_Success(t *testing.T) {
 }
 
 func TestHandleMetrics_EmptyBatch(t *testing.T) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	body, _ := json.Marshal([]RawEnvelope{})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
@@ -282,7 +262,7 @@ func TestHandleMetrics_EmptyBatch(t *testing.T) {
 }
 
 func TestHandleMetrics_InvalidJSON(t *testing.T) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader([]byte("invalid")))
 	req.Header.Set("Content-Type", "application/json")
@@ -299,7 +279,8 @@ func TestHandleMetrics_InvalidJSON(t *testing.T) {
 // --- Agent Command ---
 
 func TestHandleAgentCommand_NoCommands(t *testing.T) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
+	s.Config.CommandTimeout = 10 * time.Millisecond
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/command", nil)
 	setAgentAuth(req, agentID, secret)
@@ -313,7 +294,7 @@ func TestHandleAgentCommand_NoCommands(t *testing.T) {
 }
 
 func TestHandleAgentCommand_WithCommand(t *testing.T) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 	s.Store.QueueCommand(agentID, protocol.Command{
 		ID:   "cmd-123",
 		Type: protocol.CmdFetchLogs,
@@ -339,7 +320,7 @@ func TestHandleAgentCommand_WithCommand(t *testing.T) {
 }
 
 func TestHandleAgentCommand_NoAuth(t *testing.T) {
-	s, _, _ := newTestServer()
+	s, _, _, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/command", nil)
 	rec := httptest.NewRecorder()
@@ -354,7 +335,7 @@ func TestHandleAgentCommand_NoAuth(t *testing.T) {
 // --- Command Result ---
 
 func TestHandleCommandResult_Success(t *testing.T) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	logs := []protocol.LogEntry{
 		{
@@ -386,7 +367,7 @@ func TestHandleCommandResult_Success(t *testing.T) {
 }
 
 func TestHandleCommandResult_WithError(t *testing.T) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	result := protocol.CommandResult{
 		ID:    "cmd-123",
@@ -408,7 +389,7 @@ func TestHandleCommandResult_WithError(t *testing.T) {
 }
 
 func TestHandleCommandResult_InvalidJSON(t *testing.T) {
-	s, agentID, secret := newTestServer()
+	s, agentID, secret, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/command/result", bytes.NewReader([]byte("invalid")))
 	req.Header.Set("Content-Type", "application/json")
@@ -423,7 +404,7 @@ func TestHandleCommandResult_InvalidJSON(t *testing.T) {
 }
 
 func TestHandleCommandResult_NoAuth(t *testing.T) {
-	s, _, _ := newTestServer()
+	s, _, _, _ := newTestServer()
 
 	result := protocol.CommandResult{ID: "cmd-123", Type: protocol.CmdFetchLogs}
 	body, _ := json.Marshal(result)
@@ -442,7 +423,7 @@ func TestHandleCommandResult_NoAuth(t *testing.T) {
 // --- Admin Triggers ---
 
 func TestHandleAdminTriggerLogs_Success(t *testing.T) {
-	s, agentID, _ := newTestServer()
+	s, agentID, _, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/logs?agent="+agentID, nil)
 	rec := httptest.NewRecorder()
@@ -455,7 +436,7 @@ func TestHandleAdminTriggerLogs_Success(t *testing.T) {
 }
 
 func TestHandleAdminTriggerLogs_MissingAgent(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/logs", nil)
 	rec := httptest.NewRecorder()
@@ -468,7 +449,7 @@ func TestHandleAdminTriggerLogs_MissingAgent(t *testing.T) {
 }
 
 func TestHandleAdminTriggerLogs_UnknownAgent(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/logs?agent=nonexistent", nil)
 	rec := httptest.NewRecorder()
@@ -481,7 +462,7 @@ func TestHandleAdminTriggerLogs_UnknownAgent(t *testing.T) {
 }
 
 func TestHandleAdminTriggerDisk_Success(t *testing.T) {
-	s, agentID, _ := newTestServer()
+	s, agentID, _, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/disk?agent="+agentID+"&path=/&top_n=10", nil)
 	rec := httptest.NewRecorder()
@@ -494,7 +475,7 @@ func TestHandleAdminTriggerDisk_Success(t *testing.T) {
 }
 
 func TestHandleAdminTriggerDisk_MissingAgent(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/disk", nil)
 	rec := httptest.NewRecorder()
@@ -507,7 +488,7 @@ func TestHandleAdminTriggerDisk_MissingAgent(t *testing.T) {
 }
 
 func TestHandleAdminTriggerNetwork_Success(t *testing.T) {
-	s, agentID, _ := newTestServer()
+	s, agentID, _, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/network?agent="+agentID+"&action=ping&target=8.8.8.8", nil)
 	rec := httptest.NewRecorder()
@@ -520,7 +501,7 @@ func TestHandleAdminTriggerNetwork_Success(t *testing.T) {
 }
 
 func TestHandleAdminTriggerNetwork_MissingAgent(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/network?action=ping", nil)
 	rec := httptest.NewRecorder()
@@ -533,7 +514,7 @@ func TestHandleAdminTriggerNetwork_MissingAgent(t *testing.T) {
 }
 
 func TestHandleAdminTriggerNetwork_MissingAction(t *testing.T) {
-	s, agentID, _ := newTestServer()
+	s, agentID, _, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/network?agent="+agentID, nil)
 	rec := httptest.NewRecorder()
@@ -548,7 +529,7 @@ func TestHandleAdminTriggerNetwork_MissingAction(t *testing.T) {
 // --- Token Generation ---
 
 func TestHandleGenerateToken(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/tokens", nil)
 	rec := httptest.NewRecorder()
