@@ -14,6 +14,10 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
+func MakeServiceCollector(_ string) CollectFunc {
+	return CollectServices
+}
+
 // CollectServices calls "service -e" to get enabled services
 // and "service -l" to get all services, using the set of enabled
 // services to determine which ones are currently active. FreeBSD

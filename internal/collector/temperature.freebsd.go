@@ -12,6 +12,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func MakeTemperatureCollector(_ []string) CollectFunc {
+	return CollectTemperature
+}
+
 func CollectTemperature(ctx context.Context) ([]protocol.Metric, error) {
 	nCores, err := unix.SysctlUint32("hw.ncpu")
 	if err != nil {
@@ -33,7 +37,7 @@ func CollectTemperature(ctx context.Context) ([]protocol.Metric, error) {
 		temps = append(temps, protocol.TemperatureMetric{
 			Sensor: name,
 			Temp:   temp,
-			Max:    0.0, // FreeBSD sysctl has no per-core max
+			Max:    nil, // FreeBSD sysctl has no per-core max
 		})
 	}
 	// Check ACPI thermal zones 0-15
@@ -57,7 +61,7 @@ func CollectTemperature(ctx context.Context) ([]protocol.Metric, error) {
 		temps = append(temps, protocol.TemperatureMetric{
 			Sensor: name,
 			Temp:   temp,
-			Max:    max,
+			Max:    &max,
 		})
 	}
 
