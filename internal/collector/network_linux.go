@@ -10,9 +10,7 @@ import (
 	"strings"
 )
 
-// collectNetworkRaw reads cumulative counters from /proc/net/dev
-// and adds MAC, MTU, and link speed from /sys/class/net.
-func collectNetworkRaw() (map[string]NetworkRaw, error) {
+func parseNetDev() (map[string]NetworkRaw, error) {
 	f, err := os.Open("/proc/net/dev")
 	if err != nil {
 		return nil, err

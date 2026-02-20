@@ -108,54 +108,110 @@ func TestDecodeJSONBody_Struct(t *testing.T) {
 	}
 }
 
-func TestGetHostname_Success(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/?hostname=test-agent", nil)
+func TestGetAgentID(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("X-Agent-ID", "abc-123")
+
+	got := getAgentID(req)
+	if got != "abc-123" {
+		t.Errorf("getAgentID = %s, want abc-123", got)
+	}
+}
+
+func TestGetAgentID_Missing(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	got := getAgentID(req)
+	if got != "" {
+		t.Errorf("getAgentID = %s, want empty", got)
+	}
+}
+
+func TestGenerateSecret(t *testing.T) {
+	s1, err := generateSecret(32)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(s1) != 64 {
+		t.Errorf("length: got %d, want 64 (32 bytes hex-encoded)", len(s1))
+	}
+
+	s2, err := generateSecret(32)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s1 == s2 {
+		t.Error("two generated secrets should not be equal")
+	}
+}
+
+func TestGenerateSecret_DifferentLengths(t *testing.T) {
+	tests := []struct {
+		n       int
+		wantLen int
+	}{
+		{16, 32},
+		{32, 64},
+		{64, 128},
+	}
+
+	for _, tt := range tests {
+		s, err := generateSecret(tt.n)
+		if err != nil {
+			t.Fatalf("generateSecret(%d) error: %v", tt.n, err)
+		}
+		if len(s) != tt.wantLen {
+			t.Errorf("generateSecret(%d) length: got %d, want %d", tt.n, len(s), tt.wantLen)
+		}
+	}
+}
+
+func TestGetTargetAgent_Success(t *testing.T) {
+	s := New(Config{Port: 8080}, NewMockDB())
+	registerTestAgent(s.Store, "agent-1")
+
+	req := httptest.NewRequest(http.MethodGet, "/?agent=agent-1", nil)
 	rec := httptest.NewRecorder()
 
-	hostname, ok := getHostname(rec, req)
+	agentID, ok := s.getTargetAgent(rec, req)
 
 	if !ok {
 		t.Error("expected ok to be true")
 	}
-	if hostname != "test-agent" {
-		t.Errorf("hostname = %s, want test-agent", hostname)
-	}
-	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", rec.Code)
+	if agentID != "agent-1" {
+		t.Errorf("agentID = %s, want agent-1", agentID)
 	}
 }
 
-func TestGetHostname_Missing(t *testing.T) {
+func TestGetTargetAgent_Missing(t *testing.T) {
+	s := New(Config{Port: 8080}, NewMockDB())
+
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
-	hostname, ok := getHostname(rec, req)
+	_, ok := s.getTargetAgent(rec, req)
 
 	if ok {
 		t.Error("expected ok to be false")
 	}
-	if hostname != "" {
-		t.Errorf("hostname should be empty, got %s", hostname)
-	}
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
 	}
 }
 
-func TestGetHostname_Empty(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/?hostname=", nil)
+func TestGetTargetAgent_NotRegistered(t *testing.T) {
+	s := New(Config{Port: 8080}, NewMockDB())
+
+	req := httptest.NewRequest(http.MethodGet, "/?agent=nonexistent", nil)
 	rec := httptest.NewRecorder()
 
-	hostname, ok := getHostname(rec, req)
+	_, ok := s.getTargetAgent(rec, req)
 
 	if ok {
-		t.Error("expected ok to be false for empty hostname")
+		t.Error("expected ok to be false")
 	}
-	if hostname != "" {
-		t.Errorf("hostname should be empty, got %s", hostname)
-	}
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("status = %d, want 400", rec.Code)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
 	}
 }
 
@@ -187,9 +243,6 @@ func TestRespondJSON_NilData(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("status = %d, want 204", rec.Code)
 	}
-	if rec.Header().Get("Content-Type") != "application/json" {
-		t.Errorf("Content-Type = %s, want application/json", rec.Header().Get("Content-Type"))
-	}
 	if rec.Body.Len() != 0 {
 		t.Errorf("body should be empty, got %s", rec.Body.String())
 	}
@@ -209,11 +262,11 @@ func TestRespondJSON_Struct(t *testing.T) {
 }
 
 func TestQueueHelper_Success(t *testing.T) {
-	s := New(Config{Port: 8080})
-	s.Store.Register("test-agent")
+	s := New(Config{Port: 8080}, NewMockDB())
+	registerTestAgent(s.Store, "agent-1")
 
 	rec := httptest.NewRecorder()
-	s.queueHelper(rec, "test-agent", protocol.CmdFetchLogs, []byte(`{}`), "Queued!")
+	s.queueHelper(rec, "agent-1", protocol.CmdFetchLogs, []byte(`{}`), "Queued!")
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rec.Code)
@@ -224,7 +277,7 @@ func TestQueueHelper_Success(t *testing.T) {
 }
 
 func TestQueueHelper_UnregisteredAgent(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	rec := httptest.NewRecorder()
 	s.queueHelper(rec, "unknown-agent", protocol.CmdFetchLogs, []byte(`{}`), "Queued!")
@@ -235,15 +288,15 @@ func TestQueueHelper_UnregisteredAgent(t *testing.T) {
 }
 
 func TestQueueHelper_QueueFull(t *testing.T) {
-	s := New(Config{Port: 8080})
-	s.Store.Register("test-agent")
+	s := New(Config{Port: 8080}, NewMockDB())
+	registerTestAgent(s.Store, "agent-1")
 
 	for range 10 {
-		s.Store.QueueCommand("test-agent", protocol.Command{ID: "cmd"})
+		s.Store.QueueCommand("agent-1", protocol.Command{ID: "cmd"})
 	}
 
 	rec := httptest.NewRecorder()
-	s.queueHelper(rec, "test-agent", protocol.CmdFetchLogs, []byte(`{}`), "Queued!")
+	s.queueHelper(rec, "agent-1", protocol.CmdFetchLogs, []byte(`{}`), "Queued!")
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", rec.Code)
@@ -334,14 +387,21 @@ func BenchmarkDecodeJSONBody_Gzip(b *testing.B) {
 	}
 }
 
-func BenchmarkGetHostname(b *testing.B) {
-	req := httptest.NewRequest(http.MethodGet, "/?hostname=test-agent", nil)
+func BenchmarkGetAgentID(b *testing.B) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("X-Agent-ID", "abc-123")
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		rec := httptest.NewRecorder()
-		getHostname(rec, req)
+		getAgentID(req)
+	}
+}
+
+func BenchmarkGenerateSecret(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		generateSecret(32)
 	}
 }
 
@@ -381,8 +441,8 @@ func BenchmarkFormatBytes(b *testing.B) {
 }
 
 func BenchmarkQueueHelper(b *testing.B) {
-	s := New(Config{Port: 8080})
-	s.Store.Register("bench-agent")
+	s := New(Config{Port: 8080}, NewMockDB())
+	registerTestAgent(s.Store, "agent-1")
 
 	payload := []byte(`{"min_level":"ERROR"}`)
 
@@ -391,7 +451,7 @@ func BenchmarkQueueHelper(b *testing.B) {
 	for b.Loop() {
 		b.StopTimer()
 		for {
-			cmd, _ := s.Store.WaitForCommand(context.TODO(), "bench-agent", 0)
+			cmd, _ := s.Store.WaitForCommand(context.TODO(), "agent-1", 0)
 			if cmd.ID == "" {
 				break
 			}
@@ -399,6 +459,6 @@ func BenchmarkQueueHelper(b *testing.B) {
 		b.StartTimer()
 
 		rec := httptest.NewRecorder()
-		s.queueHelper(rec, "bench-agent", protocol.CmdFetchLogs, payload, "Queued!")
+		s.queueHelper(rec, "agent-1", protocol.CmdFetchLogs, payload, "Queued!")
 	}
 }

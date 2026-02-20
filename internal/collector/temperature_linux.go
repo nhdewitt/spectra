@@ -13,6 +13,20 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
+// MakeTemperatureCollector returns a CollectFunc that reads from the
+// provided thermal zone paths, avoiding a filepath.Glob on every cycle.
+func MakeTemperatureCollector(zones []string) CollectFunc {
+	return func(ctx context.Context) ([]protocol.Metric, error) {
+		var results []protocol.Metric
+		for _, zone := range zones {
+			if m, err := readThermalZone(zone); err == nil {
+				results = append(results, *m)
+			}
+		}
+		return results, nil
+	}
+}
+
 func CollectTemperature(ctx context.Context) ([]protocol.Metric, error) {
 	zones, err := filepath.Glob("/sys/class/thermal/thermal_zone*")
 	if err != nil {
@@ -66,18 +80,17 @@ func parseThermalZoneFrom(typeR, tempR, maxR io.Reader) (*protocol.TemperatureMe
 		return nil, err
 	}
 
-	// Max Temp (if not nil)
-	maxVal := 0.0
+	var max *float64
 	if maxR != nil {
 		if v, err := parseThermalValueFrom(maxR); err == nil {
-			maxVal = normalizeMax(tempVal, v)
+			max = normalizeMax(tempVal, v)
 		}
 	}
 
 	return &protocol.TemperatureMetric{
 		Sensor: name,
 		Temp:   tempVal,
-		Max:    maxVal,
+		Max:    max,
 	}, nil
 }
 

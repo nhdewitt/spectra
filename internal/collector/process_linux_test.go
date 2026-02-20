@@ -11,57 +11,6 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-func TestParseProcessMemInfoFrom(t *testing.T) {
-	input := `
-MemTotal:		32806268 kB
-MemFree:		18263152 kB
-MemAvailable:	27608292 kB
-Buffers:		  542380 kB
-`
-
-	reader := strings.NewReader(input)
-
-	bytes, err := parseProcessMemInfoFrom(reader)
-	if err != nil {
-		t.Fatalf("parseMemInfoFrom failed: %v", err)
-	}
-
-	expected := uint64(32806268 * 1024)
-	if bytes != expected {
-		t.Errorf("Expected %d bytes, got %d", expected, bytes)
-	}
-}
-
-func TestParseProcessMemInfoFrom_NotFound(t *testing.T) {
-	input := `
-MemFree:		18263152 kB
-MemAvailable:	27608292 kB
-Buffers:		  542380 kB
-`
-	reader := strings.NewReader(input)
-	_, err := parseProcessMemInfoFrom(reader)
-	if err == nil {
-		t.Error("expected error when MemTotal not found")
-	}
-}
-
-func TestParseProcessMemInfoFrom_Empty(t *testing.T) {
-	reader := strings.NewReader("")
-	_, err := parseProcessMemInfoFrom(reader)
-	if err == nil {
-		t.Error("expected error for empty input")
-	}
-}
-
-func TestParseProcessMemInfoFrom_MalformedValue(t *testing.T) {
-	input := `MemTotal:		notanumber kB`
-	reader := strings.NewReader(input)
-	_, err := parseProcessMemInfoFrom(reader)
-	if err == nil {
-		t.Error("expected error for malformed value")
-	}
-}
-
 func TestParsePidStatFrom(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -307,20 +256,6 @@ func TestProcessStateCleanup(t *testing.T) {
 
 	if _, ok := lastProcessStates[99999999]; ok {
 		t.Error("old PID not cleaned up")
-	}
-}
-
-func BenchmarkParseProcessMemInfoFrom(b *testing.B) {
-	input := `MemTotal:       32806268 kB
-MemFree:        18263152 kB
-MemAvailable:   27608292 kB
-Buffers:          542380 kB
-Cached:          8234567 kB
-`
-	b.ReportAllocs()
-	for b.Loop() {
-		r := strings.NewReader(input)
-		_, _ = parseProcessMemInfoFrom(r)
 	}
 }
 

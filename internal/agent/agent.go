@@ -6,21 +6,26 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/collector"
+	"github.com/nhdewitt/spectra/internal/platform"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
 // Config holds the runtime configuration
 type Config struct {
-	BaseURL      string
-	Hostname     string
-	MetricsPath  string
-	CommandPath  string
-	PollInterval time.Duration
+	BaseURL           string
+	Hostname          string
+	MetricsPath       string
+	CommandPath       string
+	PollInterval      time.Duration
+	RegistrationToken string
+	IdentityPath      string
 }
 
 // Agent is the main application controller
@@ -40,6 +45,43 @@ type Agent struct {
 	gzipW   *gzip.Writer
 
 	commonHeaders map[string]string
+
+	RetryConfig RetryConfig
+
+	Platform platform.Info
+	Identity AgentIdentity
+}
+
+type RetryConfig struct {
+	MaxAttempts  int
+	InitialDelay time.Duration
+	MaxDelay     time.Duration
+	Multiplier   float64
+}
+
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxAttempts:  3,
+		InitialDelay: 1 * time.Second,
+		MaxDelay:     30 * time.Second,
+		Multiplier:   2.0,
+	}
+}
+
+func (rc RetryConfig) Delay(attempt int) time.Duration {
+	if attempt <= 0 {
+		return rc.InitialDelay
+	}
+
+	delay := float64(rc.InitialDelay)
+	for range attempt {
+		delay *= rc.Multiplier
+	}
+
+	if time.Duration(delay) > rc.MaxDelay {
+		return rc.MaxDelay
+	}
+	return time.Duration(delay)
 }
 
 // New creates a configured Agent instance
@@ -48,7 +90,17 @@ func New(cfg Config) *Agent {
 		Timeout: 45 * time.Second,
 	}
 
+	if cfg.IdentityPath == "" {
+		cfg.IdentityPath = identityPath()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
+	id, err := loadIdentity(cfg.IdentityPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("warning: failed to load identity: %v", err)
+		}
+	}
 
 	return &Agent{
 		Config:     cfg,
@@ -64,6 +116,9 @@ func New(cfg Config) *Agent {
 			"Content-Encoding": "gzip",
 			"User-Agent":       "Spectra-Agent/1.0",
 		},
+		RetryConfig: DefaultRetryConfig(),
+		Platform:    platform.Detect(),
+		Identity:    id,
 	}
 }
 
@@ -71,6 +126,12 @@ func New(cfg Config) *Agent {
 func (a *Agent) Start() error {
 	fmt.Printf("Spectra Agent starting on %s...\n", a.Config.Hostname)
 	fmt.Printf("Server: %s\n", a.Config.BaseURL)
+
+	if a.Identity.ID == "" {
+		if err := a.Register(); err != nil {
+			return fmt.Errorf("registration failed: %w", err)
+		}
+	}
 
 	// Mount Manager (Windows disk mapping)
 	go collector.RunMountManager(a.ctx, a.DriveCache, 30*time.Second)
@@ -92,11 +153,6 @@ func (a *Agent) Start() error {
 		a.runCommandLoop()
 	}()
 
-	// Register Identity
-	if err := a.Register(); err != nil {
-		fmt.Printf("Initial registration failed: %v", err)
-	}
-
 	// Block until shutdown called
 	<-a.ctx.Done()
 	return nil
@@ -104,15 +160,19 @@ func (a *Agent) Start() error {
 
 // Shutdown gracefully stops all background tasks
 func (a *Agent) Shutdown() {
-	fmt.Println("Agent shutting down...")
+	// fmt.Println("Agent shutting down...")
 	a.cancel()
 	a.wg.Wait()
-	fmt.Println("Agent stopped.")
+	// fmt.Println("Agent stopped.")
 }
 
 // setHeaders sets common headers for an http.Request
 func (a *Agent) setHeaders(req *http.Request) {
 	for k, v := range a.commonHeaders {
 		req.Header.Set(k, v)
+	}
+	if a.Identity.ID != "" {
+		req.Header.Set("X-Agent-ID", a.Identity.ID)
+		req.Header.Set("X-Agent-Secret", a.Identity.Secret)
 	}
 }

@@ -18,6 +18,12 @@ type MSAcpi_ThermalZoneTemperature struct {
 	InstanceName       string
 }
 
+// MakeTemperatureCollector returns CollectTemperature unchanged on Windows.
+// Thermal zones are detected via WMI, not sysfs paths.
+func MakeTemperatureCollector(_ []string) CollectFunc {
+	return CollectTemperature
+}
+
 func CollectTemperature(ctx context.Context) ([]protocol.Metric, error) {
 	var dst []MSAcpi_ThermalZoneTemperature
 
@@ -34,10 +40,10 @@ func CollectTemperature(ctx context.Context) ([]protocol.Metric, error) {
 		celsius := (float64(v.CurrentTemperature) - 2732.0) / 10.0
 
 		// Calc Max Temp: CriticalTripPoint
-		maxCelsius := 0.0
+		var max *float64
 		if v.CriticalTripPoint > 0 {
 			raw := (float64(v.CriticalTripPoint) - 2732.0) / 10.0
-			maxCelsius = normalizeMax(celsius, raw)
+			max = normalizeMax(celsius, raw)
 		}
 
 		// Clean Name
@@ -49,7 +55,7 @@ func CollectTemperature(ctx context.Context) ([]protocol.Metric, error) {
 		results = append(results, protocol.TemperatureMetric{
 			Sensor: name,
 			Temp:   celsius,
-			Max:    maxCelsius,
+			Max:    max,
 		})
 	}
 

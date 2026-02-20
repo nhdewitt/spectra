@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nhdewitt/spectra/internal/protocol"
 	"golang.org/x/exp/constraints"
 )
 
@@ -36,13 +35,6 @@ func delta(curr, prev uint64) uint64 {
 		return 0
 	}
 	return curr - prev
-}
-
-func singleMetric(m protocol.Metric, err error) ([]protocol.Metric, error) {
-	if err != nil || m == nil {
-		return nil, err
-	}
-	return []protocol.Metric{m}, nil
 }
 
 // makeUintParser returns a function that parses fields[i] as uint64,
@@ -87,11 +79,11 @@ func cleanVendor(v string) string {
 	return v
 }
 
-func normalizeMax(temp, v float64) float64 {
+func normalizeMax(temp, v float64) *float64 {
 	if v <= 0 || v < temp || v >= 200 {
-		return 0
+		return nil
 	}
-	return v
+	return &v
 }
 
 // charsToString converts a NUL-terminated C char buffer to a Go string.

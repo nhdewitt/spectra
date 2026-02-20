@@ -53,10 +53,12 @@ func (GPUMetric) MetricType() string             { return "gpu" }
 func (ApplicationListMetric) MetricType() string { return "application_list" }
 func (ContainerMetric) MetricType() string       { return "container" }
 func (ContainerListMetric) MetricType() string   { return "container_list" }
+func (UpdateMetric) MetricType() string          { return "updates" }
 
 type CPUMetric struct {
 	Usage     float64   `json:"usage"`
 	CoreUsage []float64 `json:"cores"`
+	IOWait    float64   `json:"iowait"`
 	LoadAvg1  float64   `json:"load_1m"`
 	LoadAvg5  float64   `json:"load_5m,omitempty"`
 	LoadAvg15 float64   `json:"load_15m,omitempty"`
@@ -86,6 +88,8 @@ type DiskMetric struct {
 	InodesPct   float64 `json:"inodes_pct,omitempty"`
 }
 
+// NetworkMetric holds per-interface network statistics.
+// All counter fields are per-second rates.
 type NetworkMetric struct {
 	Interface string `json:"interface"`
 	MAC       string `json:"mac_address"`
@@ -102,9 +106,9 @@ type NetworkMetric struct {
 }
 
 type TemperatureMetric struct {
-	Sensor string  `json:"sensor"`
-	Temp   float64 `json:"temperature"`
-	Max    float64 `json:"max_temp"`
+	Sensor string   `json:"sensor"`
+	Temp   float64  `json:"temperature"`
+	Max    *float64 `json:"max_temp"`
 }
 
 type SystemMetric struct {
@@ -203,4 +207,18 @@ type ContainerMetric struct {
 
 type ContainerListMetric struct {
 	Containers []ContainerMetric `json:"containers"`
+}
+
+type PendingUpdate struct {
+	Name     string `json:"name"`
+	Version  string `json:"version,omitempty"`
+	Security bool   `json:"security"`
+}
+
+type UpdateMetric struct {
+	PendingCount   int             `json:"pending_count"`
+	SecurityCount  int             `json:"security_count"`
+	RebootRequired bool            `json:"reboot_required"`
+	PackageManager string          `json:"package_manager"`
+	Packages       []PendingUpdate `json:"packages,omitempty"`
 }

@@ -8,7 +8,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/nhdewitt/spectra/internal/database"
 	"github.com/nhdewitt/spectra/internal/protocol"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // RawEnvelope is used for unmarshalling metrics
@@ -26,25 +29,58 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var info protocol.HostInfo
-	if err := decodeJSONBody(r, &info); err != nil {
+	var req protocol.RegisterRequest
+	if err := decodeJSONBody(r, &req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	s.Store.Register(info.Hostname)
+	if !s.Tokens.Validate(req.Token) {
+		http.Error(w, "invalid or expired registration token", http.StatusUnauthorized)
+		return
+	}
 
-	// TODO: DB agent registration
-	// log.Printf("Registered Agent: %s (%s, %d cores, %s RAM)", info.Hostname, info.Platform, info.CPUCores, formatBytes(info.RAMTotal))
+	agentID := uuid.New().String()
+	secret, err := generateSecret(32)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
-	w.WriteHeader(http.StatusOK)
+	hashedSecret, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	s.Store.Register(agentID, secret, req.Info)
+
+	if s.DB != nil {
+		if err := s.DB.RegisterAgent(r.Context(), database.RegisterAgentParams{
+			ID:         uuidParam(agentID),
+			SecretHash: string(hashedSecret),
+			Hostname:   req.Info.Hostname,
+			Os:         pgText(req.Info.OS),
+			Platform:   pgText(req.Info.Platform),
+			Arch:       pgText(req.Info.Arch),
+			CpuModel:   pgText(req.Info.CPUModel),
+			CpuCores:   pgInt4(int32(req.Info.CPUCores)),
+			RamTotal:   pgInt8(int64(req.Info.RAMTotal)),
+		}); err != nil {
+			log.Printf("Error persisting agent registration: %v", err)
+		}
+	}
+
+	log.Printf("Registered agent %s (%s, %d cores, %s)", req.Info.Hostname, agentID, req.Info.CPUCores, req.Info.Platform)
+
+	respondJSON(w, http.StatusCreated, protocol.RegisterResponse{
+		AgentID: agentID,
+		Secret:  secret,
+	})
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	hostname, ok := getHostname(w, r)
-	if !ok {
-		return
-	}
+	agentID := getAgentID(r)
 
 	var rawEnvelopes []RawEnvelope
 	if err := decodeJSONBody(r, &rawEnvelopes); err != nil {
@@ -55,21 +91,18 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 
 	go func() {
-		log.Printf("--- Received Batch of %d Metrics from %s ---", len(rawEnvelopes), hostname)
+		log.Printf("--- Received Batch of %d Metrics from %s ---", len(rawEnvelopes), agentID)
 
 		for _, env := range rawEnvelopes {
-			s.processMetric(env)
+			s.processMetric(agentID, env)
 		}
 	}()
 }
 
 func (s *Server) handleAgentCommand(w http.ResponseWriter, r *http.Request) {
-	hostname, ok := getHostname(w, r)
-	if !ok {
-		return
-	}
+	agentID := getAgentID(r)
 
-	cmd, err := s.Store.WaitForCommand(r.Context(), hostname, s.Config.CommandTimeout)
+	cmd, err := s.Store.WaitForCommand(r.Context(), agentID, s.Config.CommandTimeout)
 	if err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -79,10 +112,7 @@ func (s *Server) handleAgentCommand(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCommandResult(w http.ResponseWriter, r *http.Request) {
-	hostname, ok := getHostname(w, r)
-	if !ok {
-		return
-	}
+	agentID := getAgentID(r)
 
 	var res protocol.CommandResult
 	if err := decodeJSONBody(r, &res); err != nil {
@@ -90,7 +120,7 @@ func (s *Server) handleCommandResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("\n>>> RESULT RECEIVED FROM %s (CMD: %s) <<<\n", hostname, res.ID)
+	fmt.Printf("\n>>> RESULT RECEIVED FROM %s (CMD: %s) <<<\n", agentID, res.ID)
 
 	if res.Error != "" {
 		fmt.Printf(" [ERROR] Agent failed to execute command: %s\n", res.Error)
@@ -102,32 +132,20 @@ func (s *Server) handleCommandResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminTriggerLogs(w http.ResponseWriter, r *http.Request) {
-	hostname, ok := getHostname(w, r)
+	agentID, ok := s.getTargetAgent(w, r)
 	if !ok {
-		http.Error(w, "Hostname required", http.StatusBadRequest)
-		return
-	}
-
-	if !s.Store.Exists(hostname) {
-		http.Error(w, fmt.Sprintf("Agent '%s' is not registered", hostname), http.StatusBadRequest)
 		return
 	}
 
 	req := protocol.LogRequest{MinLevel: protocol.LevelError}
 	payload, _ := json.Marshal(req)
 
-	s.queueHelper(w, hostname, protocol.CmdFetchLogs, payload, "Queued FetchLogs")
+	s.queueHelper(w, agentID, protocol.CmdFetchLogs, payload, "Queued FetchLogs")
 }
 
 func (s *Server) handleAdminTriggerDisk(w http.ResponseWriter, r *http.Request) {
-	hostname, ok := getHostname(w, r)
+	agentID, ok := s.getTargetAgent(w, r)
 	if !ok {
-		http.Error(w, "Hostname required", http.StatusBadRequest)
-		return
-	}
-
-	if !s.Store.Exists(hostname) {
-		http.Error(w, fmt.Sprintf("Agent '%s' is not registered", hostname), http.StatusBadRequest)
 		return
 	}
 
@@ -142,18 +160,12 @@ func (s *Server) handleAdminTriggerDisk(w http.ResponseWriter, r *http.Request) 
 	req := protocol.DiskUsageRequest{Path: path, TopN: topN}
 	payload, _ := json.Marshal(req)
 
-	s.queueHelper(w, hostname, protocol.CmdDiskUsage, payload, fmt.Sprintf("Queued Disk Scan (Top %d)", topN))
+	s.queueHelper(w, agentID, protocol.CmdDiskUsage, payload, fmt.Sprintf("Queued Disk Scan (Top %d)", topN))
 }
 
 func (s *Server) handleAdminTriggerNetwork(w http.ResponseWriter, r *http.Request) {
-	hostname, ok := getHostname(w, r)
+	agentID, ok := s.getTargetAgent(w, r)
 	if !ok {
-		http.Error(w, "Hostname required", http.StatusBadRequest)
-		return
-	}
-
-	if !s.Store.Exists(hostname) {
-		http.Error(w, fmt.Sprintf("Agent '%s' is not registerd", hostname), http.StatusBadRequest)
 		return
 	}
 
@@ -168,5 +180,13 @@ func (s *Server) handleAdminTriggerNetwork(w http.ResponseWriter, r *http.Reques
 	req := protocol.NetworkRequest{Action: action, Target: target}
 	payload, _ := json.Marshal(req)
 
-	s.queueHelper(w, hostname, protocol.CmdNetworkDiag, payload, fmt.Sprintf("Queued Network Diag: %s", action))
+	s.queueHelper(w, agentID, protocol.CmdNetworkDiag, payload, fmt.Sprintf("Queued Network Diag: %s", action))
+}
+
+func (s *Server) handleGenerateToken(w http.ResponseWriter, r *http.Request) {
+	token := s.Tokens.Generate(24 * time.Hour)
+
+	respondJSON(w, http.StatusCreated, map[string]string{
+		"token": token,
+	})
 }

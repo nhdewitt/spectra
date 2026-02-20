@@ -13,6 +13,8 @@ import (
 	"github.com/tklauser/go-sysconf"
 )
 
+var clkTck = 100.0
+
 func init() {
 	if sc, err := sysconf.Sysconf(sysconf.SC_CLK_TCK); err == nil && sc > 0 {
 		clkTck = float64(sc)
@@ -31,26 +33,16 @@ type pidStatRaw struct {
 	NumThreads uint32
 }
 
-var (
-	clkTck = 100.0
-)
-
-// collectProcessRaw reads /proc to enumerate all processes.
-// Returns process list and total system memory (in bytes).
-func collectProcessRaw() ([]processRaw, uint64, error) {
-	// Get total memory
-	memFile, err := os.Open("/proc/meminfo")
-	if err != nil {
-		return nil, 0, err
-	}
-	defer memFile.Close()
-
-	totalMem, err := parseProcessMemInfoFrom(memFile)
-	if err != nil {
-		return nil, 0, err
+func collectProcessRaw() ([]processRaw, int64, error) {
+	totalMem := MemTotal()
+	// If first cycle, CollectMemory hasn't run yet, read directly
+	if totalMem == 0 {
+		if raw, err := parseMemInfo(); err == nil {
+			totalMem = raw.Total
+			cachedMemTotal.Store(totalMem)
+		}
 	}
 
-	// List PIDs
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil, 0, err
@@ -86,31 +78,7 @@ func collectProcessRaw() ([]processRaw, uint64, error) {
 		})
 	}
 
-	return procs, totalMem, nil
-}
-
-// parseMemInfoFrom parses /proc/meminfo to find MemTotal in bytes.
-func parseProcessMemInfoFrom(r io.Reader) (uint64, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return 0, err
-	}
-
-	lines := strings.SplitSeq(string(data), "\n")
-	for line := range lines {
-		if strings.HasPrefix(line, "MemTotal:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				kb, err := strconv.ParseUint(fields[1], 10, 64)
-				if err != nil {
-					return 0, err
-				}
-				return kb * 1024, nil
-			}
-		}
-	}
-
-	return 0, fmt.Errorf("MemTotal not found")
+	return procs, int64(totalMem), nil
 }
 
 // parsePidStatFrom parses a single line from /proc/[pid]/stat

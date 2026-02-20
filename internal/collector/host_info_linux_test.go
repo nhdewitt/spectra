@@ -149,46 +149,6 @@ func TestGetCPUModelFrom_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestGetRAMTotalFrom(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected uint64
-	}{
-		{
-			name: "Standard Meminfo",
-			input: `
-MemTotal:		16307664 kB
-MemFree:		1000000 kB
-MemAvailable:	5000000 kB`,
-			expected: 16307664 * 1024,
-		},
-		{
-			name: "Missing MemTotal",
-			input: `
-MemFree:		1000000 kB
-Cached:			2000000 kB`,
-			expected: 0,
-		},
-		{
-			name:     "Malformed Number",
-			input:    `MemTotal:		NaN kB`,
-			expected: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := strings.NewReader(tt.input)
-			got := getRAMTotalFrom(r)
-
-			if got != tt.expected {
-				t.Errorf("expected %d bytes, got %d", tt.expected, got)
-			}
-		})
-	}
-}
-
 func TestGetBootTimeFrom(t *testing.T) {
 	input := `
 cpu	446109 950 148507 7247783 5966 0 3804 0 0 0

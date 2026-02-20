@@ -34,7 +34,7 @@ func TestUnmarshalMetric_AllTypes(t *testing.T) {
 		{"container_list", `{"containers": [{"id": "abc123", "name": "nginx"}]}`, "container_list"},
 	}
 
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	for _, tt := range tests {
 		t.Run(tt.typ, func(t *testing.T) {
@@ -50,7 +50,7 @@ func TestUnmarshalMetric_AllTypes(t *testing.T) {
 }
 
 func TestUnmarshalMetric_UnknownType(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	_, err := s.unmarshalMetric("unknown_type", []byte(`{}`))
 	if err == nil {
@@ -59,7 +59,7 @@ func TestUnmarshalMetric_UnknownType(t *testing.T) {
 }
 
 func TestUnmarshalMetric_InvalidJSON(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	_, err := s.unmarshalMetric("cpu", []byte(`{invalid`))
 	if err == nil {
@@ -68,7 +68,7 @@ func TestUnmarshalMetric_InvalidJSON(t *testing.T) {
 }
 
 func TestUnmarshalMetric_CPUMetric_Values(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	data := `{"usage": 75.5, "cores": [80, 70, 85, 65], "load_1m": 2.5}`
 	metric, err := s.unmarshalMetric("cpu", []byte(data))
@@ -93,7 +93,7 @@ func TestUnmarshalMetric_CPUMetric_Values(t *testing.T) {
 }
 
 func TestUnmarshalMetric_ProcessListMetric_Values(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	data := `{"processes": [
 		{"pid": 1, "name": "init", "cpu_percent": 0.1, "mem_percent": 0.5},
@@ -122,7 +122,7 @@ func TestUnmarshalMetric_ProcessListMetric_Values(t *testing.T) {
 }
 
 func TestUnmarshalMetric_ContainerListMetric_Values(t *testing.T) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	data := `{"containers": [
 		{"id": "abc123", "name": "nginx", "state": "running", "source": "docker", "kind": "container", "cpu_percent": 15.5},
@@ -151,7 +151,7 @@ func TestUnmarshalMetric_ContainerListMetric_Values(t *testing.T) {
 }
 
 func BenchmarkUnmarshalMetric_CPU(b *testing.B) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 	data := []byte(`{"usage": 75.5, "cores": [80, 70, 85, 65, 90, 60, 75, 80], "load_1m": 2.5, "load_5m": 2.0, "load_15m": 1.5}`)
 
 	b.ReportAllocs()
@@ -161,7 +161,7 @@ func BenchmarkUnmarshalMetric_CPU(b *testing.B) {
 }
 
 func BenchmarkUnmarshalMetric_ProcessList_Small(b *testing.B) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	procs := make([]protocol.ProcessMetric, 10)
 	for i := range procs {
@@ -177,7 +177,7 @@ func BenchmarkUnmarshalMetric_ProcessList_Small(b *testing.B) {
 }
 
 func BenchmarkUnmarshalMetric_ProcessList_Large(b *testing.B) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	procs := make([]protocol.ProcessMetric, 200)
 	for i := range procs {
@@ -195,7 +195,7 @@ func BenchmarkUnmarshalMetric_ProcessList_Large(b *testing.B) {
 }
 
 func BenchmarkUnmarshalMetric_ContainerList(b *testing.B) {
-	s := New(Config{Port: 8080})
+	s := New(Config{Port: 8080}, NewMockDB())
 
 	containers := make([]protocol.ContainerMetric, 20)
 	for i := range containers {

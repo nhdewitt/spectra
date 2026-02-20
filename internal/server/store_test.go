@@ -16,6 +16,9 @@ func TestNewAgentStore(t *testing.T) {
 	if store == nil {
 		t.Fatal("NewAgentStore returned nil")
 	}
+	if store.agents == nil {
+		t.Error("agents map should be initialized")
+	}
 	if store.commandQueues == nil {
 		t.Error("commandQueues map should be initialized")
 	}
@@ -24,28 +27,90 @@ func TestNewAgentStore(t *testing.T) {
 func TestAgentStore_Register(t *testing.T) {
 	store := NewAgentStore()
 
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	if !store.Exists("agent-1") {
 		t.Error("agent-1 should exist after registration")
 	}
 }
 
+func TestAgentStore_Register_StoresInfo(t *testing.T) {
+	store := NewAgentStore()
+
+	info := protocol.HostInfo{
+		Hostname: "test-host",
+		OS:       "linux",
+		Platform: "ubuntu",
+		CPUCores: 8,
+	}
+	store.Register("agent-1", "secret-1", info)
+
+	store.mu.Lock()
+	rec := store.agents["agent-1"]
+	store.mu.Unlock()
+
+	if rec == nil {
+		t.Fatal("agent record should exist")
+	}
+	if rec.ID != "agent-1" {
+		t.Errorf("ID: got %s, want agent-1", rec.ID)
+	}
+	if rec.Secret != "secret-1" {
+		t.Errorf("Secret: got %s, want secret-1", rec.Secret)
+	}
+	if rec.Info.Hostname != "test-host" {
+		t.Errorf("Hostname: got %s, want test-host", rec.Info.Hostname)
+	}
+	if rec.Info.CPUCores != 8 {
+		t.Errorf("CPUCores: got %d, want 8", rec.Info.CPUCores)
+	}
+	if rec.RegisteredAt.IsZero() {
+		t.Error("RegisteredAt should be set")
+	}
+	if rec.LastSeen.IsZero() {
+		t.Error("LastSeen should be set")
+	}
+}
+
 func TestAgentStore_Register_Idempotent(t *testing.T) {
 	store := NewAgentStore()
 
-	store.Register("agent-1")
-	store.Register("agent-1")
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
+	registerTestAgent(store, "agent-1")
+	registerTestAgent(store, "agent-1")
 
 	if !store.Exists("agent-1") {
 		t.Error("agent-1 should exist")
 	}
 
-	// Queue a command to verify the channel still works
 	err := store.QueueCommand("agent-1", protocol.Command{ID: "cmd-1"})
 	if err != nil {
 		t.Errorf("QueueCommand failed: %v", err)
+	}
+}
+
+func TestAgentStore_Register_ReRegistrationUpdatesInfo(t *testing.T) {
+	store := NewAgentStore()
+
+	store.Register("agent-1", "secret-1", protocol.HostInfo{
+		Hostname: "old-host",
+		CPUCores: 4,
+	})
+
+	store.Register("agent-1", "secret-1", protocol.HostInfo{
+		Hostname: "new-host",
+		CPUCores: 8,
+	})
+
+	store.mu.Lock()
+	rec := store.agents["agent-1"]
+	store.mu.Unlock()
+
+	if rec.Info.Hostname != "new-host" {
+		t.Errorf("Hostname: got %s, want new-host", rec.Info.Hostname)
+	}
+	if rec.Info.CPUCores != 8 {
+		t.Errorf("CPUCores: got %d, want 8", rec.Info.CPUCores)
 	}
 }
 
@@ -54,7 +119,7 @@ func TestAgentStore_Register_Multiple(t *testing.T) {
 
 	agents := []string{"agent-1", "agent-2", "agent-3"}
 	for _, a := range agents {
-		store.Register(a)
+		registerTestAgent(store, a)
 	}
 	for _, a := range agents {
 		if !store.Exists(a) {
@@ -66,9 +131,9 @@ func TestAgentStore_Register_Multiple(t *testing.T) {
 func TestAgentStore_Unregister(t *testing.T) {
 	store := NewAgentStore()
 
-	store.Register("agent-1")
-	store.Register("agent-2")
-	store.Register("agent-3")
+	registerTestAgent(store, "agent-1")
+	registerTestAgent(store, "agent-2")
+	registerTestAgent(store, "agent-3")
 	store.Unregister("agent-2")
 
 	if !store.Exists("agent-1") || !store.Exists("agent-3") {
@@ -76,6 +141,25 @@ func TestAgentStore_Unregister(t *testing.T) {
 	}
 	if store.Exists("agent-2") {
 		t.Error("agent-2 should not exist after unregistration")
+	}
+}
+
+func TestAgentStore_Unregister_CleansUpBothMaps(t *testing.T) {
+	store := NewAgentStore()
+	registerTestAgent(store, "agent-1")
+
+	store.Unregister("agent-1")
+
+	store.mu.Lock()
+	_, hasAgent := store.agents["agent-1"]
+	_, hasQueue := store.commandQueues["agent-1"]
+	store.mu.Unlock()
+
+	if hasAgent {
+		t.Error("agents map should not contain unregistered agent")
+	}
+	if hasQueue {
+		t.Error("commandQueues map should not contain unregistered agent")
 	}
 }
 
@@ -94,10 +178,62 @@ func TestAgentStore_Exists_NotRegistered(t *testing.T) {
 	}
 }
 
-func TestAgentStore_QueueCommand_Success(t *testing.T) {
+func TestAgentStore_Authenticate_Success(t *testing.T) {
+	store := NewAgentStore()
+	store.Register("agent-1", "my-secret", protocol.HostInfo{Hostname: "host-1"})
+
+	if !store.Authenticate("agent-1", "my-secret") {
+		t.Error("should authenticate with correct credentials")
+	}
+}
+
+func TestAgentStore_Authenticate_WrongSecret(t *testing.T) {
+	store := NewAgentStore()
+	store.Register("agent-1", "my-secret", protocol.HostInfo{Hostname: "host-1"})
+
+	if store.Authenticate("agent-1", "wrong-secret") {
+		t.Error("should not authenticate with wrong secret")
+	}
+}
+
+func TestAgentStore_Authenticate_UnknownAgent(t *testing.T) {
 	store := NewAgentStore()
 
-	store.Register("agent-1")
+	if store.Authenticate("nonexistent", "any-secret") {
+		t.Error("should not authenticate unknown agent")
+	}
+}
+
+func TestAgentStore_TouchLastSeen(t *testing.T) {
+	store := NewAgentStore()
+	store.Register("agent-1", "secret-1", protocol.HostInfo{Hostname: "host-1"})
+
+	store.mu.Lock()
+	before := store.agents["agent-1"].LastSeen
+	store.mu.Unlock()
+
+	time.Sleep(2 * time.Millisecond)
+	store.TouchLastSeen("agent-1")
+
+	store.mu.Lock()
+	after := store.agents["agent-1"].LastSeen
+	store.mu.Unlock()
+
+	if !after.After(before) {
+		t.Error("LastSeen should be updated")
+	}
+}
+
+func TestAgentStore_TouchLastSeen_UnknownAgent(t *testing.T) {
+	store := NewAgentStore()
+
+	// Should not panic
+	store.TouchLastSeen("nonexistent")
+}
+
+func TestAgentStore_QueueCommand_Success(t *testing.T) {
+	store := NewAgentStore()
+	registerTestAgent(store, "agent-1")
 
 	cmd := protocol.Command{ID: "cmd-123", Type: protocol.CmdFetchLogs}
 	err := store.QueueCommand("agent-1", cmd)
@@ -118,7 +254,7 @@ func TestAgentStore_QueueCommand_NotRegistered(t *testing.T) {
 
 func TestAgentStore_QueueCommand_Full(t *testing.T) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	for i := range 10 {
 		err := store.QueueCommand("agent-1", protocol.Command{ID: "cmd"})
@@ -127,7 +263,6 @@ func TestAgentStore_QueueCommand_Full(t *testing.T) {
 		}
 	}
 
-	// Next command should fail
 	err := store.QueueCommand("agent-1", protocol.Command{ID: "overflow"})
 	if err == nil {
 		t.Error("expected error for full queue")
@@ -136,7 +271,7 @@ func TestAgentStore_QueueCommand_Full(t *testing.T) {
 
 func TestAgentStore_WaitForCommand_Success(t *testing.T) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	go func() {
 		time.Sleep(10 * time.Millisecond)
@@ -155,21 +290,18 @@ func TestAgentStore_WaitForCommand_Success(t *testing.T) {
 
 func TestAgentStore_WaitForCommand_Timeout(t *testing.T) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	ctx := context.Background()
-	cmd, err := store.WaitForCommand(ctx, "agent-1", 10*time.Millisecond)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if cmd.ID != "" {
-		t.Errorf("expected empty command on timeout, got %+v", cmd)
+	_, err := store.WaitForCommand(ctx, "agent-1", 10*time.Millisecond)
+	if err == nil {
+		t.Error("expected error on timeout")
 	}
 }
 
 func TestAgentStore_WaitForCommand_ContextCancel(t *testing.T) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -182,7 +314,7 @@ func TestAgentStore_WaitForCommand_ContextCancel(t *testing.T) {
 
 func TestAgentStore_WaitForCommand_ContextTimeout(t *testing.T) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
@@ -207,7 +339,7 @@ func TestAgentStore_WaitForCommand_NotRegistered(t *testing.T) {
 
 func TestAgentStore_WaitForCommand_PreQueued(t *testing.T) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	store.QueueCommand("agent-1", protocol.Command{ID: "cmd-123"})
 
@@ -223,7 +355,7 @@ func TestAgentStore_WaitForCommand_PreQueued(t *testing.T) {
 
 func TestAgentStore_QueueAndWait_Order(t *testing.T) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	for i := range 5 {
 		store.QueueCommand("agent-1", protocol.Command{ID: string(rune('A' + i))})
@@ -250,7 +382,7 @@ func TestAgentStore_Concurrent_Register(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			store.Register("agent-1")
+			registerTestAgent(store, "agent-1")
 		}(i)
 	}
 	wg.Wait()
@@ -262,14 +394,13 @@ func TestAgentStore_Concurrent_Register(t *testing.T) {
 
 func TestAgentStore_Concurrent_QueueAndWait(t *testing.T) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	numCommands := 100
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
 
-	// Producer
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -284,7 +415,6 @@ func TestAgentStore_Concurrent_QueueAndWait(t *testing.T) {
 		}
 	}()
 
-	// Consumer
 	received := 0
 	wg.Add(1)
 	go func() {
@@ -312,7 +442,7 @@ func TestAgentStore_Concurrent_RegisterMultiple(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			store.Register(fmt.Sprintf("agent-%d", n))
+			registerTestAgent(store, fmt.Sprintf("agent-%d", n))
 		}(i)
 	}
 	wg.Wait()
@@ -326,16 +456,17 @@ func TestAgentStore_Concurrent_RegisterMultiple(t *testing.T) {
 
 func BenchmarkAgentStore_Register(b *testing.B) {
 	store := NewAgentStore()
+	info := protocol.HostInfo{Hostname: "agent-1", OS: "linux"}
 
 	b.ReportAllocs()
 	for b.Loop() {
-		store.Register("agent-1")
+		store.Register("agent-1", "secret-1", info)
 	}
 }
 
 func BenchmarkAgentStore_Exists(b *testing.B) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -344,9 +475,31 @@ func BenchmarkAgentStore_Exists(b *testing.B) {
 	}
 }
 
+func BenchmarkAgentStore_Authenticate(b *testing.B) {
+	store := NewAgentStore()
+	store.Register("agent-1", "secret-1", protocol.HostInfo{Hostname: "host-1"})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		store.Authenticate("agent-1", "secret-1")
+	}
+}
+
+func BenchmarkAgentStore_TouchLastSeen(b *testing.B) {
+	store := NewAgentStore()
+	registerTestAgent(store, "agent-1")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		store.TouchLastSeen("agent-1")
+	}
+}
+
 func BenchmarkAgentStore_QueueCommand(b *testing.B) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	cmd := protocol.Command{ID: "cmd-123", Type: protocol.CmdFetchLogs}
 	ctx := context.Background()
@@ -361,7 +514,7 @@ func BenchmarkAgentStore_QueueCommand(b *testing.B) {
 
 func BenchmarkAgentStore_WaitForCommand_Immediate(b *testing.B) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	cmd := protocol.Command{ID: "cmd-123", Type: protocol.CmdFetchLogs}
 	ctx := context.Background()
@@ -376,7 +529,7 @@ func BenchmarkAgentStore_WaitForCommand_Immediate(b *testing.B) {
 
 func BenchmarkAgentStore_WaitForCommand_Timeout(b *testing.B) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	ctx := context.Background()
 
@@ -389,7 +542,7 @@ func BenchmarkAgentStore_WaitForCommand_Timeout(b *testing.B) {
 
 func BenchmarkAgentStore_Concurrent_QueueWait(b *testing.B) {
 	store := NewAgentStore()
-	store.Register("agent-1")
+	registerTestAgent(store, "agent-1")
 
 	cmd := protocol.Command{ID: "cmd", Type: protocol.CmdFetchLogs}
 	ctx := context.Background()
@@ -406,11 +559,15 @@ func BenchmarkAgentStore_Concurrent_QueueWait(b *testing.B) {
 }
 
 func BenchmarkAgentStore_Register_ManyAgents(b *testing.B) {
+	info := protocol.HostInfo{OS: "linux"}
+
 	b.ReportAllocs()
 	for b.Loop() {
 		store := NewAgentStore()
 		for i := range 1000 {
-			store.Register(fmt.Sprintf("agent-%d", i))
+			id := fmt.Sprintf("agent-%d", i)
+			info.Hostname = id
+			store.Register(id, "secret-"+id, info)
 		}
 	}
 }

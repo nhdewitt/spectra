@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,7 +12,7 @@ import (
 )
 
 // processMetric is the entry point for handling a raw metric envelope
-func (s *Server) processMetric(env RawEnvelope) {
+func (s *Server) processMetric(agentID string, env RawEnvelope) {
 	metric, err := s.unmarshalMetric(env.Type, env.Data)
 	if err != nil {
 		log.Printf("Error processing metric from %s: %v", env.Hostname, err)
@@ -19,6 +20,7 @@ func (s *Server) processMetric(env RawEnvelope) {
 	}
 
 	s.logMetric(env, metric)
+	s.persistMetric(context.Background(), agentID, env.Timestamp, metric)
 }
 
 // unmarshalMetric converts raw JSON into a concrete protocol.Metric struct
@@ -64,6 +66,8 @@ func (s *Server) unmarshalMetric(typ string, data []byte) (protocol.Metric, erro
 		metric = &protocol.ContainerMetric{}
 	case "container_list":
 		metric = &protocol.ContainerListMetric{}
+	case "update_status":
+		metric = &protocol.UpdateMetric{}
 	default:
 		return nil, fmt.Errorf("unknown metric type: %s", typ)
 	}
@@ -94,6 +98,8 @@ func (s *Server) logMetric(env RawEnvelope, metric protocol.Metric) {
 		for _, c := range m.Containers {
 			fmt.Println(c)
 		}
+	case *protocol.UpdateMetric:
+		log.Printf(" [%s] update_status: %d pending (%d security), reboot=%v [%s]", ts, m.PendingCount, m.SecurityCount, m.RebootRequired, m.PackageManager)
 	default:
 		fmt.Printf(" [%s] %s: %v\n", ts, env.Type, metric)
 	}

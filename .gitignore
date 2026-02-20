@@ -3,7 +3,13 @@
 *.exe
 .env
 *.armv6
+*.armv7
 *.sh
 bench*.log
+pi*.log
 coverage.out
 bench_binaries/
+nodefacts_binaries/
+/agent
+/server
+spectra-server
