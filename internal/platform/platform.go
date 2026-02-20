@@ -9,6 +9,7 @@ const (
 	PkgApk
 	PkgPacman
 	PkgWindowsUpdate
+	PkgPkg // FreeBSD
 )
 
 type InitSystem int
@@ -18,6 +19,7 @@ const (
 	InitSystemd
 	InitOpenRC
 	InitSysV
+	InitRC // FreeBSD rc.d
 )
 
 type Info struct {

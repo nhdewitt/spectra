@@ -1,31 +1,24 @@
-//go:build !windows
+//go:build linux
 
 package collector
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/nhdewitt/spectra/internal/protocol"
 	"github.com/tklauser/go-sysconf"
 )
+
+var clkTck = 100.0
 
 func init() {
 	if sc, err := sysconf.Sysconf(sysconf.SC_CLK_TCK); err == nil && sc > 0 {
 		clkTck = float64(sc)
 	}
-}
-
-// processState stores the last CPU ticks for a PID
-type processState struct {
-	lastTicks uint64
-	lastTime  time.Time
 }
 
 // pidStatRaw holds the raw values parsed from /proc/[pid]/stat
@@ -40,15 +33,9 @@ type pidStatRaw struct {
 	NumThreads uint32
 }
 
-var (
-	lastProcessStates = make(map[int]processState)
-	clkTck            = 100.0
-)
-
-func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
-	// Get Total Memory
+func collectProcessRaw() ([]processRaw, int64, error) {
 	totalMem := MemTotal()
-	// First cycle, CollectMemory hasn't run yet - read directly
+	// If first cycle, CollectMemory hasn't run yet, read directly
 	if totalMem == 0 {
 		if raw, err := parseMemInfo(); err == nil {
 			totalMem = raw.Total
@@ -56,16 +43,13 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 		}
 	}
 
-	// List PIDs
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	var results []protocol.ProcessMetric
-	currentStates := make(map[int]processState)
-	now := time.Now()
 	pageSize := uint64(os.Getpagesize())
+	var procs []processRaw
 
 	for _, entry := range entries {
 		pid, err := strconv.Atoi(entry.Name())
@@ -73,7 +57,6 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 			continue
 		}
 
-		// Parse /proc/[pid]/stat
 		f, err := os.Open(filepath.Join("/proc", entry.Name(), "stat"))
 		if err != nil {
 			continue
@@ -85,43 +68,17 @@ func CollectProcesses(ctx context.Context) ([]protocol.Metric, error) {
 			continue
 		}
 
-		memRSS := stat.RSSPages * pageSize
-
-		memPercent := 0.0
-		if totalMem > 0 {
-			memPercent = (float64(memRSS) / float64(totalMem)) * 100.0
-		}
-
-		cpuPercent := 0.0
-		if prevState, ok := lastProcessStates[pid]; ok {
-			deltaTicks := float64(stat.TotalTicks - prevState.lastTicks)
-			deltaTime := now.Sub(prevState.lastTime).Seconds()
-
-			if deltaTime > 0 {
-				cpuPercent = ((deltaTicks / clkTck) / deltaTime) * 100.0
-			}
-		}
-
-		currentStates[pid] = processState{
-			lastTicks: stat.TotalTicks,
-			lastTime:  now,
-		}
-
-		results = append(results, protocol.ProcessMetric{
-			Pid:          pid,
-			Name:         stat.Name,
-			Status:       normalizeLinuxProcState(stat.State, cpuPercent),
-			MemRSS:       memRSS,
-			MemPercent:   memPercent,
-			CPUPercent:   cpuPercent,
-			ThreadsTotal: stat.NumThreads,
+		procs = append(procs, processRaw{
+			PID:        pid,
+			Name:       stat.Name,
+			State:      stat.State,
+			RSSBytes:   stat.RSSPages * pageSize,
+			TotalTicks: stat.TotalTicks,
+			NumThreads: stat.NumThreads,
 		})
 	}
 
-	lastProcessStates = currentStates
-	return []protocol.Metric{
-		protocol.ProcessListMetric{Processes: results},
-	}, nil
+	return procs, int64(totalMem), nil
 }
 
 // parsePidStatFrom parses a single line from /proc/[pid]/stat
@@ -172,29 +129,4 @@ func parsePidStatFrom(r io.Reader) (*pidStatRaw, error) {
 		TotalTicks: utime + stime,
 		NumThreads: uint32(numThreads),
 	}, nil
-}
-
-func normalizeLinuxProcState(state string, cpuPercent float64) protocol.ProcStatus {
-	if state == "" {
-		return protocol.ProcOther
-	}
-
-	switch state[0] {
-	case 'R':
-		// "running" or "runnable"
-		// If it used CPU in the sample -> running; otherwise -> runnable
-		if cpuPercent > 0 {
-			return protocol.ProcRunning
-		}
-		return protocol.ProcRunnable
-
-	case 'S', 'D', 'I', 'W':
-		return protocol.ProcWaiting
-
-	case 'T', 't', 'Z', 'X':
-		return protocol.ProcOther
-
-	default:
-		return protocol.ProcOther
-	}
 }
