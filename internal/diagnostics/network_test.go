@@ -1,5 +1,3 @@
-//go:build broken
-
 package diagnostics
 
 import (
