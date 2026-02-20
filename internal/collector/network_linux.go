@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+func collectNetworkRaw() (map[string]NetworkRaw, error) {
+	return parseNetDev()
+}
+
 func parseNetDev() (map[string]NetworkRaw, error) {
 	f, err := os.Open("/proc/net/dev")
 	if err != nil {
