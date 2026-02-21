@@ -29,6 +29,22 @@ type CurrentApplication struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type CurrentMetric struct {
+	AgentID        pgtype.UUID        `json:"agent_id"`
+	CpuUsage       pgtype.Float8      `json:"cpu_usage"`
+	LoadNormalized pgtype.Float8      `json:"load_normalized"`
+	RamPercent     pgtype.Float8      `json:"ram_percent"`
+	SwapPercent    pgtype.Float8      `json:"swap_percent"`
+	DiskMaxPercent pgtype.Float8      `json:"disk_max_percent"`
+	NetRxBytes     pgtype.Int8        `json:"net_rx_bytes"`
+	NetTxBytes     pgtype.Int8        `json:"net_tx_bytes"`
+	MaxTemp        pgtype.Float8      `json:"max_temp"`
+	Uptime         pgtype.Int8        `json:"uptime"`
+	ProcessCount   pgtype.Int4        `json:"process_count"`
+	RebootRequired bool               `json:"reboot_required"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type CurrentProcess struct {
 	AgentID    pgtype.UUID        `json:"agent_id"`
 	Pid        int32              `json:"pid"`

@@ -40,6 +40,19 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			Iowait:     pgFloat8(m.IOWait),
 		})
 
+		var normalized float64
+		if cores := len(m.CoreUsage); cores > 0 {
+			normalized = m.LoadAvg1 / float64(cores)
+		}
+
+		if cacheErr := s.DB.UpsertCurrentCPU(ctx, database.UpsertCurrentCPUParams{
+			AgentID:        uid,
+			CpuUsage:       pgFloat8(m.Usage),
+			LoadNormalized: pgFloat8(normalized),
+		}); cacheErr != nil {
+			log.Printf("Error updating current_metrics (cpu): %v", cacheErr)
+		}
+
 	case *protocol.MemoryMetric:
 		err = s.DB.InsertMemory(ctx, database.InsertMemoryParams{
 			Time:         t,
@@ -52,6 +65,14 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			SwapUsed:     pgInt8(int64(m.SwapUsed)),
 			SwapPercent:  pgFloat8(m.SwapPct),
 		})
+
+		if cacheErr := s.DB.UpsertCurrentMemory(ctx, database.UpsertCurrentMemoryParams{
+			AgentID:     uid,
+			RamPercent:  pgFloat8(m.UsedPct),
+			SwapPercent: pgFloat8(m.SwapPct),
+		}); cacheErr != nil {
+			log.Printf("Error updating current_metrics (memory): %v", cacheErr)
+		}
 
 	case *protocol.DiskMetric:
 		err = s.DB.InsertDisk(ctx, database.InsertDiskParams{
@@ -69,6 +90,10 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			InodesUsed:    pgInt8(int64(m.InodesUsed)),
 			InodesPercent: pgFloat8(m.InodesPct),
 		})
+
+		if cacheErr := s.DB.UpsertCurrentDiskMax(ctx, uid); cacheErr != nil {
+			log.Printf("Error updating current_metrics (disk): %v", cacheErr)
+		}
 
 	case *protocol.DiskIOMetric:
 		err = s.DB.InsertDiskIO(ctx, database.InsertDiskIOParams{
@@ -102,6 +127,10 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			TxDrops:   pgInt8(int64(m.TxDrops)),
 		})
 
+		if cacheErr := s.DB.UpsertCurrentNetwork(ctx, uid); cacheErr != nil {
+			log.Printf("Error updating current_metrics (network): %v", cacheErr)
+		}
+
 	case *protocol.TemperatureMetric:
 		maxTemp := pgtype.Float8{}
 		if m.Max != nil {
@@ -115,6 +144,10 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			MaxTemp:     maxTemp,
 		})
 
+		if cacheErr := s.DB.UpsertCurrentTemperature(ctx, uid); cacheErr != nil {
+			log.Printf("Error updating current_metrics (temperature): %v", cacheErr)
+		}
+
 	case *protocol.SystemMetric:
 		err = s.DB.InsertSystem(ctx, database.InsertSystemParams{
 			Time:         t,
@@ -124,6 +157,14 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			UserCount:    pgInt4(int32(m.Users)),
 			BootTime:     pgInt8(int64(m.BootTime)),
 		})
+
+		if cacheErr := s.DB.UpsertCurrentSystem(ctx, database.UpsertCurrentSystemParams{
+			AgentID:      uid,
+			Uptime:       pgInt8(int64(m.Uptime)),
+			ProcessCount: pgInt4(int32(m.Processes)),
+		}); cacheErr != nil {
+			log.Printf("Error updating current_metrics (system): %v", cacheErr)
+		}
 
 	case *protocol.WiFiMetric:
 		err = s.DB.InsertWifi(ctx, database.InsertWifiParams{
@@ -262,6 +303,13 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			RebootRequired: m.RebootRequired,
 			PackageManager: pgText(m.PackageManager),
 		})
+
+		if cacheErr := s.DB.UpsertCurrentReboot(ctx, database.UpsertCurrentRebootParams{
+			AgentID:        uid,
+			RebootRequired: m.RebootRequired,
+		}); cacheErr != nil {
+			log.Printf("Error updating current_metrics (update): %v", cacheErr)
+		}
 
 	default:
 		// skip silently

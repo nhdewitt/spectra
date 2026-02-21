@@ -34,6 +34,13 @@ type DB interface {
 	UpsertService(ctx context.Context, arg database.UpsertServiceParams) error
 	UpsertApplication(ctx context.Context, arg database.UpsertApplicationParams) error
 	UpsertUpdates(ctx context.Context, arg database.UpsertUpdatesParams) error
+	UpsertCurrentCPU(ctx context.Context, arg database.UpsertCurrentCPUParams) error
+	UpsertCurrentMemory(ctx context.Context, arg database.UpsertCurrentMemoryParams) error
+	UpsertCurrentDiskMax(ctx context.Context, uid pgtype.UUID) error
+	UpsertCurrentNetwork(ctx context.Context, uid pgtype.UUID) error
+	UpsertCurrentTemperature(ctx context.Context, uid pgtype.UUID) error
+	UpsertCurrentSystem(ctx context.Context, arg database.UpsertCurrentSystemParams) error
+	UpsertCurrentReboot(ctx context.Context, arg database.UpsertCurrentRebootParams) error
 }
 
 // Compile-time check that *database.Queries satisfies the DB interface.

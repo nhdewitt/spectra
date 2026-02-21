@@ -194,6 +194,48 @@ func (m *MockDB) UpsertUpdates(_ context.Context, _ database.UpsertUpdatesParams
 	return m.Err
 }
 
+func (m *MockDB) UpsertCurrentCPU(_ context.Context, _ database.UpsertCurrentCPUParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}
+
+func (m *MockDB) UpsertCurrentMemory(_ context.Context, _ database.UpsertCurrentMemoryParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}
+
+func (m *MockDB) UpsertCurrentDiskMax(_ context.Context, _ pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}
+
+func (m *MockDB) UpsertCurrentNetwork(_ context.Context, _ pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}
+
+func (m *MockDB) UpsertCurrentTemperature(_ context.Context, _ pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}
+
+func (m *MockDB) UpsertCurrentSystem(_ context.Context, _ database.UpsertCurrentSystemParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}
+
+func (m *MockDB) UpsertCurrentReboot(_ context.Context, _ database.UpsertCurrentRebootParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}
+
 // uuidToString converts a pgtype.UUID to its string representation.
 func uuidToString(u pgtype.UUID) string {
 	if !u.Valid {
