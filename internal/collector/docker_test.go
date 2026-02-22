@@ -285,7 +285,9 @@ func TestCollectDockerContainers_Integration(t *testing.T) {
 	dockerCli = nil
 	defer func() { dockerCli = oldCli }()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	containers, err := collectDockerContainers(ctx)
 	if err != nil {
 		t.Logf("collectDockerContainers returned error: %v", err)

@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -26,6 +29,8 @@ type DockerClient interface {
 }
 
 var dockerCli DockerClient
+
+var dockerHealthy atomic.Bool
 
 type DockerStats struct {
 	CPUStats    DockerCPUStats                `json:"cpu_stats"`
@@ -61,6 +66,9 @@ func InitDocker() error {
 }
 
 func collectDockerContainers(ctx context.Context) ([]protocol.ContainerMetric, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	if dockerCli == nil {
 		if err := InitDocker(); err != nil {
 			return nil, fmt.Errorf("docker init failed: %w", err)
@@ -70,6 +78,11 @@ func collectDockerContainers(ctx context.Context) ([]protocol.ContainerMetric, e
 	// List Containers
 	containers, err := dockerCli.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
+		if dockerHealthy.Load() {
+			log.Printf("warning: Docker was previously reachable but is now failing: %v", err)
+			dockerHealthy.Store(false)
+		}
+
 		if client.IsErrConnectionFailed(err) {
 			// Avoid error spamming on agents where Docker isn't installed/running
 			return nil, nil
@@ -77,6 +90,7 @@ func collectDockerContainers(ctx context.Context) ([]protocol.ContainerMetric, e
 
 		return nil, fmt.Errorf("docker list failed: %w", err)
 	}
+	dockerHealthy.Store(true)
 
 	if len(containers) == 0 {
 		return []protocol.ContainerMetric{}, nil
