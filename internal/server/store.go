@@ -133,3 +133,9 @@ func (s *AgentStore) TouchLastSeen(agentID string) {
 		rec.LastSeen = time.Now()
 	}
 }
+
+func (s *AgentStore) Remove(agentID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.agents, agentID)
+}

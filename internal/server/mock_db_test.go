@@ -49,7 +49,7 @@ func (m *MockDB) RegisterAgent(_ context.Context, arg database.RegisterAgentPara
 		return m.Err
 	}
 
-	id := uuidToString(arg.ID)
+	id := formatUUID(arg.ID)
 	m.Agents[id] = arg.SecretHash
 	return nil
 }
@@ -62,7 +62,7 @@ func (m *MockDB) GetAgentSecret(_ context.Context, id pgtype.UUID) (string, erro
 		return "", m.Err
 	}
 
-	idStr := uuidToString(id)
+	idStr := formatUUID(id)
 	hash, ok := m.Agents[idStr]
 	if !ok {
 		return "", fmt.Errorf("agent not found")
@@ -86,7 +86,7 @@ func (m *MockDB) AgentExists(_ context.Context, id pgtype.UUID) (bool, error) {
 		return false, m.Err
 	}
 
-	idStr := uuidToString(id)
+	idStr := formatUUID(id)
 	_, ok := m.Agents[idStr]
 	return ok, nil
 }
@@ -236,12 +236,116 @@ func (m *MockDB) UpsertCurrentReboot(_ context.Context, _ database.UpsertCurrent
 	return m.Err
 }
 
-// uuidToString converts a pgtype.UUID to its string representation.
-func uuidToString(u pgtype.UUID) string {
-	if !u.Valid {
-		return ""
-	}
+func (m *MockDB) GetOverview(_ context.Context) ([]database.GetOverviewRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetOverviewRow{}, m.Err
+}
 
-	b := u.Bytes
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+func (m *MockDB) GetAgent(_ context.Context, _ pgtype.UUID) (database.Agent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return database.Agent{}, nil
+}
+
+func (m *MockDB) DeleteAgent(_ context.Context, _ pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return nil
+}
+
+func (m *MockDB) GetCPURange(_ context.Context, _ database.GetCPURangeParams) ([]database.MetricsCpu, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.MetricsCpu{}, nil
+}
+
+func (m *MockDB) GetMemoryRange(_ context.Context, _ database.GetMemoryRangeParams) ([]database.MetricsMemory, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.MetricsMemory{}, nil
+}
+
+func (m *MockDB) GetDiskRange(_ context.Context, _ database.GetDiskRangeParams) ([]database.MetricsDisk, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.MetricsDisk{}, nil
+}
+
+func (m *MockDB) GetDiskIORange(_ context.Context, _ database.GetDiskIORangeParams) ([]database.MetricsDiskIo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.MetricsDiskIo{}, nil
+}
+
+func (m *MockDB) GetNetworkRange(_ context.Context, _ database.GetNetworkRangeParams) ([]database.MetricsNetwork, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.MetricsNetwork{}, nil
+}
+
+func (m *MockDB) GetTemperatureRange(_ context.Context, _ database.GetTemperatureRangeParams) ([]database.MetricsTemperature, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.MetricsTemperature{}, nil
+}
+
+func (m *MockDB) GetSystemRange(_ context.Context, _ database.GetSystemRangeParams) ([]database.MetricsSystem, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.MetricsSystem{}, nil
+}
+
+func (m *MockDB) GetContainerRange(_ context.Context, _ database.GetContainerRangeParams) ([]database.MetricsContainer, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.MetricsContainer{}, nil
+}
+
+func (m *MockDB) GetWifiRange(_ context.Context, _ database.GetWifiRangeParams) ([]database.MetricsWifi, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.MetricsWifi{}, nil
+}
+
+func (m *MockDB) GetPiRange(_ context.Context, _ database.GetPiRangeParams) ([]database.GetPiRangeRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetPiRangeRow{}, nil
+}
+
+func (m *MockDB) GetProcessesByCPU(_ context.Context, _ database.GetProcessesByCPUParams) ([]database.CurrentProcess, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.CurrentProcess{}, nil
+}
+
+func (m *MockDB) GetProcessesByMemory(_ context.Context, _ database.GetProcessesByMemoryParams) ([]database.CurrentProcess, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.CurrentProcess{}, nil
+}
+
+func (m *MockDB) GetServices(_ context.Context, _ pgtype.UUID) ([]database.CurrentService, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.CurrentService{}, nil
+}
+
+func (m *MockDB) GetApplications(_ context.Context, _ pgtype.UUID) ([]database.CurrentApplication, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.CurrentApplication{}, nil
+}
+
+func (m *MockDB) GetUpdates(_ context.Context, _ pgtype.UUID) (database.CurrentUpdate, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return database.CurrentUpdate{}, nil
+}
+
+func (m *MockDB) ListAgents(_ context.Context) ([]database.ListAgentsRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.ListAgentsRow{}, nil
 }

@@ -1,18 +1,22 @@
 package server
 
 import (
+	"errors"
 	"net/http"
+	"time"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
 	"golang.org/x/crypto/bcrypt"
 )
+
+var errFake = errors.New("fake error")
 
 // newTestServer creates a server with a MockDB and returns it along with
 // a registered agent's ID, plaintext secret, and the mock.
 func newTestServer() (*Server, string, string, *MockDB) {
 	mock := NewMockDB()
 
-	s := New(Config{Port: 8080}, mock)
+	s := New(Config{Port: 8080, CommandTimeout: 10 * time.Millisecond}, mock)
 
 	agentID := "550e8400-e29b-41d4-a716-446655440000"
 	secret := "test-secret"

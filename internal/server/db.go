@@ -15,6 +15,7 @@ type DB interface {
 	GetAgentSecret(ctx context.Context, id pgtype.UUID) (string, error)
 	TouchLastSeen(ctx context.Context, id pgtype.UUID) error
 	AgentExists(ctx context.Context, id pgtype.UUID) (bool, error)
+	ListAgents(ctx context.Context) ([]database.ListAgentsRow, error)
 
 	// Metric inserts
 	InsertCPU(ctx context.Context, arg database.InsertCPUParams) error
@@ -36,11 +37,37 @@ type DB interface {
 	UpsertUpdates(ctx context.Context, arg database.UpsertUpdatesParams) error
 	UpsertCurrentCPU(ctx context.Context, arg database.UpsertCurrentCPUParams) error
 	UpsertCurrentMemory(ctx context.Context, arg database.UpsertCurrentMemoryParams) error
-	UpsertCurrentDiskMax(ctx context.Context, uid pgtype.UUID) error
-	UpsertCurrentNetwork(ctx context.Context, uid pgtype.UUID) error
-	UpsertCurrentTemperature(ctx context.Context, uid pgtype.UUID) error
+	UpsertCurrentDiskMax(ctx context.Context, id pgtype.UUID) error
+	UpsertCurrentNetwork(ctx context.Context, id pgtype.UUID) error
+	UpsertCurrentTemperature(ctx context.Context, id pgtype.UUID) error
 	UpsertCurrentSystem(ctx context.Context, arg database.UpsertCurrentSystemParams) error
 	UpsertCurrentReboot(ctx context.Context, arg database.UpsertCurrentRebootParams) error
+
+	// Read API - overview
+	GetOverview(ctx context.Context) ([]database.GetOverviewRow, error)
+
+	// Read API - agent management
+	GetAgent(ctx context.Context, id pgtype.UUID) (database.Agent, error)
+	DeleteAgent(ctx context.Context, id pgtype.UUID) error
+
+	// Read API - time-series metrics (timestamp)
+	GetCPURange(ctx context.Context, arg database.GetCPURangeParams) ([]database.MetricsCpu, error)
+	GetMemoryRange(ctx context.Context, arg database.GetMemoryRangeParams) ([]database.MetricsMemory, error)
+	GetDiskRange(ctx context.Context, arg database.GetDiskRangeParams) ([]database.MetricsDisk, error)
+	GetDiskIORange(ctx context.Context, arg database.GetDiskIORangeParams) ([]database.MetricsDiskIo, error)
+	GetNetworkRange(ctx context.Context, arg database.GetNetworkRangeParams) ([]database.MetricsNetwork, error)
+	GetTemperatureRange(ctx context.Context, arg database.GetTemperatureRangeParams) ([]database.MetricsTemperature, error)
+	GetSystemRange(ctx context.Context, arg database.GetSystemRangeParams) ([]database.MetricsSystem, error)
+	GetContainerRange(ctx context.Context, arg database.GetContainerRangeParams) ([]database.MetricsContainer, error)
+	GetWifiRange(ctx context.Context, arg database.GetWifiRangeParams) ([]database.MetricsWifi, error)
+	GetPiRange(ctx context.Context, arg database.GetPiRangeParams) ([]database.GetPiRangeRow, error)
+
+	// Read API - current state
+	GetProcessesByCPU(ctx context.Context, args database.GetProcessesByCPUParams) ([]database.CurrentProcess, error)
+	GetProcessesByMemory(ctx context.Context, args database.GetProcessesByMemoryParams) ([]database.CurrentProcess, error)
+	GetServices(ctx context.Context, id pgtype.UUID) ([]database.CurrentService, error)
+	GetApplications(ctx context.Context, id pgtype.UUID) ([]database.CurrentApplication, error)
+	GetUpdates(ctx context.Context, id pgtype.UUID) (database.CurrentUpdate, error)
 }
 
 // Compile-time check that *database.Queries satisfies the DB interface.

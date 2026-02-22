@@ -11,20 +11,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getLatestCPU = `-- name: GetLatestCPU :many
+const getCPURange = `-- name: GetCPURange :many
 SELECT time, agent_id, usage, core_usages, load_1m, load_5m, load_15m, iowait
 FROM metrics_cpu
-WHERE agent_id = $1 AND time > NOW() - $2::interval
+WHERE agent_id = $1 AND time >= $2 AND time <= $3
 ORDER BY time DESC
 `
 
-type GetLatestCPUParams struct {
-	AgentID pgtype.UUID     `json:"agent_id"`
-	Column2 pgtype.Interval `json:"column_2"`
+type GetCPURangeParams struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
 }
 
-func (q *Queries) GetLatestCPU(ctx context.Context, arg GetLatestCPUParams) ([]MetricsCpu, error) {
-	rows, err := q.db.Query(ctx, getLatestCPU, arg.AgentID, arg.Column2)
+func (q *Queries) GetCPURange(ctx context.Context, arg GetCPURangeParams) ([]MetricsCpu, error) {
+	rows, err := q.db.Query(ctx, getCPURange, arg.AgentID, arg.StartTime, arg.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -52,20 +53,21 @@ func (q *Queries) GetLatestCPU(ctx context.Context, arg GetLatestCPUParams) ([]M
 	return items, nil
 }
 
-const getLatestContainers = `-- name: GetLatestContainers :many
+const getContainerRange = `-- name: GetContainerRange :many
 SELECT time, agent_id, container_id, name, image, state, source, kind, cpu_percent, cpu_cores, memory_bytes, memory_limit, net_rx_bytes, net_tx_bytes
 FROM metrics_container
-WHERE agent_id = $1 AND time > NOW() - $2::interval
+WHERE agent_id = $1 AND time >= $2 AND time <= $3
 ORDER BY time DESC
 `
 
-type GetLatestContainersParams struct {
-	AgentID pgtype.UUID     `json:"agent_id"`
-	Column2 pgtype.Interval `json:"column_2"`
+type GetContainerRangeParams struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
 }
 
-func (q *Queries) GetLatestContainers(ctx context.Context, arg GetLatestContainersParams) ([]MetricsContainer, error) {
-	rows, err := q.db.Query(ctx, getLatestContainers, arg.AgentID, arg.Column2)
+func (q *Queries) GetContainerRange(ctx context.Context, arg GetContainerRangeParams) ([]MetricsContainer, error) {
+	rows, err := q.db.Query(ctx, getContainerRange, arg.AgentID, arg.StartTime, arg.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -99,20 +101,65 @@ func (q *Queries) GetLatestContainers(ctx context.Context, arg GetLatestContaine
 	return items, nil
 }
 
-const getLatestDisk = `-- name: GetLatestDisk :many
-SELECT time, agent_id, device, mountpoint, filesystem, disk_type, total_bytes, used_bytes, free_bytes, used_percent, inodes_total, inodes_used, inodes_percent
-FROM metrics_disk
-WHERE agent_id = $1 AND time > NOW() - $2::interval
+const getDiskIORange = `-- name: GetDiskIORange :many
+SELECT time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress
+FROM metrics_disk_io
+WHERE agent_id = $1 AND time >= $2 AND time <= $3
 ORDER BY time DESC
 `
 
-type GetLatestDiskParams struct {
-	AgentID pgtype.UUID     `json:"agent_id"`
-	Column2 pgtype.Interval `json:"column_2"`
+type GetDiskIORangeParams struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
 }
 
-func (q *Queries) GetLatestDisk(ctx context.Context, arg GetLatestDiskParams) ([]MetricsDisk, error) {
-	rows, err := q.db.Query(ctx, getLatestDisk, arg.AgentID, arg.Column2)
+func (q *Queries) GetDiskIORange(ctx context.Context, arg GetDiskIORangeParams) ([]MetricsDiskIo, error) {
+	rows, err := q.db.Query(ctx, getDiskIORange, arg.AgentID, arg.StartTime, arg.EndTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MetricsDiskIo{}
+	for rows.Next() {
+		var i MetricsDiskIo
+		if err := rows.Scan(
+			&i.Time,
+			&i.AgentID,
+			&i.Device,
+			&i.ReadBytes,
+			&i.WriteBytes,
+			&i.ReadOps,
+			&i.WriteOps,
+			&i.ReadLatency,
+			&i.WriteLatency,
+			&i.IoInProgress,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getDiskRange = `-- name: GetDiskRange :many
+SELECT time, agent_id, device, mountpoint, filesystem, disk_type, total_bytes, used_bytes, free_bytes, used_percent, inodes_total, inodes_used, inodes_percent
+FROM metrics_disk
+WHERE agent_id = $1 AND time >= $2 AND time <= $3
+ORDER BY time DESC
+`
+
+type GetDiskRangeParams struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
+}
+
+func (q *Queries) GetDiskRange(ctx context.Context, arg GetDiskRangeParams) ([]MetricsDisk, error) {
+	rows, err := q.db.Query(ctx, getDiskRange, arg.AgentID, arg.StartTime, arg.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -145,63 +192,21 @@ func (q *Queries) GetLatestDisk(ctx context.Context, arg GetLatestDiskParams) ([
 	return items, nil
 }
 
-const getLatestDiskIO = `-- name: GetLatestDiskIO :many
-SELECT time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress
-FROM metrics_disk_io
-WHERE agent_id = $1 AND time > NOW() - $2::interval
-ORDER BY time DESC
-`
-
-type GetLatestDiskIOParams struct {
-	AgentID pgtype.UUID     `json:"agent_id"`
-	Column2 pgtype.Interval `json:"column_2"`
-}
-
-func (q *Queries) GetLatestDiskIO(ctx context.Context, arg GetLatestDiskIOParams) ([]MetricsDiskIo, error) {
-	rows, err := q.db.Query(ctx, getLatestDiskIO, arg.AgentID, arg.Column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []MetricsDiskIo{}
-	for rows.Next() {
-		var i MetricsDiskIo
-		if err := rows.Scan(
-			&i.Time,
-			&i.AgentID,
-			&i.Device,
-			&i.ReadBytes,
-			&i.WriteBytes,
-			&i.ReadOps,
-			&i.WriteOps,
-			&i.ReadLatency,
-			&i.WriteLatency,
-			&i.IoInProgress,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getLatestMemory = `-- name: GetLatestMemory :many
+const getMemoryRange = `-- name: GetMemoryRange :many
 SELECT time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent
 FROM metrics_memory
-WHERE agent_id = $1 AND time > NOW() - $2::interval
+WHERE agent_id = $1 AND time >= $2 AND time <= $3
 ORDER BY time DESC
 `
 
-type GetLatestMemoryParams struct {
-	AgentID pgtype.UUID     `json:"agent_id"`
-	Column2 pgtype.Interval `json:"column_2"`
+type GetMemoryRangeParams struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
 }
 
-func (q *Queries) GetLatestMemory(ctx context.Context, arg GetLatestMemoryParams) ([]MetricsMemory, error) {
-	rows, err := q.db.Query(ctx, getLatestMemory, arg.AgentID, arg.Column2)
+func (q *Queries) GetMemoryRange(ctx context.Context, arg GetMemoryRangeParams) ([]MetricsMemory, error) {
+	rows, err := q.db.Query(ctx, getMemoryRange, arg.AgentID, arg.StartTime, arg.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -230,20 +235,21 @@ func (q *Queries) GetLatestMemory(ctx context.Context, arg GetLatestMemoryParams
 	return items, nil
 }
 
-const getLatestNetwork = `-- name: GetLatestNetwork :many
+const getNetworkRange = `-- name: GetNetworkRange :many
 SELECT time, agent_id, interface, mac, mtu, speed, rx_bytes, rx_packets, rx_errors, rx_drops, tx_bytes, tx_packets, tx_errors, tx_drops
 FROM metrics_network
-WHERE agent_id = $1 AND time > NOW() - $2::interval
+WHERE agent_id = $1 AND time >= $2 AND time <= $3
 ORDER BY time DESC
 `
 
-type GetLatestNetworkParams struct {
-	AgentID pgtype.UUID     `json:"agent_id"`
-	Column2 pgtype.Interval `json:"column_2"`
+type GetNetworkRangeParams struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
 }
 
-func (q *Queries) GetLatestNetwork(ctx context.Context, arg GetLatestNetworkParams) ([]MetricsNetwork, error) {
-	rows, err := q.db.Query(ctx, getLatestNetwork, arg.AgentID, arg.Column2)
+func (q *Queries) GetNetworkRange(ctx context.Context, arg GetNetworkRangeParams) ([]MetricsNetwork, error) {
+	rows, err := q.db.Query(ctx, getNetworkRange, arg.AgentID, arg.StartTime, arg.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -277,42 +283,140 @@ func (q *Queries) GetLatestNetwork(ctx context.Context, arg GetLatestNetworkPara
 	return items, nil
 }
 
-const getLatestSystem = `-- name: GetLatestSystem :one
+const getPiRange = `-- name: GetPiRange :many
+SELECT time, agent_id, metric_type, arm_freq_hz, core_freq_hz, gpu_freq_hz, core_volts, sdram_c_volts, sdram_i_volts, sdram_p_volts, soft_temp_limit, throttled, under_voltage, freq_capped, undervoltage_occurred, freq_cap_occurred, throttled_occurred, soft_temp_limit_occurred, gpu_mem_total, gpu_mem_used, gpu_temp
+FROM metrics_pi
+WHERE agent_id = $1 AND time >= $2 AND time <= $3
+ORDER BY time DESC
+`
+
+type GetPiRangeParams struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
+}
+
+type GetPiRangeRow struct {
+	Time                  pgtype.Timestamptz `json:"time"`
+	AgentID               pgtype.UUID        `json:"agent_id"`
+	MetricType            string             `json:"metric_type"`
+	ArmFreqHz             pgtype.Int8        `json:"arm_freq_hz"`
+	CoreFreqHz            pgtype.Int8        `json:"core_freq_hz"`
+	GpuFreqHz             pgtype.Int8        `json:"gpu_freq_hz"`
+	CoreVolts             pgtype.Float8      `json:"core_volts"`
+	SdramCVolts           pgtype.Float8      `json:"sdram_c_volts"`
+	SdramIVolts           pgtype.Float8      `json:"sdram_i_volts"`
+	SdramPVolts           pgtype.Float8      `json:"sdram_p_volts"`
+	SoftTempLimit         pgtype.Bool        `json:"soft_temp_limit"`
+	Throttled             pgtype.Bool        `json:"throttled"`
+	UnderVoltage          pgtype.Bool        `json:"under_voltage"`
+	FreqCapped            pgtype.Bool        `json:"freq_capped"`
+	UndervoltageOccurred  pgtype.Bool        `json:"undervoltage_occurred"`
+	FreqCapOccurred       pgtype.Bool        `json:"freq_cap_occurred"`
+	ThrottledOccurred     pgtype.Bool        `json:"throttled_occurred"`
+	SoftTempLimitOccurred pgtype.Bool        `json:"soft_temp_limit_occurred"`
+	GpuMemTotal           pgtype.Int8        `json:"gpu_mem_total"`
+	GpuMemUsed            pgtype.Int8        `json:"gpu_mem_used"`
+	GpuTemp               pgtype.Float8      `json:"gpu_temp"`
+}
+
+func (q *Queries) GetPiRange(ctx context.Context, arg GetPiRangeParams) ([]GetPiRangeRow, error) {
+	rows, err := q.db.Query(ctx, getPiRange, arg.AgentID, arg.StartTime, arg.EndTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPiRangeRow{}
+	for rows.Next() {
+		var i GetPiRangeRow
+		if err := rows.Scan(
+			&i.Time,
+			&i.AgentID,
+			&i.MetricType,
+			&i.ArmFreqHz,
+			&i.CoreFreqHz,
+			&i.GpuFreqHz,
+			&i.CoreVolts,
+			&i.SdramCVolts,
+			&i.SdramIVolts,
+			&i.SdramPVolts,
+			&i.SoftTempLimit,
+			&i.Throttled,
+			&i.UnderVoltage,
+			&i.FreqCapped,
+			&i.UndervoltageOccurred,
+			&i.FreqCapOccurred,
+			&i.ThrottledOccurred,
+			&i.SoftTempLimitOccurred,
+			&i.GpuMemTotal,
+			&i.GpuMemUsed,
+			&i.GpuTemp,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSystemRange = `-- name: GetSystemRange :many
 SELECT time, agent_id, uptime, process_count, user_count, boot_time
 FROM metrics_system
-WHERE agent_id = $1
+WHERE agent_id = $1 AND time >= $2 AND time <= $3
 ORDER BY time DESC
-LIMIT 1
 `
 
-func (q *Queries) GetLatestSystem(ctx context.Context, agentID pgtype.UUID) (MetricsSystem, error) {
-	row := q.db.QueryRow(ctx, getLatestSystem, agentID)
-	var i MetricsSystem
-	err := row.Scan(
-		&i.Time,
-		&i.AgentID,
-		&i.Uptime,
-		&i.ProcessCount,
-		&i.UserCount,
-		&i.BootTime,
-	)
-	return i, err
+type GetSystemRangeParams struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
 }
 
-const getLatestTemperature = `-- name: GetLatestTemperature :many
+func (q *Queries) GetSystemRange(ctx context.Context, arg GetSystemRangeParams) ([]MetricsSystem, error) {
+	rows, err := q.db.Query(ctx, getSystemRange, arg.AgentID, arg.StartTime, arg.EndTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MetricsSystem{}
+	for rows.Next() {
+		var i MetricsSystem
+		if err := rows.Scan(
+			&i.Time,
+			&i.AgentID,
+			&i.Uptime,
+			&i.ProcessCount,
+			&i.UserCount,
+			&i.BootTime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTemperatureRange = `-- name: GetTemperatureRange :many
 SELECT time, agent_id, sensor, temperature, max_temp
 FROM metrics_temperature
-WHERE agent_id = $1 AND time > NOW() - $2::interval
+WHERE agent_id = $1 AND time >= $2 AND time <= $3
 ORDER BY time DESC
 `
 
-type GetLatestTemperatureParams struct {
-	AgentID pgtype.UUID     `json:"agent_id"`
-	Column2 pgtype.Interval `json:"column_2"`
+type GetTemperatureRangeParams struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
 }
 
-func (q *Queries) GetLatestTemperature(ctx context.Context, arg GetLatestTemperatureParams) ([]MetricsTemperature, error) {
-	rows, err := q.db.Query(ctx, getLatestTemperature, arg.AgentID, arg.Column2)
+func (q *Queries) GetTemperatureRange(ctx context.Context, arg GetTemperatureRangeParams) ([]MetricsTemperature, error) {
+	rows, err := q.db.Query(ctx, getTemperatureRange, arg.AgentID, arg.StartTime, arg.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -326,6 +430,50 @@ func (q *Queries) GetLatestTemperature(ctx context.Context, arg GetLatestTempera
 			&i.Sensor,
 			&i.Temperature,
 			&i.MaxTemp,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getWifiRange = `-- name: GetWifiRange :many
+SELECT time, agent_id, interface, ssid, bssid, frequency_mhz, signal_dbm, noise_dbm, bitrate_mbps, link_quality
+FROM metrics_wifi
+WHERE agent_id = $1 AND time >= $2 AND time <= $3
+ORDER BY time DESC
+`
+
+type GetWifiRangeParams struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	StartTime pgtype.Timestamptz `json:"start_time"`
+	EndTime   pgtype.Timestamptz `json:"end_time"`
+}
+
+func (q *Queries) GetWifiRange(ctx context.Context, arg GetWifiRangeParams) ([]MetricsWifi, error) {
+	rows, err := q.db.Query(ctx, getWifiRange, arg.AgentID, arg.StartTime, arg.EndTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MetricsWifi{}
+	for rows.Next() {
+		var i MetricsWifi
+		if err := rows.Scan(
+			&i.Time,
+			&i.AgentID,
+			&i.Interface,
+			&i.Ssid,
+			&i.Bssid,
+			&i.FrequencyMhz,
+			&i.SignalDbm,
+			&i.NoiseDbm,
+			&i.BitrateMbps,
+			&i.LinkQuality,
 		); err != nil {
 			return nil, err
 		}
