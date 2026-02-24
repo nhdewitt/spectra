@@ -52,3 +52,11 @@ func decodeMountPath(s string) string {
 	s = strings.ReplaceAll(s, `\134`, `\`)
 	return s
 }
+
+func shouldIgnore(m MountInfo) bool {
+	_, isFSTypeIgnored := ignoredFilesystems[m.FSType]
+	return isFSTypeIgnored ||
+		strings.HasPrefix(m.Device, "/dev/loop") ||
+		strings.HasPrefix(m.Mountpoint, "/mnt/wsl/") ||
+		strings.HasPrefix(m.Mountpoint, "/Docker/")
+}

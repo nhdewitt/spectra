@@ -1,4 +1,4 @@
-//go:build linux || freebsd
+//go:build linux || freebsd || darwin
 
 package collector
 
@@ -18,14 +18,6 @@ func createDeviceToMountpointMap(mounts []MountInfo) map[string]MountInfo {
 		}
 	}
 	return deviceMap
-}
-
-func shouldIgnore(m MountInfo) bool {
-	_, isFSTypeIgnored := ignoredFilesystems[m.FSType]
-	return isFSTypeIgnored ||
-		strings.HasPrefix(m.Device, "/dev/loop") ||
-		strings.HasPrefix(m.Mountpoint, "/mnt/wsl/") ||
-		strings.HasPrefix(m.Mountpoint, "/Docker/")
 }
 
 func RunMountManager(ctx context.Context, cache *DriveCache, interval time.Duration) {
