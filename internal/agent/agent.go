@@ -40,6 +40,8 @@ type Agent struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 
+	cache *metricsCache
+
 	gzipMu  sync.Mutex
 	gzipBuf bytes.Buffer
 	gzipW   *gzip.Writer
@@ -110,6 +112,7 @@ func New(cfg Config) *Agent {
 		batch:      make([]protocol.Envelope, 0, 50),
 		ctx:        ctx,
 		cancel:     cancel,
+		cache:      newMetricsCache(defaultMaxCacheSize),
 		gzipW:      gzip.NewWriter(io.Discard),
 		commonHeaders: map[string]string{
 			"Content-Type":     "application/json",
@@ -124,8 +127,8 @@ func New(cfg Config) *Agent {
 
 // Start initializes all subsystems and blocks until Shutdown is called
 func (a *Agent) Start() error {
-	fmt.Printf("Spectra Agent starting on %s...\n", a.Config.Hostname)
-	fmt.Printf("Server: %s\n", a.Config.BaseURL)
+	log.Printf("Spectra Agent starting on %s...\n", a.Config.Hostname)
+	log.Printf("Server: %s\n", a.Config.BaseURL)
 
 	if a.Identity.ID == "" {
 		if err := a.Register(); err != nil {
@@ -143,15 +146,20 @@ func (a *Agent) Start() error {
 		a.runMetricSender()
 	}()
 
-	// Start Collectors
-	a.startCollectors()
-
 	// Start Command Loop
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
 		a.runCommandLoop()
 	}()
+
+	// Align to minute boundary
+	if err := waitForNextMinute(a.ctx); err != nil {
+		return fmt.Errorf("clock alignment cancelled: %w", err)
+	}
+
+	// Start Collectors
+	a.startCollectors()
 
 	// Block until shutdown called
 	<-a.ctx.Done()
@@ -160,10 +168,10 @@ func (a *Agent) Start() error {
 
 // Shutdown gracefully stops all background tasks
 func (a *Agent) Shutdown() {
-	// fmt.Println("Agent shutting down...")
+	log.Println("Agent shutting down...")
 	a.cancel()
 	a.wg.Wait()
-	// fmt.Println("Agent stopped.")
+	log.Println("Agent stopped.")
 }
 
 // setHeaders sets common headers for an http.Request

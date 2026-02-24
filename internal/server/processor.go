@@ -19,7 +19,6 @@ func (s *Server) processMetric(agentID string, env RawEnvelope) {
 		return
 	}
 
-	s.logMetric(env, metric)
 	s.persistMetric(context.Background(), agentID, env.Timestamp, metric)
 }
 
@@ -77,32 +76,6 @@ func (s *Server) unmarshalMetric(typ string, data []byte) (protocol.Metric, erro
 	}
 
 	return metric, nil
-}
-
-// logMetric is a placeholder fo DB insertion (print to STDOUT)
-func (s *Server) logMetric(env RawEnvelope, metric protocol.Metric) {
-	ts := env.Timestamp.Format("15:04:05")
-
-	switch m := metric.(type) {
-	case *protocol.ServiceMetric:
-		fmt.Printf(" [%s] service: %-20s %s (%s)\n", ts, m.Name, m.Status, m.SubStatus)
-	case *protocol.ServiceListMetric:
-		log.Printf(" [%s] service_list: Received list of %d services", ts, len(m.Services))
-		for _, s := range m.Services {
-			fmt.Printf(" [%s] service: %-20s %s (%s)\n", ts, s.Name, s.Status, s.SubStatus)
-		}
-	case *protocol.ApplicationListMetric:
-		log.Printf(" [%s] application_list: Received %d applications from %s", ts, len(m.Applications), env.Hostname)
-	case *protocol.ContainerListMetric:
-		log.Printf(" [%s] container_list: Received %d containers from %s", ts, len(m.Containers), env.Hostname)
-		for _, c := range m.Containers {
-			fmt.Println(c)
-		}
-	case *protocol.UpdateMetric:
-		log.Printf(" [%s] update_status: %d pending (%d security), reboot=%v [%s]", ts, m.PendingCount, m.SecurityCount, m.RebootRequired, m.PackageManager)
-	default:
-		fmt.Printf(" [%s] %s: %v\n", ts, env.Type, metric)
-	}
 }
 
 func (s *Server) logCommandResult(res protocol.CommandResult) {

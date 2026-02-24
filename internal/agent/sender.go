@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -54,10 +55,22 @@ func (a *Agent) runMetricSender() {
 func (a *Agent) uploadBatch(batch []protocol.Envelope) {
 	url := fmt.Sprintf("%s%s", a.Config.BaseURL, a.Config.MetricsPath)
 
+	// Try sending cached metrics first
+	if cached := a.cache.Drain(); len(cached) > 0 {
+		if err := a.postCompressed(url, cached); err != nil {
+			// Re-cache everything
+			a.cache.Add(cached)
+			a.cache.Add(batch)
+			log.Printf("Server unreachable, cached %d metrics (%d total)", len(batch), a.cache.Len())
+			return
+		}
+		log.Printf("Sent %d cached metrics", len(cached))
+	}
+
+	// Send current batch
 	if err := a.postCompressed(url, batch); err != nil {
-		fmt.Printf("Error sending batch of %d metrics: %v\n", len(batch), err)
-	} else {
-		fmt.Printf("Sent batch of %d metrics\n", len(batch))
+		a.cache.Add(batch)
+		log.Printf("Error sending batch of %d metrics, cached (%d total): %v", len(batch), a.cache.Len(), err)
 	}
 }
 

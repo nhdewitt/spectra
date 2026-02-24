@@ -85,8 +85,6 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 
 	go func() {
-		log.Printf("--- Received Batch of %d Metrics from %s ---", len(rawEnvelopes), agentID)
-
 		for _, env := range rawEnvelopes {
 			s.processMetric(agentID, env)
 		}
