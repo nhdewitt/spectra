@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
@@ -23,14 +25,47 @@ type systemProfilerApp struct {
 	Path         string `json:"path"`
 }
 
+var returnedWarning bool
+
+const systemProfilerTimeout = 60 * time.Second
+
 // GetInstalledApps returns all applications found by system_profiler.
+// JSON support for system_profiler was added in macOS Catalina (10.15).
+// Previous versions will return an empty list.
+//
+// Also returns an empty list if Spotlight is disabled or if system_profiler
+// fails or times out.
 func GetInstalledApps(ctx context.Context) ([]protocol.Application, error) {
+	ctx, cancel := context.WithTimeout(ctx, systemProfilerTimeout)
+	defer cancel()
+
 	out, err := exec.CommandContext(ctx, "system_profiler", "SPApplicationsDataType", "-json").Output()
 	if err != nil {
-		return nil, err
+		if !returnedWarning {
+			log.Printf("inventory: system_profiler failed: %v", err)
+			returnedWarning = true
+		}
+		return []protocol.Application{}, err
 	}
 
-	return parseSystemProfiler(out)
+	apps, err := parseSystemProfiler(out)
+	if err != nil {
+		if !returnedWarning {
+			log.Printf("inventory: failed to parse system_profiler output: %v", err)
+			returnedWarning = true
+		}
+		return []protocol.Application{}, err
+	}
+	if len(apps) == 0 {
+		if !returnedWarning {
+			log.Print("inventory: system_profiler returned 0 apps (Spotlight possibly disabled).")
+			returnedWarning = true
+		}
+		return apps, nil
+	}
+
+	returnedWarning = false
+	return apps, nil
 }
 
 func parseSystemProfiler(data []byte) ([]protocol.Application, error) {
