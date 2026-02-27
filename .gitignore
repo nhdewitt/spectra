@@ -1,5 +1,4 @@
 .vscode/
-_obj/
 *.test
 *.exe
 .env
