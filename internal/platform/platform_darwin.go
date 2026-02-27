@@ -23,6 +23,7 @@ func Detect() Info {
 	}
 
 	info.SmartctlPath, _ = exec.LookPath("smartctl")
+	info.SystemctlPath = "launchctl"
 
 	return info
 }
