@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nhdewitt/spectra/internal/database"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // MockDB implements the DB interface for unit testing.
@@ -32,12 +33,55 @@ type MockDB struct {
 	UpsertApplicationCount int
 	TouchLastSeenCount     int
 
+	// Auth
+	Users    map[string]mockUser    // username -> user
+	Sessions map[string]mockSession // token -> session
+
 	Err error
+}
+
+type mockUser struct {
+	ID       pgtype.UUID
+	Username string
+	Password string // bcrypt hash
+	Role     string
+}
+
+type mockSession struct {
+	UserID    pgtype.UUID
+	Username  string
+	Role      string
+	IpAddress string
 }
 
 func NewMockDB() *MockDB {
 	return &MockDB{
-		Agents: make(map[string]string),
+		Agents:   make(map[string]string),
+		Users:    make(map[string]mockUser),
+		Sessions: make(map[string]mockSession),
+	}
+}
+
+func (m *MockDB) AddUser(username, password, role string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	m.Users[username] = mockUser{
+		Username: username,
+		Password: string(hash),
+		Role:     role,
+	}
+}
+
+func (m *MockDB) AddSession(token, username, role, ip string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.Sessions[token] = mockSession{
+		Username:  username,
+		Role:      role,
+		IpAddress: ip,
 	}
 }
 
@@ -348,4 +392,106 @@ func (m *MockDB) ListAgents(_ context.Context) ([]database.ListAgentsRow, error)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return []database.ListAgentsRow{}, nil
+}
+
+func (m *MockDB) CreateUser(_ context.Context, args database.CreateUserParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.Err != nil {
+		return m.Err
+	}
+
+	m.Users[args.Username] = mockUser{
+		Username: args.Username,
+		Password: args.Password,
+		Role:     args.Role,
+	}
+
+	return nil
+}
+
+func (m *MockDB) GetUserByUsername(_ context.Context, username string) (database.GetUserByUsernameRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.Err != nil {
+		return database.GetUserByUsernameRow{}, m.Err
+	}
+
+	u, ok := m.Users[username]
+	if !ok {
+		return database.GetUserByUsernameRow{}, fmt.Errorf("user not found")
+	}
+	return database.GetUserByUsernameRow{
+		ID:       u.ID,
+		Username: u.Username,
+		Password: u.Password,
+		Role:     u.Role,
+	}, nil
+}
+
+func (m *MockDB) UserCount(_ context.Context) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.Err != nil {
+		return 0, m.Err
+	}
+	return int64(len(m.Users)), nil
+}
+
+func (m *MockDB) CreateSession(_ context.Context, args database.CreateSessionParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.Err != nil {
+		return m.Err
+	}
+
+	m.Sessions[args.Token] = mockSession{
+		UserID: args.UserID,
+	}
+
+	return nil
+}
+
+func (m *MockDB) GetSession(_ context.Context, token string) (database.GetSessionRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.Err != nil {
+		return database.GetSessionRow{}, m.Err
+	}
+
+	s, ok := m.Sessions[token]
+	if !ok {
+		return database.GetSessionRow{}, fmt.Errorf("session not found")
+	}
+
+	return database.GetSessionRow{
+		Token:     token,
+		UserID:    s.UserID,
+		Username:  s.Username,
+		Role:      s.Role,
+		IpAddress: s.IpAddress,
+	}, nil
+}
+
+func (m *MockDB) DeleteSession(_ context.Context, _ string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return nil
+}
+
+func (m *MockDB) DeleteExpiredSessions(_ context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return nil
+}
+
+func (m *MockDB) DeleteUserSessions(_ context.Context, _ pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return nil
 }

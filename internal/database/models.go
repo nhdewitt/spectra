@@ -221,3 +221,20 @@ type RegistrationToken struct {
 	Used      bool               `json:"used"`
 	UsedBy    pgtype.UUID        `json:"used_by"`
 }
+
+type Session struct {
+	Token     string             `json:"token"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	IpAddress string             `json:"ip_address"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type User struct {
+	ID        pgtype.UUID        `json:"id"`
+	Username  string             `json:"username"`
+	Password  string             `json:"password"`
+	Role      string             `json:"role"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}

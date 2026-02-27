@@ -49,8 +49,10 @@ require (
 )
 
 require (
+	github.com/charmbracelet/x/term v0.2.2
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/google/uuid v1.6.0
 	github.com/tklauser/go-sysconf v0.3.16
 	github.com/tklauser/numcpus v0.11.0 // indirect
+	golang.org/x/term v0.40.0
 )

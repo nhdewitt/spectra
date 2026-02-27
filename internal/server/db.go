@@ -17,6 +17,16 @@ type DB interface {
 	AgentExists(ctx context.Context, id pgtype.UUID) (bool, error)
 	ListAgents(ctx context.Context) ([]database.ListAgentsRow, error)
 
+	// Auth
+	CreateUser(ctx context.Context, arg database.CreateUserParams) error
+	GetUserByUsername(ctx context.Context, username string) (database.GetUserByUsernameRow, error)
+	UserCount(ctx context.Context) (int64, error)
+	CreateSession(ctx context.Context, arg database.CreateSessionParams) error
+	GetSession(ctx context.Context, token string) (database.GetSessionRow, error)
+	DeleteSession(ctx context.Context, token string) error
+	DeleteExpiredSessions(ctx context.Context) error
+	DeleteUserSessions(ctx context.Context, userID pgtype.UUID) error
+
 	// Metric inserts
 	InsertCPU(ctx context.Context, arg database.InsertCPUParams) error
 	InsertMemory(ctx context.Context, arg database.InsertMemoryParams) error
