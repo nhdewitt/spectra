@@ -3,12 +3,38 @@ package server
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nhdewitt/spectra/internal/database"
 	"golang.org/x/crypto/bcrypt"
 )
+
+const (
+	// testSessionToken is the session token used by authedRequest.
+	testSessionToken = "test-session-token"
+	// testSessionIP is the IP address bound to the test session.
+	testSessionIP = "192.168.1.100"
+)
+
+// setupTestSession creates a valid session in the mock DB for use in tests
+// that route through s.Router.ServeHTTP (which hits requireUserAuth).
+// Call this once after newTestServer()
+func setupTestSession(mock *MockDB) {
+	mock.AddSession(testSessionToken, "testadmin", "admin", testSessionIP)
+}
+
+// authedRequest attaches the test session cookie and matching RemoteAddr
+// to an *http.Request so it passes through requireUserAuth middleware.
+func authedRequest(req *http.Request) *http.Request {
+	req.RemoteAddr = testSessionIP + ":12345"
+	req.AddCookie(&http.Cookie{
+		Name:  sessionCookieName,
+		Value: testSessionToken,
+	})
+	return req
+}
 
 // MockDB implements the DB interface for unit testing.
 type MockDB struct {
@@ -37,7 +63,13 @@ type MockDB struct {
 	Users    map[string]mockUser    // username -> user
 	Sessions map[string]mockSession // token -> session
 
-	Err error
+	// Sparkline seed data
+	recentCPU     []database.GetRecentCPURow
+	recentMemory  []database.GetRecentMemoryRow
+	recentDiskMax []database.GetRecentDiskMaxRow
+
+	Err      error
+	QueryErr error // errors for data queries (not auth)
 }
 
 type mockUser struct {
@@ -283,6 +315,9 @@ func (m *MockDB) UpsertCurrentReboot(_ context.Context, _ database.UpsertCurrent
 func (m *MockDB) GetOverview(_ context.Context) ([]database.GetOverviewRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetOverviewRow{}, m.Err
 }
 
@@ -494,4 +529,31 @@ func (m *MockDB) DeleteUserSessions(_ context.Context, _ pgtype.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return nil
+}
+
+func (m *MockDB) GetRecentCPU(_ context.Context) ([]database.GetRecentCPURow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.recentCPU != nil {
+		return m.recentCPU, nil
+	}
+	return []database.GetRecentCPURow{}, nil
+}
+
+func (m *MockDB) GetRecentMemory(_ context.Context) ([]database.GetRecentMemoryRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.recentMemory != nil {
+		return m.recentMemory, nil
+	}
+	return []database.GetRecentMemoryRow{}, nil
+}
+
+func (m *MockDB) GetRecentDiskMax(_ context.Context) ([]database.GetRecentDiskMaxRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.recentDiskMax != nil {
+		return m.recentDiskMax, nil
+	}
+	return []database.GetRecentDiskMaxRow{}, nil
 }

@@ -12,6 +12,7 @@ import (
 )
 
 // --- Registration ---
+// Registration uses token auth (not user or agent auth), only rate limited.
 
 func TestHandleAgentRegister_Success(t *testing.T) {
 	s := New(Config{Port: 8080}, NewMockDB())
@@ -31,6 +32,7 @@ func TestHandleAgentRegister_Success(t *testing.T) {
 	body, _ := json.Marshal(regReq)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.1:1234"
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -66,6 +68,7 @@ func TestHandleAgentRegister_InvalidToken(t *testing.T) {
 	body, _ := json.Marshal(regReq)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.1:1234"
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -88,6 +91,7 @@ func TestHandleAgentRegister_ExpiredToken(t *testing.T) {
 	body, _ := json.Marshal(regReq)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.1:1234"
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -110,6 +114,7 @@ func TestHandleAgentRegister_TokenSingleUse(t *testing.T) {
 	// First use succeeds
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.1:1234"
 	rec := httptest.NewRecorder()
 	s.Router.ServeHTTP(rec, req)
 
@@ -118,8 +123,10 @@ func TestHandleAgentRegister_TokenSingleUse(t *testing.T) {
 	}
 
 	// Second use fails
+	body, _ = json.Marshal(regReq)
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.1:1234"
 	rec = httptest.NewRecorder()
 	s.Router.ServeHTTP(rec, req)
 
@@ -132,6 +139,7 @@ func TestHandleAgentRegister_MethodNotAllowed(t *testing.T) {
 	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/register", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -146,6 +154,7 @@ func TestHandleAgentRegister_InvalidJSON(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", bytes.NewReader([]byte("invalid")))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.1:1234"
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -155,7 +164,7 @@ func TestHandleAgentRegister_InvalidJSON(t *testing.T) {
 	}
 }
 
-// --- Auth Middleware ---
+// --- Agent Auth Middleware ---
 
 func TestRequireAgentAuth_Success(t *testing.T) {
 	s, agentID, secret, _ := newTestServer()
@@ -165,6 +174,7 @@ func TestRequireAgentAuth_Success(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, agentID, secret)
 	rec := httptest.NewRecorder()
 
@@ -180,6 +190,7 @@ func TestRequireAgentAuth_MissingHeaders(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader([]byte("[]")))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -194,6 +205,7 @@ func TestRequireAgentAuth_WrongSecret(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader([]byte("[]")))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, agentID, "wrong-secret")
 	rec := httptest.NewRecorder()
 
@@ -209,6 +221,7 @@ func TestRequireAgentAuth_UnknownAgent(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader([]byte("[]")))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, "nonexistent", "any-secret")
 	rec := httptest.NewRecorder()
 
@@ -235,6 +248,7 @@ func TestHandleMetrics_Success(t *testing.T) {
 	body, _ := json.Marshal(batch)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, agentID, secret)
 	rec := httptest.NewRecorder()
 
@@ -251,6 +265,7 @@ func TestHandleMetrics_EmptyBatch(t *testing.T) {
 	body, _ := json.Marshal([]RawEnvelope{})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, agentID, secret)
 	rec := httptest.NewRecorder()
 
@@ -266,6 +281,7 @@ func TestHandleMetrics_InvalidJSON(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader([]byte("invalid")))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, agentID, secret)
 	rec := httptest.NewRecorder()
 
@@ -283,6 +299,7 @@ func TestHandleAgentCommand_NoCommands(t *testing.T) {
 	s.Config.CommandTimeout = 10 * time.Millisecond
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/command", nil)
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, agentID, secret)
 	rec := httptest.NewRecorder()
 
@@ -301,6 +318,7 @@ func TestHandleAgentCommand_WithCommand(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/command", nil)
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, agentID, secret)
 	rec := httptest.NewRecorder()
 
@@ -323,6 +341,7 @@ func TestHandleAgentCommand_NoAuth(t *testing.T) {
 	s, _, _, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/command", nil)
+	req.RemoteAddr = "10.0.0.5:1234"
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -356,6 +375,7 @@ func TestHandleCommandResult_Success(t *testing.T) {
 	body, _ := json.Marshal(result)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/command/result", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, agentID, secret)
 	rec := httptest.NewRecorder()
 
@@ -378,6 +398,7 @@ func TestHandleCommandResult_WithError(t *testing.T) {
 	body, _ := json.Marshal(result)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/command/result", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, agentID, secret)
 	rec := httptest.NewRecorder()
 
@@ -393,6 +414,7 @@ func TestHandleCommandResult_InvalidJSON(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/command/result", bytes.NewReader([]byte("invalid")))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	setAgentAuth(req, agentID, secret)
 	rec := httptest.NewRecorder()
 
@@ -411,34 +433,12 @@ func TestHandleCommandResult_NoAuth(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/command/result", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status: got %d, want 401", rec.Code)
-	}
-}
-
-// --- Token Generation ---
-
-func TestHandleGenerateToken(t *testing.T) {
-	s := New(Config{Port: 8080}, NewMockDB())
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/tokens", nil)
-	rec := httptest.NewRecorder()
-
-	s.Router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusCreated {
-		t.Errorf("status: got %d, want 201", rec.Code)
-	}
-
-	var resp map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if resp["token"] == "" {
-		t.Error("token should not be empty")
 	}
 }

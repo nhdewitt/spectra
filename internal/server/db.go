@@ -78,6 +78,11 @@ type DB interface {
 	GetServices(ctx context.Context, id pgtype.UUID) ([]database.CurrentService, error)
 	GetApplications(ctx context.Context, id pgtype.UUID) ([]database.CurrentApplication, error)
 	GetUpdates(ctx context.Context, id pgtype.UUID) (database.CurrentUpdate, error)
+
+	// Read API - Sparklines
+	GetRecentCPU(ctx context.Context) ([]database.GetRecentCPURow, error)
+	GetRecentMemory(ctx context.Context) ([]database.GetRecentMemoryRow, error)
+	GetRecentDiskMax(ctx context.Context) ([]database.GetRecentDiskMaxRow, error)
 }
 
 // Compile-time check that *database.Queries satisfies the DB interface.

@@ -14,3 +14,8 @@ nodefacts_binaries/
 /server
 spectra-server
 spectra-setup
+.VSCodeCounter/
+web/node_modules/
+web/dist/
+.vite/
+.env.*

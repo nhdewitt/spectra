@@ -65,7 +65,7 @@ func (s *Server) unmarshalMetric(typ string, data []byte) (protocol.Metric, erro
 		metric = &protocol.ContainerMetric{}
 	case "container_list":
 		metric = &protocol.ContainerListMetric{}
-	case "update_status":
+	case "updates":
 		metric = &protocol.UpdateMetric{}
 	default:
 		return nil, fmt.Errorf("unknown metric type: %s", typ)

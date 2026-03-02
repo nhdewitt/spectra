@@ -6,7 +6,21 @@ import (
 	"time"
 )
 
-// rateLimiter implements a per-IP token bucket rate limiter.
+// Rate limit tiers.
+// Authenticated dashboard users get a higher limit since pages
+// legitimately fan out to many API endpoints on load.
+const (
+	anonRate  = 10.0
+	anonBurst = 30
+
+	authedRate  = 50.0
+	authedBurst = 100
+
+	agentRate  = 5.0
+	agentBurst = 15
+)
+
+// rateLimiter implements a per-key token bucket rate limiter.
 type rateLimiter struct {
 	mu      sync.Mutex
 	buckets map[string]*bucket
@@ -77,10 +91,55 @@ func (rl *rateLimiter) cleanupLoop() {
 	}
 }
 
+// tieredLimiters holds separate rate limiters per caller type.
+type tieredLimiters struct {
+	anon   *rateLimiter
+	authed *rateLimiter
+	agent  *rateLimiter
+}
+
+func newTieredLimiters() *tieredLimiters {
+	return &tieredLimiters{
+		anon:   newRateLimiter(anonRate, anonBurst),
+		authed: newRateLimiter(authedRate, authedBurst),
+		agent:  newRateLimiter(agentRate, agentBurst),
+	}
+}
+
+// rateLimit applies the anonymous tier (login, register).
 func (s *Server) rateLimit(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := clientIP(r)
-		if !s.Limiter.allow(ip) {
+		if !s.Limiters.anon.allow(ip) {
+			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// rateLimitAuthed applies the authenticated user tier.
+// Keys on username (not IP) so multiple tabs from the same user share a bucket.
+// Must be called after requireUserAuth in the middleware chain.
+func (s *Server) rateLimitAuthed(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := clientIP(r)
+		if u, ok := userFromContext(r.Context()); ok {
+			key = "user:" + u.Username
+		}
+		if !s.Limiters.authed.allow(key) {
+			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// rateLimitAgent applies the agent tier, keyed by IP.
+func (s *Server) rateLimitAgent(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ip := clientIP(r)
+		if !s.Limiters.agent.allow(ip) {
 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}

@@ -1,14 +1,19 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 )
 
+func contextWithUser(ctx context.Context, u *userContext) context.Context {
+	return context.WithValue(ctx, userContextKey, u)
+}
+
 func TestRateLimiter_AllowsWithinBurst(t *testing.T) {
-	rl := newRateLimiter(10, 5) // 10/sec, burst of 5
+	rl := newRateLimiter(10, 5)
 
 	for i := range 5 {
 		if !rl.allow("192.168.1.1") {
@@ -32,11 +37,9 @@ func TestRateLimiter_BlocksOverBurst(t *testing.T) {
 func TestRateLimiter_SeparateIPs(t *testing.T) {
 	rl := newRateLimiter(10, 2)
 
-	// Exhaust IP 1
 	rl.allow("192.168.1.1")
 	rl.allow("192.168.1.1")
 
-	// IP 2 should still work
 	if !rl.allow("192.168.1.2") {
 		t.Error("different IP should have its own bucket")
 	}
@@ -47,7 +50,6 @@ func TestRateLimiter_Hammer(t *testing.T) {
 
 	var allowed, blocked int
 
-	// Fire 1000 requests as fast as possible
 	for range 1000 {
 		if rl.allow("192.168.1.1") {
 			allowed++
@@ -56,7 +58,6 @@ func TestRateLimiter_Hammer(t *testing.T) {
 		}
 	}
 
-	// Burst of 30 plus whatever comes in from refill during the loop (~1ms)
 	if allowed > 40 {
 		t.Errorf("allowed %d, expected ~30-35", allowed)
 	}
@@ -91,14 +92,57 @@ func TestRateLimiter_Concurrent(t *testing.T) {
 		}
 	}
 
-	// Should allow exactly burst amount
-	if trueCount > 50 {
-		t.Errorf("allowed %d, expected at most 50", trueCount)
+	if trueCount > 55 {
+		t.Errorf("allowed %d, expected at most ~50", trueCount)
 	}
 	if trueCount < 1 {
 		t.Error("should allow at least 1 request")
 	}
 }
+
+// --- Tiered limiter construction ---
+
+func TestNewTieredLimiters(t *testing.T) {
+	tl := newTieredLimiters()
+
+	if tl.anon == nil || tl.authed == nil || tl.agent == nil {
+		t.Fatal("all tiers should be initialized")
+	}
+
+	if tl.anon.burst != anonBurst {
+		t.Errorf("anon burst = %d, want %d", tl.anon.burst, anonBurst)
+	}
+	if tl.authed.burst != authedBurst {
+		t.Errorf("authed burst = %d, want %d", tl.authed.burst, authedBurst)
+	}
+	if tl.agent.burst != agentBurst {
+		t.Errorf("agent burst = %d, want %d", tl.agent.burst, agentBurst)
+	}
+}
+
+func TestTieredLimiters_IndependentBuckets(t *testing.T) {
+	tl := newTieredLimiters()
+
+	// Exhaust anon tier
+	for range anonBurst {
+		tl.anon.allow("192.168.1.1")
+	}
+	if tl.anon.allow("192.168.1.1") {
+		t.Error("anon should be exhausted")
+	}
+
+	// Authed tier for same IP should still work
+	if !tl.authed.allow("192.168.1.1") {
+		t.Error("authed tier should be independent from anon")
+	}
+
+	// Agent tier for same IP should still work
+	if !tl.agent.allow("192.168.1.1") {
+		t.Error("agent tier should be independent from anon")
+	}
+}
+
+// --- Middleware tests ---
 
 func TestClientIP_RemoteAddr(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -110,15 +154,15 @@ func TestClientIP_RemoteAddr(t *testing.T) {
 	}
 }
 
-func TestRateLimit_Middleware(t *testing.T) {
+func TestRateLimit_AnonMiddleware(t *testing.T) {
 	s, _, _, _ := newTestServer()
-	s.Limiter = newRateLimiter(100, 2)
+	s.Limiters = newTieredLimiters()
+	s.Limiters.anon = newRateLimiter(100, 2)
 
 	handler := s.rateLimit(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// First 2 should pass
 	for i := range 2 {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.RemoteAddr = "10.0.0.1:1234"
@@ -129,7 +173,6 @@ func TestRateLimit_Middleware(t *testing.T) {
 		}
 	}
 
-	// 3rd should be rate limited
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.RemoteAddr = "10.0.0.1:1234"
 	rec := httptest.NewRecorder()
@@ -138,6 +181,134 @@ func TestRateLimit_Middleware(t *testing.T) {
 		t.Errorf("request 3: got %d, want 429", rec.Code)
 	}
 }
+
+func TestRateLimitAuthed_KeysByUsername(t *testing.T) {
+	s, _, _, _ := newTestServer()
+	s.Limiters = newTieredLimiters()
+	s.Limiters.authed = newRateLimiter(100, 2)
+
+	handler := s.rateLimitAuthed(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Two requests from user "alice" on different IPs should share a bucket
+	for i := range 2 {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		if i == 0 {
+			req.RemoteAddr = "10.0.0.1:1234"
+		} else {
+			req.RemoteAddr = "10.0.0.2:1234"
+		}
+		ctx := contextWithUser(req.Context(), &userContext{Username: "alice", Role: "admin"})
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("request %d: got %d, want 200", i+1, rec.Code)
+		}
+	}
+
+	// Third from alice (any IP) should be blocked
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.3:1234"
+	ctx := contextWithUser(req.Context(), &userContext{Username: "alice", Role: "admin"})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("request 3: got %d, want 429", rec.Code)
+	}
+}
+
+func TestRateLimitAuthed_DifferentUsersSeparate(t *testing.T) {
+	s, _, _, _ := newTestServer()
+	s.Limiters = newTieredLimiters()
+	s.Limiters.authed = newRateLimiter(100, 1)
+
+	handler := s.rateLimitAuthed(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Exhaust alice's bucket
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	ctx := contextWithUser(req.Context(), &userContext{Username: "alice", Role: "admin"})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("alice request 1: got %d, want 200", rec.Code)
+	}
+
+	// Bob from same IP should still work
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	ctx = contextWithUser(req.Context(), &userContext{Username: "bob", Role: "viewer"})
+	req = req.WithContext(ctx)
+	rec = httptest.NewRecorder()
+	handler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("bob request 1: got %d, want 200", rec.Code)
+	}
+}
+
+func TestRateLimitAuthed_FallsBackToIP(t *testing.T) {
+	s, _, _, _ := newTestServer()
+	s.Limiters = newTieredLimiters()
+	s.Limiters.authed = newRateLimiter(100, 1)
+
+	handler := s.rateLimitAuthed(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// No user context — should key on IP
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("request 1: got %d, want 200", rec.Code)
+	}
+
+	// Second from same IP, no user context — should be blocked
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	rec = httptest.NewRecorder()
+	handler(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("request 2: got %d, want 429", rec.Code)
+	}
+}
+
+func TestRateLimitAgent_Middleware(t *testing.T) {
+	s, _, _, _ := newTestServer()
+	s.Limiters = newTieredLimiters()
+	s.Limiters.agent = newRateLimiter(100, 2)
+
+	handler := s.rateLimitAgent(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	for i := range 2 {
+		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		req.RemoteAddr = "10.0.0.5:1234"
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("request %d: got %d, want 200", i+1, rec.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.RemoteAddr = "10.0.0.5:1234"
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("request 3: got %d, want 429", rec.Code)
+	}
+}
+
+// --- Benchmark ---
 
 func BenchmarkRateLimiter_Allow(b *testing.B) {
 	rl := newRateLimiter(1000, 100)

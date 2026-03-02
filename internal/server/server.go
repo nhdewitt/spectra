@@ -18,7 +18,7 @@ type Server struct {
 	DB           DB
 	Router       *http.ServeMux
 	LoginTracker *loginTracker
-	Limiter      *rateLimiter
+	Limiters     *tieredLimiters
 }
 
 func New(cfg Config, db DB) *Server {
@@ -33,49 +33,50 @@ func New(cfg Config, db DB) *Server {
 		DB:           db,
 		Router:       http.NewServeMux(),
 		LoginTracker: newLoginTracker(),
-		Limiter:      newRateLimiter(requestsPerSecond, burst),
+		Limiters:     newTieredLimiters(),
 	}
 	s.routes()
 	return s
 }
 
 func (s *Server) routes() {
-	// Auth (public, rate limited)
+	// Auth (public, anonymous rate limit)
 	s.Router.HandleFunc("POST /api/v1/auth/login", s.rateLimit(s.handleLogin))
 	s.Router.HandleFunc("POST /api/v1/auth/logout", s.rateLimit(s.handleLogout))
 	s.Router.HandleFunc("GET /api/v1/auth/me", s.rateLimit(s.requireUserAuth(s.handleMe)))
 
-	// Agent (agent auth, rate limited)
+	// Agent (agent auth, agent rate limit)
 	s.Router.HandleFunc("POST /api/v1/agent/register", s.rateLimit(s.handleAgentRegister))
-	s.Router.HandleFunc("POST /api/v1/agent/metrics", s.rateLimit(s.requireAgentAuth(s.handleMetrics)))
-	s.Router.HandleFunc("GET /api/v1/agent/command", s.rateLimit(s.requireAgentAuth(s.handleAgentCommand)))
-	s.Router.HandleFunc("POST /api/v1/agent/command/result", s.rateLimit(s.requireAgentAuth(s.handleCommandResult)))
+	s.Router.HandleFunc("POST /api/v1/agent/metrics", s.rateLimitAgent(s.requireAgentAuth(s.handleMetrics)))
+	s.Router.HandleFunc("GET /api/v1/agent/command", s.rateLimitAgent(s.requireAgentAuth(s.handleAgentCommand)))
+	s.Router.HandleFunc("POST /api/v1/agent/command/result", s.rateLimitAgent(s.requireAgentAuth(s.handleCommandResult)))
 
-	// Admin (user auth, rate limited)
-	s.Router.HandleFunc("POST /api/v1/admin/logs", s.rateLimit(s.requireUserAuth(s.handleAdminTriggerLogs)))
-	s.Router.HandleFunc("POST /api/v1/admin/disk", s.rateLimit(s.requireUserAuth(s.handleAdminTriggerDisk)))
-	s.Router.HandleFunc("POST /api/v1/admin/network", s.rateLimit(s.requireUserAuth(s.handleAdminTriggerNetwork)))
-	s.Router.HandleFunc("POST /api/v1/admin/tokens", s.rateLimit(s.requireUserAuth(s.handleGenerateToken)))
+	// Admin (user auth, authed rate limit)
+	s.Router.HandleFunc("POST /api/v1/admin/logs", s.requireUserAuth(s.rateLimitAuthed(s.handleAdminTriggerLogs)))
+	s.Router.HandleFunc("POST /api/v1/admin/disk", s.requireUserAuth(s.rateLimitAuthed(s.handleAdminTriggerDisk)))
+	s.Router.HandleFunc("POST /api/v1/admin/network", s.requireUserAuth(s.rateLimitAuthed(s.handleAdminTriggerNetwork)))
+	s.Router.HandleFunc("POST /api/v1/admin/tokens", s.requireUserAuth(s.rateLimitAuthed(s.handleGenerateToken)))
 
-	// Dashboard (user auth, rate limited)
-	s.Router.HandleFunc("GET /api/v1/overview", s.rateLimit(s.requireUserAuth(s.handleOverview)))
-	s.Router.HandleFunc("GET /api/v1/agents", s.rateLimit(s.requireUserAuth(s.handleListAgents)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}", s.rateLimit(s.requireUserAuth(s.handleGetAgent)))
-	s.Router.HandleFunc("DELETE /api/v1/agents/{id}", s.rateLimit(s.requireUserAuth(s.handleDeleteAgent)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/cpu", s.rateLimit(s.requireUserAuth(s.handleGetCPU)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/memory", s.rateLimit(s.requireUserAuth(s.handleGetMemory)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/disk", s.rateLimit(s.requireUserAuth(s.handleGetDisk)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/diskio", s.rateLimit(s.requireUserAuth(s.handleGetDiskIO)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/network", s.rateLimit(s.requireUserAuth(s.handleGetNetwork)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/temperature", s.rateLimit(s.requireUserAuth(s.handleGetTemperature)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/system", s.rateLimit(s.requireUserAuth(s.handleGetSystem)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/containers", s.rateLimit(s.requireUserAuth(s.handleGetContainers)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/wifi", s.rateLimit(s.requireUserAuth(s.handleGetWifi)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/pi", s.rateLimit(s.requireUserAuth(s.handleGetPi)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/processes", s.rateLimit(s.requireUserAuth(s.handleGetProcesses)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/services", s.rateLimit(s.requireUserAuth(s.handleGetServices)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/applications", s.rateLimit(s.requireUserAuth(s.handleGetApplications)))
-	s.Router.HandleFunc("GET /api/v1/agents/{id}/updates", s.rateLimit(s.requireUserAuth(s.handleGetUpdates)))
+	// Dashboard (user auth, authed rate limit)
+	s.Router.HandleFunc("GET /api/v1/overview", s.requireUserAuth(s.rateLimitAuthed(s.handleOverview)))
+	s.Router.HandleFunc("GET /api/v1/overview/sparklines", s.requireUserAuth(s.rateLimitAuthed(s.handleGetSparklines)))
+	s.Router.HandleFunc("GET /api/v1/agents", s.requireUserAuth(s.rateLimitAuthed(s.handleListAgents)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAgent)))
+	s.Router.HandleFunc("DELETE /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAgent)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/cpu", s.requireUserAuth(s.rateLimitAuthed(s.handleGetCPU)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/memory", s.requireUserAuth(s.rateLimitAuthed(s.handleGetMemory)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/disk", s.requireUserAuth(s.rateLimitAuthed(s.handleGetDisk)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/diskio", s.requireUserAuth(s.rateLimitAuthed(s.handleGetDiskIO)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/network", s.requireUserAuth(s.rateLimitAuthed(s.handleGetNetwork)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/temperature", s.requireUserAuth(s.rateLimitAuthed(s.handleGetTemperature)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/system", s.requireUserAuth(s.rateLimitAuthed(s.handleGetSystem)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/containers", s.requireUserAuth(s.rateLimitAuthed(s.handleGetContainers)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/wifi", s.requireUserAuth(s.rateLimitAuthed(s.handleGetWifi)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/pi", s.requireUserAuth(s.rateLimitAuthed(s.handleGetPi)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/processes", s.requireUserAuth(s.rateLimitAuthed(s.handleGetProcesses)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/services", s.requireUserAuth(s.rateLimitAuthed(s.handleGetServices)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/applications", s.requireUserAuth(s.rateLimitAuthed(s.handleGetApplications)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/updates", s.requireUserAuth(s.rateLimitAuthed(s.handleGetUpdates)))
 }
 
 func (s *Server) Start() error {

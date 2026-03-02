@@ -9,10 +9,13 @@ import (
 
 const testUUID = "550e8400-e29b-41d4-a716-446655440000"
 
-func TestHandleOverview_Success(t *testing.T) {
-	s, _, _, _ := newTestServer()
+// --- Overview ---
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/overview", nil)
+func TestHandleOverview_Success(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/overview", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -25,11 +28,25 @@ func TestHandleOverview_Success(t *testing.T) {
 	}
 }
 
-func TestHandleOverview_DBError(t *testing.T) {
-	s, _, _, mock := newTestServer()
-	mock.Err = errFake
+func TestHandleOverview_Unauthenticated(t *testing.T) {
+	s, _, _, _ := newTestServer()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/overview", nil)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status: got %d, want 401", rec.Code)
+	}
+}
+
+func TestHandleOverview_DBError(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+	mock.QueryErr = errFake
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/overview", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -39,10 +56,13 @@ func TestHandleOverview_DBError(t *testing.T) {
 	}
 }
 
-func TestHandleListAgents_Success(t *testing.T) {
-	s, _, _, _ := newTestServer()
+// --- List Agents ---
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
+func TestHandleListAgents_Success(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -52,10 +72,13 @@ func TestHandleListAgents_Success(t *testing.T) {
 	}
 }
 
-func TestHandleGetAgent_Success(t *testing.T) {
-	s, _, _, _ := newTestServer()
+// --- Get Agent ---
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID, nil)
+func TestHandleGetAgent_Success(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID, nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -66,9 +89,10 @@ func TestHandleGetAgent_Success(t *testing.T) {
 }
 
 func TestHandleGetAgent_InvalidID(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/invalid-uuid", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/invalid-uuid", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -78,10 +102,13 @@ func TestHandleGetAgent_InvalidID(t *testing.T) {
 	}
 }
 
-func TestHandleDeleteAgent_Success(t *testing.T) {
-	s, _, _, _ := newTestServer()
+// --- Delete Agent ---
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/"+testUUID, nil)
+func TestHandleDeleteAgent_Success(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	req := authedRequest(httptest.NewRequest(http.MethodDelete, "/api/v1/agents/"+testUUID, nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -92,9 +119,10 @@ func TestHandleDeleteAgent_Success(t *testing.T) {
 }
 
 func TestHandleDeleteAgent_InvalidID(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/invalid-uuid", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodDelete, "/api/v1/agents/invalid-uuid", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -104,10 +132,13 @@ func TestHandleDeleteAgent_InvalidID(t *testing.T) {
 	}
 }
 
-func TestHandleGetCPU_DefaultRange(t *testing.T) {
-	s, _, _, _ := newTestServer()
+// --- CPU Metrics ---
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu", nil)
+func TestHandleGetCPU_DefaultRange(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -118,11 +149,12 @@ func TestHandleGetCPU_DefaultRange(t *testing.T) {
 }
 
 func TestHandleGetCPU_QuickRange(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
 	ranges := []string{"5m", "15m", "1h", "6h", "24h", "7d", "30d"}
 	for _, r := range ranges {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?range="+r, nil)
+		req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?range="+r, nil))
 		rec := httptest.NewRecorder()
 
 		s.Router.ServeHTTP(rec, req)
@@ -134,9 +166,10 @@ func TestHandleGetCPU_QuickRange(t *testing.T) {
 }
 
 func TestHandleGetCPU_InvalidRange(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?range=99h", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?range=99h", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -147,12 +180,13 @@ func TestHandleGetCPU_InvalidRange(t *testing.T) {
 }
 
 func TestHandleGetCPU_CalendarRange(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
 	start := time.Now().Add(-2 * time.Hour).Format(time.RFC3339)
 	end := time.Now().Format(time.RFC3339)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?start="+start+"&end="+end, nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?start="+start+"&end="+end, nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -163,11 +197,12 @@ func TestHandleGetCPU_CalendarRange(t *testing.T) {
 }
 
 func TestHandleGetCPU_CalendarStartOnly(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
 	start := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?start="+start, nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?start="+start, nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -178,9 +213,10 @@ func TestHandleGetCPU_CalendarStartOnly(t *testing.T) {
 }
 
 func TestHandleGetCPU_InvalidStart(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?start=nodate", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?start=nodate", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -191,11 +227,12 @@ func TestHandleGetCPU_InvalidStart(t *testing.T) {
 }
 
 func TestHandleGetCPU_InvalidEnd(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
 	start := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?start="+start+"&end=nodate", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?start="+start+"&end=nodate", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -206,12 +243,13 @@ func TestHandleGetCPU_InvalidEnd(t *testing.T) {
 }
 
 func TestHandleGetCPU_StartAfterEnd(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
 	start := time.Now().Format(time.RFC3339)
 	end := time.Now().Add(-2 * time.Hour).Format(time.RFC3339)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?start="+start+"&end="+end, nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/cpu?start="+start+"&end="+end, nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -222,9 +260,10 @@ func TestHandleGetCPU_StartAfterEnd(t *testing.T) {
 }
 
 func TestHandleGetCPU_InvalidAgentID(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/invalid/cpu", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/invalid/cpu", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -234,8 +273,11 @@ func TestHandleGetCPU_InvalidAgentID(t *testing.T) {
 	}
 }
 
+// --- All Metric Endpoints ---
+
 func TestMetricEndpoints_AllReturn200(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
 	endpoints := []string{
 		"/cpu", "/memory", "/disk", "/diskio", "/network",
@@ -244,7 +286,7 @@ func TestMetricEndpoints_AllReturn200(t *testing.T) {
 
 	for _, endpoint := range endpoints {
 		t.Run(endpoint, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+endpoint+"?range=1h", nil)
+			req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+endpoint+"?range=1h", nil))
 			rec := httptest.NewRecorder()
 
 			s.Router.ServeHTTP(rec, req)
@@ -256,10 +298,13 @@ func TestMetricEndpoints_AllReturn200(t *testing.T) {
 	}
 }
 
-func TestHandleGetProcesses_Default(t *testing.T) {
-	s, _, _, _ := newTestServer()
+// --- Processes ---
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/processes", nil)
+func TestHandleGetProcesses_Default(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/processes", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -270,9 +315,10 @@ func TestHandleGetProcesses_Default(t *testing.T) {
 }
 
 func TestHandleGetProcesses_SortMemory(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/processes?sort=memory", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/processes?sort=memory", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -283,9 +329,10 @@ func TestHandleGetProcesses_SortMemory(t *testing.T) {
 }
 
 func TestHandleGetProcesses_CustomLimit(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/processes?limit=50", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/processes?limit=50", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -296,9 +343,10 @@ func TestHandleGetProcesses_CustomLimit(t *testing.T) {
 }
 
 func TestHandleGetProcesses_InvalidLimit(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/processes?limit=abc", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/processes?limit=abc", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -309,9 +357,10 @@ func TestHandleGetProcesses_InvalidLimit(t *testing.T) {
 }
 
 func TestHandleGetProcesses_LimitTooHigh(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/processes?limit=999", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/processes?limit=999", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -321,10 +370,13 @@ func TestHandleGetProcesses_LimitTooHigh(t *testing.T) {
 	}
 }
 
-func TestHandleGetServices_Success(t *testing.T) {
-	s, _, _, _ := newTestServer()
+// --- Services, Applications, Updates ---
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/services", nil)
+func TestHandleGetServices_Success(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/services", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -335,9 +387,10 @@ func TestHandleGetServices_Success(t *testing.T) {
 }
 
 func TestHandleGetApplications_Success(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/applications", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/applications", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -348,9 +401,10 @@ func TestHandleGetApplications_Success(t *testing.T) {
 }
 
 func TestHandleGetUpdates_Success(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/updates", nil)
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+testUUID+"/updates", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -359,6 +413,8 @@ func TestHandleGetUpdates_Success(t *testing.T) {
 		t.Errorf("status: got %d, want 200", rec.Code)
 	}
 }
+
+// --- parseTimeRange (no auth needed, unit tests) ---
 
 func TestParseTimeRange_QuickRanges(t *testing.T) {
 	for label, d := range shortRanges {
@@ -373,7 +429,6 @@ func TestParseTimeRange_QuickRanges(t *testing.T) {
 			}
 
 			duration := end.Time.Sub(start.Time)
-			// Allow 1 second tolerance
 			if diff := duration - d; diff < -time.Second || diff > time.Second {
 				t.Errorf("duration = %v, want ~%v", duration, d)
 			}
@@ -427,7 +482,6 @@ func TestParseTimeRange_StartOnly(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// End should be approximately now
 	if diff := time.Since(end.Time); diff > 2*time.Second {
 		t.Errorf("end should be ~now, got %v ago", diff)
 	}
@@ -491,13 +545,16 @@ func TestParseTimeRange_FutureEndClamped(t *testing.T) {
 	}
 }
 
+// --- Benchmarks ---
+
 func BenchmarkHandleOverview(b *testing.B) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/overview", nil)
+		req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/overview", nil))
 		rec := httptest.NewRecorder()
 		s.Router.ServeHTTP(rec, req)
 	}

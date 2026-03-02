@@ -131,6 +131,9 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		if row.Arch.Valid {
 			a.Arch = row.Arch.String
 		}
+		if row.Platform.Valid {
+			a.Platform = row.Platform.String
+		}
 		if row.LastSeen.Valid {
 			a.LastSeen = row.LastSeen.Time.Format(time.RFC3339)
 		}
