@@ -363,11 +363,13 @@ function AgentListRow({
 
 export function Overview({
   onSelectAgent,
+  viewMode,
+  onViewModeChange,
 }: {
   onSelectAgent: (agent: OverviewAgent) => void;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
 }) {
-  const [viewMode, setViewMode] = useState<ViewMode>("tiles");
-
   const fetcher = useCallback(() => api.overview(), []);
   const { data, loading, error } = usePolling(fetcher, 10_000);
   const agents = data ?? [];
@@ -423,7 +425,7 @@ export function Overview({
             <span style={{ color: theme.warn }}>● stale</span>
             <span style={{ color: theme.danger }}>● offline</span>
           </div>
-          <ViewToggle mode={viewMode} onChange={setViewMode} />
+          <ViewToggle mode={viewMode} onChange={onViewModeChange} />
         </div>
       </div>
 
