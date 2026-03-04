@@ -69,35 +69,6 @@ func TestMakeDiskIOCollector(t *testing.T) {
 	}
 }
 
-func BenchmarkJobSliceCreation(b *testing.B) {
-	cache := collector.NewDriveCache()
-	diskCol := collector.MakeDiskCollector(cache)
-	diskIOCol := collector.MakeDiskIOCollector(cache)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for b.Loop() {
-		jobs := []job{
-			{5 * time.Second, collector.CollectCPU},
-			{10 * time.Second, collector.CollectMemory},
-			{5 * time.Second, collector.CollectNetwork},
-			{300 * time.Second, collector.CollectSystem},
-			{60 * time.Second, diskCol},
-			{5 * time.Second, diskIOCol},
-			{60 * time.Second, collector.CollectServices},
-			{15 * time.Second, collector.CollectProcesses},
-			{10 * time.Second, collector.CollectTemperature},
-			{30 * time.Second, collector.CollectWiFi},
-			{15 * time.Second, collector.CollectPiClocks},
-			{10 * time.Second, collector.CollectPiThrottle},
-			{60 * time.Second, collector.CollectPiVoltage},
-			{60 * time.Second, collector.CollectPiGPU},
-			{60 * time.Second, collector.CollectContainers},
-		}
-		_ = jobs
-	}
-}
-
 func BenchmarkMakeDiskCollector(b *testing.B) {
 	cache := collector.NewDriveCache()
 
