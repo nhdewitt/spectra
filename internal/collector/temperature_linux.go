@@ -80,6 +80,11 @@ func parseThermalZoneFrom(typeR, tempR, maxR io.Reader) (*protocol.TemperatureMe
 		return nil, err
 	}
 
+	// Temp sanity check: ignore obviously false values
+	if tempVal < -40 || tempVal > 150 {
+		return nil, nil
+	}
+
 	var max *float64
 	if maxR != nil {
 		if v, err := parseThermalValueFrom(maxR); err == nil {
