@@ -2,6 +2,7 @@ package diagnostics
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,9 @@ func TestRunNetworkDiag_UnknownAction(t *testing.T) {
 func TestRunNetworkDiag_Ping(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
+	}
+	if runtime.GOOS == "darwin" {
+		t.Skip("skipping ping on darwin")
 	}
 
 	requireRoot(t)

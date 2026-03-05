@@ -9,7 +9,8 @@ const (
 	PkgApk
 	PkgPacman
 	PkgWindowsUpdate
-	PkgPkg // FreeBSD
+	PkgPkg  // FreeBSD
+	PkgBrew // Homebrew
 )
 
 type InitSystem int
@@ -19,7 +20,8 @@ const (
 	InitSystemd
 	InitOpenRC
 	InitSysV
-	InitRC // FreeBSD rc.d
+	InitRC      // FreeBSD rc.d
+	InitLaunchd // macOS launchd
 )
 
 type Info struct {

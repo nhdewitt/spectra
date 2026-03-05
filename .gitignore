@@ -14,6 +14,8 @@ nodefacts_binaries/
 /server
 spectra-server
 spectra-setup
+out/
+spectra-setup
 .VSCodeCounter/
 web/node_modules/
 web/dist/
