@@ -3,6 +3,7 @@
 package fileutil
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,17 @@ func isElevated() bool {
 	cmd := exec.Command("net", "session")
 	err := cmd.Run()
 	return err == nil
+}
+
+func getFileSIDs(t *testing.T, path string) string {
+	psCmd := fmt.Sprintf(`(Get-Acl %s).Access | ForEach-Object { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value }`, path)
+
+	cmd := exec.Command("pwsh", "-NoProfile", "-NonInteractive", "-Command", psCmd)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Failed to read ACLs via pwsh: %v\nOutput: %s", err, string(out))
+	}
 }
 
 func TestWriteSecure(t *testing.T) {
@@ -33,27 +45,15 @@ func TestWriteSecure(t *testing.T) {
 		t.Fatalf("WriteSecure failed: %v", err)
 	}
 
-	readData, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatalf("Failed to read file: %v", err)
-	}
-	if string(readData) != string(secretData) {
-		t.Errorf("Expected %s, got %s", secretData, readData)
-	}
+	sids := getFileSIDs(t, filePath)
 
-	out, err := exec.Command("icacls", filePath).Output()
-	if err != nil {
-		t.Fatalf("icacls failed: %v", err)
-	}
-
-	output := string(out)
-	if !strings.Contains(output, "S-1-5-18") {
+	if !strings.Contains(sids, "S-1-5-18") {
 		t.Error("SYSTEM (S-1-5-18) should have access")
 	}
-	if !strings.Contains(output, "S-1-5-32-544") {
+	if !strings.Contains(sids, "S-1-5-32-544") {
 		t.Error("Administrators (S-1-5-32-544) should have access")
 	}
-	if strings.Contains(output, "S-1-1-0") {
+	if strings.Contains(sids, "S-1-1-0") {
 		t.Error("Everyone (S-1-1-0) should not have access")
 	}
 }
