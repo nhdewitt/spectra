@@ -5,6 +5,8 @@ import (
 	"os"
 	"runtime"
 	"time"
+
+	"github.com/nhdewitt/spectra/internal/fileutil"
 )
 
 // fileConfig represents the JSON config file on disk.
@@ -92,5 +94,5 @@ func SaveCredentials(path, server, agentID, secret string) error {
 		return err
 	}
 
-	return writeSecureFile(path, data)
+	return fileutil.WriteSecure(path, data)
 }

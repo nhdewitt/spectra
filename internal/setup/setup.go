@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nhdewitt/spectra/internal/fileutil"
 	"golang.org/x/term"
 )
 
@@ -61,11 +62,7 @@ func SaveConfig(cfg *ServerConfig, path string) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("writing config: %w", err)
-	}
-
-	return nil
+	return fileutil.WriteSecure(path, data)
 }
 
 // PromptDB collects database connection info interactively and

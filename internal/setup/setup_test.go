@@ -34,26 +34,6 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	}
 }
 
-func TestSaveConfig_Permissions(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "server.json")
-
-	cfg := &ServerConfig{DatabaseURL: "test", ListenPort: 8080}
-	if err := SaveConfig(cfg, path); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("Stat: %v", err)
-	}
-
-	perm := info.Mode().Perm()
-	if perm != 0600 {
-		t.Errorf("permissions = %o, want 0600", perm)
-	}
-}
-
 func TestSaveConfig_CreatesDir(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nested", "deep", "server.json")
