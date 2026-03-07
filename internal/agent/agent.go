@@ -26,6 +26,9 @@ type Config struct {
 	PollInterval      time.Duration
 	RegistrationToken string
 	IdentityPath      string
+	AgentID           string // set after registration or loaded from config
+	Secret            string // set after registration or loaded from config
+	ConfigPath        string
 }
 
 // Agent is the main application controller

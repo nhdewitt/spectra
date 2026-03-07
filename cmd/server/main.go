@@ -33,7 +33,8 @@ func main() {
 	queries := database.New(pool)
 
 	srvCfg := server.Config{
-		Port: cfg.ListenPort,
+		Port:        cfg.ListenPort,
+		ReleasesDir: "releases",
 	}
 
 	srv := server.New(srvCfg, queries)

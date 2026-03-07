@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/nhdewitt/spectra/internal/agent"
 )
@@ -16,7 +15,7 @@ import (
 func main() {
 	// DEBUGGING
 	debugMode := flag.Bool("debug", false, "Enable pprof debug server on localhost:6060")
-	regToken := flag.String("token", "", "Registration token for initial agent registration")
+	configPath := flag.String("config", "", "Path to agent config file (default: OS-specific)")
 	flag.Parse()
 
 	if *debugMode {
@@ -27,9 +26,17 @@ func main() {
 			}
 		}()
 	}
-	baseURL := os.Getenv("SPECTRA_SERVER")
-	if baseURL == "" {
-		baseURL = "http://127.0.0.1:8080"
+
+	// Try loading config file
+	path := *configPath
+	if path == "" {
+		path = agent.DefaultConfigPath()
+	}
+
+	cfg, err := agent.LoadConfig(path)
+	if err != nil {
+		log.Printf("No config file at %s, using environment variables", path)
+		cfg = agent.ConfigFromEnv()
 	}
 
 	hostname, err := os.Hostname()
@@ -39,17 +46,9 @@ func main() {
 	if h := os.Getenv("HOSTNAME"); h != "" {
 		hostname = h
 	}
+	cfg.Hostname = hostname
 
-	cfg := agent.Config{
-		BaseURL:           baseURL,
-		Hostname:          hostname,
-		MetricsPath:       "/api/v1/agent/metrics",
-		CommandPath:       "/api/v1/agent/command",
-		PollInterval:      5 * time.Second,
-		RegistrationToken: *regToken,
-	}
-
-	a := agent.New(cfg)
+	a := agent.New(*cfg)
 
 	go func() {
 		if err := a.Start(); err != nil {

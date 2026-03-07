@@ -9,6 +9,7 @@ import (
 type Config struct {
 	Port           int
 	CommandTimeout time.Duration
+	ReleasesDir    string // path to pre-built agent binaries
 }
 
 type Server struct {
@@ -19,6 +20,7 @@ type Server struct {
 	Router       *http.ServeMux
 	LoginTracker *loginTracker
 	Limiters     *tieredLimiters
+	Releases     *releaseManifest
 }
 
 func New(cfg Config, db DB) *Server {
@@ -34,6 +36,7 @@ func New(cfg Config, db DB) *Server {
 		Router:       http.NewServeMux(),
 		LoginTracker: newLoginTracker(),
 		Limiters:     newTieredLimiters(),
+		Releases:     newReleaseManifest(cfg.ReleasesDir),
 	}
 	s.routes()
 	return s
@@ -77,6 +80,12 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/services", s.requireUserAuth(s.rateLimitAuthed(s.handleGetServices)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/applications", s.requireUserAuth(s.rateLimitAuthed(s.handleGetApplications)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/updates", s.requireUserAuth(s.rateLimitAuthed(s.handleGetUpdates)))
+
+	// Provision (user auth, authed rate limit)
+	s.Router.HandleFunc("GET /api/v1/admin/platforms", s.requireUserAuth(s.rateLimitAuthed(s.handleListPlatforms)))
+	s.Router.HandleFunc("POST /api/v1/admin/provision", s.requireUserAuth(s.rateLimitAuthed(s.handleProvision)))
+	s.Router.HandleFunc("POST /api/v1/admin/provision/config", s.requireUserAuth(s.rateLimitAuthed(s.handleDownloadConfig)))
+	s.Router.HandleFunc("GET /api/v1/admin/releases/{filename}", s.requireUserAuth(s.rateLimitAuthed(s.handleDownloadRelease)))
 }
 
 func (s *Server) Start() error {
