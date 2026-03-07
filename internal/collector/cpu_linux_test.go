@@ -898,21 +898,6 @@ func TestParseProcStatFrom(t *testing.T) {
 	}
 }
 
-func parseTestFile(t *testing.T, path string) map[string]CPURaw {
-	t.Helper()
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatalf("opening %s: %v", path, err)
-	}
-	defer f.Close()
-
-	result, err := parseProcStatFrom(f)
-	if err != nil {
-		t.Fatalf("parsing %s: %v", path, err)
-	}
-	return result
-}
-
 func TestProcStatFromDeltas(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -20,9 +20,6 @@ const (
 
 	maxLoginAttempts = 5
 	lockoutDuration  = 15 * time.Minute
-
-	requestsPerSecond = 10.0 // rate limit
-	burst             = 30   // rate limit
 )
 
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummypass"), bcrypt.DefaultCost)

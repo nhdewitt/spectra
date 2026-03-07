@@ -26,6 +26,8 @@ func getFileSIDs(t *testing.T, path string) string {
 	if err != nil {
 		t.Fatalf("Failed to read ACLs via pwsh: %v\nOutput: %s", err, string(out))
 	}
+
+	return string(out)
 }
 
 func TestWriteSecure(t *testing.T) {

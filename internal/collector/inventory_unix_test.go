@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
 func TestParseGenericOutput_Dpkg(t *testing.T) {
@@ -410,20 +408,4 @@ func BenchmarkParseGenericOutput_Apk_100(b *testing.B) {
 
 func BenchmarkParseGenericOutput_Apk_500(b *testing.B) {
 	benchmarkParse(b, generateApkOutput(500), "-", "alpine")
-}
-
-func assertApp(t *testing.T, apps []protocol.Application, idx int, name, version, vendor string) {
-	t.Helper()
-	if idx >= len(apps) {
-		t.Fatalf("app index %d out of range (len=%d)", idx, len(apps))
-	}
-	if apps[idx].Name != name {
-		t.Errorf("app[%d].Name = %q, want %q", idx, apps[idx].Name, name)
-	}
-	if apps[idx].Version != version {
-		t.Errorf("app[%d].Version = %q, want %q", idx, apps[idx].Version, version)
-	}
-	if apps[idx].Vendor != vendor {
-		t.Errorf("app[%d].Vendor = %q, want %q", idx, apps[idx].Vendor, vendor)
-	}
 }

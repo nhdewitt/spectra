@@ -104,14 +104,6 @@ func TestDelta(t *testing.T) {
 	}
 }
 
-type testError struct {
-	msg string
-}
-
-func (e *testError) Error() string {
-	return e.msg
-}
-
 func TestMakeUintParser(t *testing.T) {
 	t.Run("Valid Parsing", func(t *testing.T) {
 		fields := []string{"123", "456", "789"}
