@@ -11,15 +11,15 @@ import (
 )
 
 func isElevated() bool {
-	f, err := os.Open(`\\.\PHYSICALDRIVE0`)
-	if err != nil {
-		return false
-	}
-	f.Close()
-	return true
+	cmd := exec.Command("net", "session")
+	err := cmd.Run()
+	return err == nil
 }
 
 func TestWriteSecure(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.Skip("Skipping WriteSecure: requires admin privileges")
+	}
 	if !isElevated() {
 		t.Skip("Skipping WriteSecure test: must run as Administrator on Windows to manipulate ACLs.")
 	}
