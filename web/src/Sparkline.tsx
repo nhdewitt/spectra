@@ -1,9 +1,11 @@
-import { useId } from "react";
+import { useId, useState, useRef } from "react";
 import { theme } from "./theme";
 
 interface SparklineProps {
     /** Array of numeric values to plot (0-100 percentages). */
     data: number[];
+    /** Optional label for tooltip context ("CPU", "MEM', "DISK") */
+    label?: string;
     width?: number;
     height?: number;
     /** Severity thresholds [elevated, warning, critical] for coloring. */
@@ -39,9 +41,13 @@ function severityColorForValue(
  * 
  * Data is right-aligned: if fewer points than the chart width allows,
  * the line start partway though, growing from the right as data accumulates.
+ * 
+ * On hover, shows a tooltip with current value, peak, avg, and min over
+ * // the data window (~5m at 10s polling).
  */
 export function Sparkline({
     data,
+    label,
     width = 80,
     height = 24,
     thresholds = [50, 80, 95],
@@ -50,6 +56,8 @@ export function Sparkline({
     yMax = 100,
 }: SparklineProps) {
     const gradientId = useId();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [hovered, setHovered] = useState(false);
 
     if (data.length < 2) {
         return <svg width={width} height={height} />;
@@ -64,6 +72,11 @@ export function Sparkline({
     const currentValue = data[data.length - 1] ?? 0;
     const color = severityColorForValue(currentValue, thresholds);
 
+    // Tooltip stats
+    const peak = Math.max(...data);
+    const min = Math.min(...data);
+    const avg = data.reduce((a, b) => a + b, 0) / data.length;
+
     // Right-align
     const maxPoints = 30;
     const xStep = chartWidth / (maxPoints - 1);
@@ -72,7 +85,9 @@ export function Sparkline({
     const points = data.map((v, i) => {
         const clamped = Math.max(yMin, Math.min(yMax, v));
         const x = padding + xOffset + i * xStep;
-        const y = padding + chartHeight - ((clamped - yMin) / range) * chartHeight;
+        const strokePad = 1.5;
+        const drawHeight = chartHeight - strokePad;
+        const y = padding + drawHeight - ((clamped - yMin) / range) * drawHeight + strokePad / 2;
         return { x, y };
     });
 
@@ -82,21 +97,93 @@ export function Sparkline({
 
     const firstPoint = points[0]!;
     const lastPoint = points[points.length - 1]!;
+    const bottom = padding + chartHeight;
     const fillPath =
         linePath +
-        ` L${lastPoint.x.toFixed(1)},${(padding + chartHeight).toFixed(1)}` +
-        ` L${firstPoint.x.toFixed(1)},${(padding + chartHeight).toFixed(1)} Z`;
+        ` L${lastPoint.x.toFixed(1)},${(bottom).toFixed(1)}` +
+        ` L${firstPoint.x.toFixed(1)},${(bottom).toFixed(1)} Z`;
 
     return (
-        <svg width={width} height={height} style={{ display: "block" }}>
-            <defs>
-                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity={fillOpacity} />
-                    <stop offset="100%" stopColor={color} stopOpacity="0" />
-                </linearGradient>
-            </defs>
-            <path d={fillPath} fill={`url(#${gradientId})`} />
-            <path d={linePath} fill="none" stroke={color} strokeWidth="1.2" />
-        </svg>
+        <div
+            ref={containerRef}
+            style={{ position: "relative", display: "inline-block" }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+        >
+            <svg
+                width={width}
+                height={height}
+                style={{
+                    display: "block",
+                    background: "rgba(255,255,255,0.02)",
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 2,
+                }}
+            >
+                <defs>
+                    <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={color} stopOpacity={fillOpacity} />
+                        <stop offset="100%" stopColor={color} stopOpacity="0" />
+                    </linearGradient>
+                </defs>
+                <path d={fillPath} fill={`url(#${gradientId})`} />
+                <path d={linePath} fill="none" stroke={color} strokeWidth="1.2" />
+            </svg>
+
+            {hovered && (
+                <div
+                    style={{
+                        position: "absolute",
+                        top: "calc(100% + 6px)",
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        background: theme.surface,
+                        border: `1px solid ${theme.border}`,
+                        padding: "6px 10px",
+                        fontFamily: theme.font,
+                        fontSize: 11,
+                        color: theme.text,
+                        whiteSpace: "nowrap",
+                        zIndex: 50,
+                        pointerEvents: "none",
+                        lineHeight: 1.6,
+                    }}
+                >
+                    {label && (
+                        <div
+                            style={{
+                                fontSize: 10,
+                                color: theme.textDim,
+                                letterSpacing: "0.04em",
+                                textTransform: "uppercase",
+                                marginBottom: 2,
+                            }}
+                        >
+                            {label} · {data.length * 10}s
+                        </div>
+                    )}
+                    <div>
+                        <span style={{ color: theme.textMuted }}>now </span>
+                        <span style={{ color: severityColorForValue(currentValue, thresholds) }}>
+                            {currentValue.toFixed(1)}%
+                        </span>
+                    </div>
+                    <div>
+                        <span style={{ color: theme.textMuted }}>peak </span>
+                        <span style={{ color: severityColorForValue(peak, thresholds) }}>
+                            {peak.toFixed(1)}%
+                        </span>
+                    </div>
+                    <div>
+                        <span style={{ color: theme.textMuted }}>avg </span>
+                        <span>{avg.toFixed(1)}%</span>
+                    </div>
+                    <div>
+                        <span style={{ color: theme.textMuted }}>min </span>
+                        <span>{min.toFixed(1)}%</span>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }

@@ -193,7 +193,7 @@ function AgentListHeader() {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "28px 20px 1fr 80px 80px 80px 80px 80px 80px 80px",
+        gridTemplateColumns: "28px 20px 1fr 80px 80px 80px 80px 80px 80px 80px 80px",
         alignItems: "center",
         borderBottom: `1px solid ${theme.border}`,
         background: theme.surface,
@@ -207,6 +207,7 @@ function AgentListHeader() {
       <div style={listHeaderStyle}>MEM</div>
       <div style={{ ...listHeaderStyle, textAlign: "center" }}>MEM</div>
       <div style={listHeaderStyle}>DISK</div>
+      <div style={{ ...listHeaderStyle, textAlign: "center" }}>DISK</div>
       <div style={listHeaderStyle}>TEMP</div>
       <div style={listHeaderStyle}>UPTIME</div>
     </div>
@@ -236,7 +237,7 @@ function AgentListRow({
       onMouseLeave={() => setHovered(false)}
       style={{
         display: "grid",
-        gridTemplateColumns: "28px 20px 1fr 80px 80px 80px 80px 80px 80px 80px",
+        gridTemplateColumns: "28px 20px 1fr 80px 80px 80px 80px 80px 80px 80px 80px",
         alignItems: "center",
         padding: "6px 0",
         background: hovered ? theme.surfaceHover : "transparent",
@@ -333,6 +334,16 @@ function AgentListRow({
         }}
       >
         {disk.toFixed(1)}%
+      </div>
+
+      {/* DISK sparkline */}
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <Sparkline
+            data={sparkData?.disk ?? []}
+            width={64}
+            height={20}
+            thresholds={[60, 80, 90]}
+        />
       </div>
 
       {/* TEMP */}
@@ -453,7 +464,7 @@ export function Overview({
         <div
           style={{
             border: `1px solid ${theme.border}`,
-            overflow: "hidden",
+            overflow: "visible",
           }}
         >
           <AgentListHeader />
