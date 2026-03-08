@@ -4,6 +4,7 @@ package diagnostics
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -387,7 +388,7 @@ func TestGetNetstat_ContextCancel(t *testing.T) {
 	cancel()
 
 	_, err := getNetstat(ctx)
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Logf("getNetstat with cancelled context: %v", err)
 	}
 }

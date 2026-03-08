@@ -10,9 +10,13 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-func uuidParam(id string) pgtype.UUID {
+// mustUUID converts a validated UUID string to pgtype.UUID.
+// It panics if the string is not a valid UUID.
+func mustUUID(id string) pgtype.UUID {
 	var u pgtype.UUID
-	u.Scan(id)
+	if err := u.Scan(id); err != nil {
+		panic("mustUUID: invalid UUID after validation")
+	}
 	return u
 }
 
@@ -22,7 +26,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		return
 	}
 
-	uid := uuidParam(agentID)
+	uid := mustUUID(agentID)
 	t := pgtype.Timestamptz{Time: ts, Valid: true}
 
 	var err error

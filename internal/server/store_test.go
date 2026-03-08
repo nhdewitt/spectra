@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -307,7 +308,7 @@ func TestAgentStore_WaitForCommand_ContextCancel(t *testing.T) {
 	cancel()
 
 	_, err := store.WaitForCommand(ctx, "agent-1", 1*time.Second)
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}
 }
@@ -321,7 +322,7 @@ func TestAgentStore_WaitForCommand_ContextTimeout(t *testing.T) {
 
 	_, err := store.WaitForCommand(ctx, "agent-1", 1*time.Hour)
 
-	if err != context.DeadlineExceeded {
+	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("expected context.DeadlineExceeded, got %v", err)
 	}
 }

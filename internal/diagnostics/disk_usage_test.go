@@ -2,6 +2,7 @@ package diagnostics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -136,7 +137,7 @@ func TestRunDiskUsageTop_ContextCancel(t *testing.T) {
 	if err == nil {
 		t.Error("expected error due to cancelled context, got nil")
 	}
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}
 }
@@ -358,7 +359,7 @@ func TestRunDiskUsageTop_ContextTimeout(t *testing.T) {
 	time.Sleep(1 * time.Millisecond)
 
 	_, err := RunDiskUsageTop(ctx, rootDir, 10, 10)
-	if err != context.DeadlineExceeded {
+	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Logf("got error: %v", err)
 	}
 }

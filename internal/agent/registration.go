@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,7 +13,7 @@ import (
 )
 
 // Register gathers host info and sends it to the server.
-func (a *Agent) Register() error {
+func (a *Agent) Register(ctx context.Context) error {
 	info := collector.CollectHostInfo()
 	info.Hostname = a.Config.Hostname
 
@@ -32,7 +33,7 @@ func (a *Agent) Register() error {
 	url := fmt.Sprintf("%s/api/v1/agent/register", a.Config.BaseURL)
 
 	for attempt := range a.RetryConfig.MaxAttempts {
-		req, _ := http.NewRequestWithContext(a.ctx, http.MethodPost, url, bytes.NewReader(payload))
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 		a.setHeaders(req)
 		req.Header.Del("Content-Encoding")
 
@@ -64,7 +65,7 @@ func (a *Agent) Register() error {
 		return fmt.Errorf("decode response: %w", err)
 	}
 
-	a.Identity = AgentIdentity{
+	a.Identity = Identity{
 		ID:     resp.AgentID,
 		Secret: resp.Secret,
 	}

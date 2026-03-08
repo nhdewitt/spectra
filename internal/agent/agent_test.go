@@ -53,11 +53,8 @@ func TestNew(t *testing.T) {
 	if cap(a.batch) != 50 {
 		t.Errorf("batch capacity: got %d, want 50", cap(a.batch))
 	}
-	if a.ctx == nil {
-		t.Error("ctx should not be nil")
-	}
-	if a.cancel == nil {
-		t.Error("cancel should not be nil")
+	if a.cancel != nil {
+		t.Error("cancel should be nil")
 	}
 	if a.gzipW == nil {
 		t.Error("gzipW should not be nil")
@@ -120,6 +117,9 @@ func TestAgent_SetHeaders(t *testing.T) {
 func TestAgent_Shutdown(t *testing.T) {
 	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancel = cancel
+
 	done := make(chan struct{})
 	go func() {
 		a.Shutdown()
@@ -134,7 +134,7 @@ func TestAgent_Shutdown(t *testing.T) {
 	}
 
 	select {
-	case <-a.ctx.Done():
+	case <-ctx.Done():
 		// Good
 	default:
 		t.Error("context should be cancelled after shutdown")
@@ -144,10 +144,13 @@ func TestAgent_Shutdown(t *testing.T) {
 func TestAgent_Shutdown_WithWaitGroup(t *testing.T) {
 	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancel = cancel
+
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		<-a.ctx.Done()
+		<-ctx.Done()
 	}()
 
 	done := make(chan struct{})
@@ -188,52 +191,12 @@ func TestAgent_MetricsChannel(t *testing.T) {
 	}
 }
 
-func TestAgent_ContextCancellation(t *testing.T) {
-	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
-
-	select {
-	case <-a.ctx.Done():
-		t.Error("context should not be done before cancel")
-	default:
-		// Good
-	}
-
-	a.cancel()
-
-	select {
-	case <-a.ctx.Done():
-		// Good
-	default:
-		t.Error("context should be done after cancel")
-	}
-
-	if a.ctx.Err() != context.Canceled {
-		t.Errorf("ctx.Err(): got %v, want context.Canceled", a.ctx.Err())
-	}
-}
-
 func TestAgent_MultipleNew(t *testing.T) {
 	a1 := New(Config{Hostname: "agent-1", IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 	a2 := New(Config{Hostname: "agent-2", IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
 	if a1.Config.Hostname == a2.Config.Hostname {
 		t.Error("agents should have different hostnames")
-	}
-
-	a1.cancel()
-
-	select {
-	case <-a1.ctx.Done():
-		// Good
-	default:
-		t.Error("a1 context should be done")
-	}
-
-	select {
-	case <-a2.ctx.Done():
-		t.Error("a2 context should not be done")
-	default:
-		// Good
 	}
 }
 

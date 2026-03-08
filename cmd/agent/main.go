@@ -1,13 +1,15 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"log"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" // #nosec G108 -- debug-only pprof server is bound to 127.0.0.1
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/nhdewitt/spectra/internal/agent"
 )
@@ -21,8 +23,14 @@ func main() {
 	if *debugMode {
 		go func() {
 			log.Println("DEBUG MODE: pprof server running on http://127.0.0.1:6060/debug/pprof/")
-			if err := http.ListenAndServe("127.0.0.1:6060", nil); err != nil {
-				log.Printf("failed to start debug server: %v", err)
+
+			srv := &http.Server{
+				Addr:              "127.0.0.1:6060",
+				ReadHeaderTimeout: 5 * time.Second,
+			}
+
+			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("Failed to start debug server: %v", err)
 			}
 		}()
 	}

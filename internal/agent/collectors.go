@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -14,7 +15,7 @@ type job struct {
 	Fn       collector.CollectFunc
 }
 
-func (a *Agent) startCollectors() {
+func (a *Agent) startCollectors(ctx context.Context) {
 	c := collector.New(a.Config.Hostname, a.metricsCh)
 
 	diskCol := collector.MakeDiskCollector(a.DriveCache)
@@ -37,7 +38,7 @@ func (a *Agent) startCollectors() {
 	}
 
 	for _, j := range jobs {
-		go c.Run(a.ctx, j.Interval, j.Fn)
+		go c.Run(ctx, j.Interval, j.Fn)
 	}
 
 	if a.Platform.IsRaspberryPi {
@@ -48,13 +49,13 @@ func (a *Agent) startCollectors() {
 			{60 * time.Second, collector.CollectPiGPU},
 		}
 		for _, j := range piJobs {
-			go c.Run(a.ctx, j.Interval, j.Fn)
+			go c.Run(ctx, j.Interval, j.Fn)
 		}
 	}
 
 	// Nightly tasks
-	go a.runNightly(2, 0, func() {
-		apps, err := collector.GetInstalledApps(a.ctx)
+	go a.runNightly(ctx, 2, 0, func() {
+		apps, err := collector.GetInstalledApps(ctx)
 		if err != nil {
 			log.Printf("nightly apps failed: %v", err)
 			return
@@ -67,8 +68,8 @@ func (a *Agent) startCollectors() {
 		}
 	})
 
-	go a.runNightly(2, 5, func() {
-		metrics, err := collector.CollectUpdates(a.ctx)
+	go a.runNightly(ctx, 2, 5, func() {
+		metrics, err := collector.CollectUpdates(ctx)
 		if err != nil {
 			log.Printf("nightly updates failed: %v", err)
 			return

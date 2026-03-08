@@ -25,13 +25,13 @@ func runPing(ctx context.Context, target string) ([]protocol.PingResult, error) 
 	}
 	ipAddr, err := net.ResolveIPAddr("ip4", target)
 	if err != nil {
-		return nil, fmt.Errorf("dns resolve failed: %v", err)
+		return nil, fmt.Errorf("dns resolve failed: %w", err)
 	}
 
 	// Open Raw Socket
 	conn, err := net.DialIP("ip4:icmp", nil, ipAddr)
 	if err != nil {
-		return nil, fmt.Errorf("socket open failed: %v", err)
+		return nil, fmt.Errorf("socket open failed: %w", err)
 	}
 	defer conn.Close()
 
@@ -60,7 +60,11 @@ func runPing(ctx context.Context, target string) ([]protocol.PingResult, error) 
 		if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
 			deadline = ctxDeadline
 		}
-		conn.SetReadDeadline(deadline)
+		if err := conn.SetReadDeadline(deadline); err != nil {
+			result.Response = fmt.Sprintf("set deadline failed: %v", err)
+			results = append(results, result)
+			continue
+		}
 
 		for {
 			if ctx.Err() != nil {

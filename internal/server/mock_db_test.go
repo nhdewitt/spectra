@@ -80,9 +80,10 @@ type mockUser struct {
 }
 
 type mockSession struct {
-	UserID    pgtype.UUID
-	Username  string
-	Role      string
+	UserID   pgtype.UUID
+	Username string
+	Role     string
+	//nolint:revive // sqlc uses IpAddress for ip_address column
 	IpAddress string
 }
 

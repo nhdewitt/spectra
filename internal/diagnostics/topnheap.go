@@ -28,7 +28,11 @@ func (h topNHeap) Swap(i, j int) {
 }
 
 func (h *topNHeap) Push(x any) {
-	*h = append(*h, x.(protocol.TopEntry))
+	entry, ok := x.(protocol.TopEntry)
+	if !ok {
+		panic("TopNHeap.Push: expected protocol.TopEntry")
+	}
+	*h = append(*h, entry)
 }
 
 func (h *topNHeap) Pop() any {
@@ -62,7 +66,12 @@ func pushTopN(h *topNHeap, n int, e protocol.TopEntry) {
 func popAllSortedDesc(h *topNHeap) []protocol.TopEntry {
 	out := make([]protocol.TopEntry, 0, h.Len())
 	for h.Len() > 0 {
-		out = append(out, heap.Pop(h).(protocol.TopEntry))
+		entryAny := heap.Pop(h)
+		entry, ok := entryAny.(protocol.TopEntry)
+		if !ok {
+			panic("TopNHeap.Pop: expected protocol.TopEntry")
+		}
+		out = append(out, entry)
 	}
 
 	slices.SortFunc(out, func(a, b protocol.TopEntry) int {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"net"
 	"net/http"
 	"time"
@@ -22,18 +23,26 @@ const (
 	lockoutDuration  = 15 * time.Minute
 )
 
-var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummypass"), bcrypt.DefaultCost)
-
 // Context-based user identity
 
 type userContextKeyType struct{}
 
 var userContextKey userContextKeyType
 
+var dummyHash []byte
+
 type userContext struct {
 	ID       string
 	Username string
 	Role     string
+}
+
+func init() {
+	var err error
+	dummyHash, err = bcrypt.GenerateFromPassword([]byte("dummypass"), bcrypt.DefaultCost)
+	if err != nil {
+		panic("failed to generate dummy bcrypt hash")
+	}
 }
 
 // userFromContext retrieves the authenticated user from the request context.
@@ -61,7 +70,9 @@ func (s *Server) requireUserAuth(next http.HandlerFunc) http.HandlerFunc {
 
 		// Verify IP
 		if session.IpAddress != clientIP(r) {
-			s.DB.DeleteSession(r.Context(), cookie.Value)
+			if err := s.DB.DeleteSession(r.Context(), cookie.Value); err != nil {
+				log.Printf("failed to delete session %s: %v", cookie.Value, err)
+			}
 			clearSessionCookie(w)
 			http.Error(w, "session invalidated", http.StatusUnauthorized)
 			return
@@ -104,7 +115,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	user, err := s.DB.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
 		// Constant-time comparison to prevent timing attacks
-		bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
 		s.LoginTracker.recordFailure(ip)
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
@@ -163,7 +174,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.DB.DeleteSession(r.Context(), cookie.Value)
+	if err := s.DB.DeleteSession(r.Context(), cookie.Value); err != nil {
+		log.Printf("Failed to delete session %s during logout: %v", cookie.Value, err)
+	}
 	clearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }

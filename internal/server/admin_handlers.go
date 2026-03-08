@@ -17,7 +17,11 @@ func (s *Server) handleAdminTriggerLogs(w http.ResponseWriter, r *http.Request) 
 	}
 
 	req := protocol.LogRequest{MinLevel: protocol.LevelError}
-	payload, _ := json.Marshal(req)
+	payload, err := json.Marshal(req)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	s.queueHelper(w, agentID, protocol.CmdFetchLogs, payload, "Queued FetchLogs")
 }
@@ -37,7 +41,11 @@ func (s *Server) handleAdminTriggerDisk(w http.ResponseWriter, r *http.Request) 
 	}
 
 	req := protocol.DiskUsageRequest{Path: path, TopN: topN}
-	payload, _ := json.Marshal(req)
+	payload, err := json.Marshal(req)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	s.queueHelper(w, agentID, protocol.CmdDiskUsage, payload, fmt.Sprintf("Queued Disk Scan (Top %d)", topN))
 }
@@ -57,7 +65,11 @@ func (s *Server) handleAdminTriggerNetwork(w http.ResponseWriter, r *http.Reques
 	}
 
 	req := protocol.NetworkRequest{Action: action, Target: target}
-	payload, _ := json.Marshal(req)
+	payload, err := json.Marshal(req)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	s.queueHelper(w, agentID, protocol.CmdNetworkDiag, payload, fmt.Sprintf("Queued Network Diag: %s", action))
 }

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -25,9 +26,12 @@ func TestJob_Struct(t *testing.T) {
 func TestStartCollectors_ContextCancelled(t *testing.T) {
 	a := New(Config{Hostname: "test-agent", IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
 
-	a.startCollectors()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a.startCollectors(ctx)
 	time.Sleep(100 * time.Millisecond)
-	a.cancel()
+	cancel()
 
 	var lastCount int
 	for range 5 {

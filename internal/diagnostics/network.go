@@ -15,6 +15,7 @@ func RunNetworkDiag(ctx context.Context, req protocol.NetworkRequest) (*protocol
 	}
 
 	var err error
+	//nolint:goconst
 	switch req.Action {
 	case "ping":
 		results, err := runPing(ctx, req.Target)

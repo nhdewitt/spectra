@@ -1,8 +1,10 @@
 package server
 
 import (
+	"log"
 	"net/http"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -16,7 +18,13 @@ func (s *Server) requireAgentAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		hash, err := s.DB.GetAgentSecret(r.Context(), uuidParam(agentID))
+		var id pgtype.UUID
+		if err := id.Scan(agentID); err != nil {
+			http.Error(w, "invalid agent ID", http.StatusUnauthorized)
+			return
+		}
+
+		hash, err := s.DB.GetAgentSecret(r.Context(), id)
 		if err != nil {
 			http.Error(w, "invalid agent credentials", http.StatusUnauthorized)
 			return
@@ -27,7 +35,9 @@ func (s *Server) requireAgentAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		s.DB.TouchLastSeen(r.Context(), uuidParam(agentID))
+		if err := s.DB.TouchLastSeen(r.Context(), id); err != nil {
+			log.Printf("Failed to update agent %s last_seen: %v", agentID, err)
+		}
 		next(w, r)
 	}
 }

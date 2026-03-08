@@ -189,7 +189,7 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agent, err := s.DB.GetAgent(r.Context(), uuidParam(agentID))
+	agent, err := s.DB.GetAgent(r.Context(), mustUUID(agentID))
 	if err != nil {
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return
@@ -206,7 +206,7 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.DB.DeleteAgent(r.Context(), uuidParam(agentID)); err != nil {
+	if err := s.DB.DeleteAgent(r.Context(), mustUUID(agentID)); err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
@@ -393,7 +393,7 @@ func (s *Server) handleGetProcesses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uid := uuidParam(agentID)
+	uid := mustUUID(agentID)
 	limit := int32(20)
 
 	if l := r.URL.Query().Get("limit"); l != "" {
@@ -440,7 +440,7 @@ func (s *Server) handleGetServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := s.DB.GetServices(r.Context(), uuidParam(agentID))
+	rows, err := s.DB.GetServices(r.Context(), mustUUID(agentID))
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
@@ -457,7 +457,7 @@ func (s *Server) handleGetApplications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := s.DB.GetApplications(r.Context(), uuidParam(agentID))
+	rows, err := s.DB.GetApplications(r.Context(), mustUUID(agentID))
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
@@ -474,7 +474,7 @@ func (s *Server) handleGetUpdates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	row, err := s.DB.GetUpdates(r.Context(), uuidParam(agentID))
+	row, err := s.DB.GetUpdates(r.Context(), mustUUID(agentID))
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
@@ -505,7 +505,7 @@ func (s *Server) parseRangeRequest(w http.ResponseWriter, r *http.Request) (pgty
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return pgtype.UUID{}, pgtype.Timestamptz{}, pgtype.Timestamptz{}, false
 	}
-	return uuidParam(agentID), start, end, true
+	return mustUUID(agentID), start, end, true
 }
 
 func pgTimestamp(t time.Time) pgtype.Timestamptz {

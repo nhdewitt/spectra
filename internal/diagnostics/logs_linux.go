@@ -65,6 +65,7 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 
 func getDmesg(ctx context.Context, minLevel protocol.LogLevel, limit int) ([]protocol.LogEntry, error) {
 	levelFlag := buildDmesgLevelFlag(minLevel)
+	//nolint:gosec // G204: levelFlag is restricted to valid dmesg levels.
 	cmd := exec.CommandContext(ctx, "dmesg", "-T", "-x", "--level="+levelFlag)
 
 	out, err := cmd.Output()

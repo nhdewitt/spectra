@@ -17,7 +17,7 @@ func CollectContainers(ctx context.Context) ([]protocol.Metric, error) {
 	result = append(result, proxmoxGuests...)
 
 	if dockerErr != nil && proxmoxErr != nil {
-		return nil, fmt.Errorf("docker: %v, proxmox: %v", dockerErr, proxmoxErr)
+		return nil, fmt.Errorf("docker: %w, proxmox: %w", dockerErr, proxmoxErr)
 	}
 
 	return []protocol.Metric{

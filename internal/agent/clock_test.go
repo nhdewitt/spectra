@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -33,7 +34,7 @@ func TestWaitForNextMinute_ContextCancel(t *testing.T) {
 	cancel()
 
 	err := waitForNextMinute(ctx)
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}
 }

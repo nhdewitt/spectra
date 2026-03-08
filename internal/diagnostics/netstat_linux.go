@@ -144,7 +144,7 @@ func parseAddr(addr string) (string, uint16, error) {
 
 	port, err := strconv.ParseUint(portHex, 16, 16)
 	if err != nil {
-		return "", 0, fmt.Errorf("bad port: %v", err)
+		return "", 0, fmt.Errorf("bad port: %w", err)
 	}
 
 	return ip.String(), uint16(port), nil

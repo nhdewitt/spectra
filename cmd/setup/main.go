@@ -68,7 +68,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to begin transaction: %v", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	// Run migrations if DB tables don't already exist.
 	if !migrated {
@@ -76,7 +78,7 @@ func main() {
 		applied, err := setup.RunMigrationsTx(ctx, tx, migrationsDir)
 		if err != nil {
 			fmt.Println("FAILED")
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			log.Fatalf("Migration failed: %v", err)
 		}
 		fmt.Printf("OK (%d applied)\n", applied)
@@ -91,7 +93,7 @@ func main() {
 		Role:     "admin",
 	}); err != nil {
 		fmt.Println("FAILED")
-		tx.Rollback(ctx)
+		_ = tx.Rollback(ctx)
 		log.Fatalf("Failed to create admin user: %v", err)
 	}
 	fmt.Println("OK")
@@ -103,7 +105,7 @@ func main() {
 		if errors.Is(err, os.ErrPermission) {
 			fmt.Printf("  [!] Permission denied. Try: sudo %s\n", os.Args[0])
 		}
-		tx.Rollback(ctx)
+		_ = tx.Rollback(ctx)
 		log.Fatalf("[!] Fatal: %v", err)
 	}
 	fmt.Println("OK")

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -184,7 +185,10 @@ func (s *Server) handleDownloadConfig(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", `attachment; filename="spectra-agent.json"`)
-	w.Write(data)
+
+	if _, err := w.Write(data); err != nil {
+		log.Printf("Failed to write config response: %v", err)
+	}
 }
 
 // Installation instruction generators

@@ -14,7 +14,7 @@ import (
 )
 
 // runCommandLoop long-polls the server for tasks
-func (a *Agent) runCommandLoop() {
+func (a *Agent) runCommandLoop(ctx context.Context) {
 	url := fmt.Sprintf("%s%s", a.Config.BaseURL, a.Config.CommandPath)
 	fmt.Println("Starting Command & Control loop at", url)
 
@@ -23,16 +23,16 @@ func (a *Agent) runCommandLoop() {
 
 	for {
 		select {
-		case <-a.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			a.pollOnce(url)
+			a.pollOnce(ctx, url)
 		}
 	}
 }
 
-func (a *Agent) pollOnce(url string) {
-	req, err := http.NewRequestWithContext(a.ctx, "GET", url, nil)
+func (a *Agent) pollOnce(ctx context.Context, url string) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		fmt.Printf("Error creating request: %v\n", err)
 		return
@@ -50,18 +50,18 @@ func (a *Agent) pollOnce(url string) {
 	if resp.StatusCode == http.StatusOK {
 		var cmd protocol.Command
 		if err := json.NewDecoder(resp.Body).Decode(&cmd); err == nil {
-			go a.handleCommand(cmd)
+			go a.handleCommand(ctx, cmd)
 		}
 	}
 }
 
-func (a *Agent) handleCommand(cmd protocol.Command) {
+func (a *Agent) handleCommand(ctx context.Context, cmd protocol.Command) {
 	fmt.Printf("Received Command: %s (%s)\n", cmd.Type, cmd.ID)
 
 	var resultData any
 	var err error
 
-	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	switch cmd.Type {
@@ -113,13 +113,13 @@ func (a *Agent) handleCommand(cmd protocol.Command) {
 		err = fmt.Errorf("unknown command type: %s", cmd.Type)
 	}
 
-	if uploadErr := a.uploadCommandResult(cmd, resultData, err); uploadErr != nil {
+	if uploadErr := a.uploadCommandResult(ctx, cmd, resultData, err); uploadErr != nil {
 		fmt.Printf("Failed to upload result for %s: %v\n", cmd.ID, uploadErr)
 	}
 }
 
 // uploadCommandResult handles JSON marshaling, Gzip compression, and HTTP transport.
-func (a *Agent) uploadCommandResult(cmd protocol.Command, data any, cmdErr error) error {
+func (a *Agent) uploadCommandResult(ctx context.Context, cmd protocol.Command, data any, cmdErr error) error {
 	res := protocol.CommandResult{
 		ID:   cmd.ID,
 		Type: cmd.Type,
@@ -159,12 +159,12 @@ func (a *Agent) uploadCommandResult(cmd protocol.Command, data any, cmdErr error
 		return nil
 	}()
 	if err != nil {
-		return fmt.Errorf("compression failed: %v", err)
+		return fmt.Errorf("compression failed: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/api/v1/agent/command/result", a.Config.BaseURL)
 
-	req, err := http.NewRequestWithContext(a.ctx, "POST", url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func (a *Agent) uploadCommandResult(cmd protocol.Command, data any, cmdErr error
 	return nil
 }
 
-func (a *Agent) runNightly(hour, minute int, fn func()) {
+func (a *Agent) runNightly(ctx context.Context, hour, minute int, fn func()) {
 	for {
 		now := time.Now()
 		next := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
@@ -196,7 +196,7 @@ func (a *Agent) runNightly(hour, minute int, fn func()) {
 		}
 
 		select {
-		case <-a.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-time.After(time.Until(next)):
 			fn()

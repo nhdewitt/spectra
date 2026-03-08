@@ -1,0 +1,61 @@
+run:
+  timeout: 5m
+
+linters:
+  disable:
+    - exhaustruct
+    - err113
+    - forbidigo
+    - funlen
+    - gocognit
+    - cyclop
+    - gochecknoglobals
+    - depguard
+    - dogsled
+    - errname
+  
+  enable:
+    - gosec
+    - errorlint
+    - forcetypeassert
+    - containedctx
+    - errcheck
+    - errchkjson
+    - goconst
+    - revive
+
+linters-settings:
+  gosec:
+    # Disable integer overflow conversions (we are strictly 64-bit)
+    excludes:
+      - G115
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude-rules:
+    # 1. Blanket silence these linters in test files
+    - path: _test\.go
+      linters:
+        - containedctx
+        - errcheck
+        - errchkjson
+        - forcetypeassert
+        - goconst
+
+    # 2. Silence specific gosec rules (Weak RNG, file perms) in test files
+    - path: _test\.go
+      linters:
+        - gosec
+      text: "G404|G306"
+
+    # 3. Global silence for specific revive warnings
+    - linters:
+        - revive
+      text: "var-declaration|unused-parameter|empty-block|redefines-builtin-id"
+
+    # 4. Global silence for specific goconst strings
+    - linters:
+        - goconst
+      text: "linux|other|ping"

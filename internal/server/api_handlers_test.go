@@ -429,7 +429,12 @@ func TestParseTimeRange_QuickRanges(t *testing.T) {
 			}
 
 			duration := end.Time.Sub(start.Time)
-			if diff := duration - d; diff < -time.Second || diff > time.Second {
+			tolerance := time.Second
+			if d >= 24*time.Hour {
+				tolerance = 2 * time.Hour // allow for DST
+			}
+
+			if diff := duration - d; diff < -tolerance || diff > tolerance {
 				t.Errorf("duration = %v, want ~%v", duration, d)
 			}
 		})

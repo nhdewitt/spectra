@@ -7,32 +7,32 @@ import (
 	"path/filepath"
 )
 
-type AgentIdentity struct {
+type Identity struct {
 	ID     string `json:"id"` // UUID
 	Secret string `json:"secret"`
 }
 
-func loadIdentity(path string) (AgentIdentity, error) {
+func loadIdentity(path string) (Identity, error) {
 	if path == "" {
 		path = identityPath()
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return AgentIdentity{}, err
+		return Identity{}, err
 	}
 
-	var id AgentIdentity
+	var id Identity
 	if err := json.Unmarshal(data, &id); err != nil {
-		return AgentIdentity{}, err
+		return Identity{}, err
 	}
 	if id.ID == "" || id.Secret == "" {
-		return AgentIdentity{}, fmt.Errorf("identity file missing id or secret")
+		return Identity{}, fmt.Errorf("identity file missing id or secret")
 	}
 
 	return id, nil
 }
 
-func saveIdentity(id AgentIdentity, path string) error {
+func saveIdentity(id Identity, path string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("creating identity dir: %w", err)

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -70,7 +71,7 @@ func TestRegister_Success(t *testing.T) {
 
 	a := New(testConfig(t, server.URL))
 
-	err := a.Register()
+	err := a.Register(context.Background())
 	if err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
@@ -89,7 +90,7 @@ func TestRegister_SuccessCreated(t *testing.T) {
 
 	a := New(testConfig(t, server.URL))
 
-	err := a.Register()
+	err := a.Register(context.Background())
 	if err != nil {
 		t.Errorf("Register should accept 201 Created: %v", err)
 	}
@@ -112,7 +113,7 @@ func TestRegister_ServerError(t *testing.T) {
 		Multiplier:   2.0,
 	}
 
-	err := a.Register()
+	err := a.Register(context.Background())
 	if err == nil {
 		t.Error("expected error for server error")
 	}
@@ -174,7 +175,7 @@ func TestRegister_RetrySuccess(t *testing.T) {
 		Multiplier:   2.0,
 	}
 
-	err := a.Register()
+	err := a.Register(context.Background())
 	if err != nil {
 		t.Fatalf("Register should succeed after retries: %v", err)
 	}
@@ -197,7 +198,7 @@ func TestRegister_ConnectionError(t *testing.T) {
 		Multiplier:   2.0,
 	}
 
-	err := a.Register()
+	err := a.Register(context.Background())
 	if err == nil {
 		t.Error("expected error for connection failure")
 	}
@@ -222,9 +223,11 @@ func TestRegister_ContextCancelled(t *testing.T) {
 		MaxDelay:     10 * time.Millisecond,
 		Multiplier:   2.0,
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancel = cancel
 	a.cancel()
 
-	err := a.Register()
+	err := a.Register(ctx)
 	if err == nil {
 		t.Error("expected error for cancelled context")
 	}
@@ -250,7 +253,7 @@ func TestRegister_PayloadStructure(t *testing.T) {
 	a := New(testConfig(t, server.URL))
 	a.Config.RegistrationToken = "my-token"
 
-	err := a.Register()
+	err := a.Register(context.Background())
 	if err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
@@ -286,7 +289,7 @@ func TestRegister_UserAgent(t *testing.T) {
 
 	a := New(testConfig(t, server.URL))
 
-	a.Register()
+	a.Register(context.Background())
 	if receivedUA != "Spectra-Agent/1.0" {
 		t.Errorf("User-Agent: got %s, want Spectra-Agent/1.0", receivedUA)
 	}
@@ -300,7 +303,7 @@ func TestRegister_BadRequest(t *testing.T) {
 
 	a := New(testConfig(t, server.URL))
 
-	err := a.Register()
+	err := a.Register(context.Background())
 	if err == nil {
 		t.Error("expected error for 400 response")
 	}
@@ -314,7 +317,7 @@ func TestRegister_Unauthorized(t *testing.T) {
 
 	a := New(testConfig(t, server.URL))
 
-	err := a.Register()
+	err := a.Register(context.Background())
 	if err == nil {
 		t.Error("expected error for 401 response")
 	}
@@ -326,7 +329,7 @@ func TestRegister_SavesIdentity(t *testing.T) {
 
 	a := New(testConfig(t, server.URL))
 
-	err := a.Register()
+	err := a.Register(context.Background())
 	if err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
@@ -339,7 +342,7 @@ func TestRegister_SavesIdentity(t *testing.T) {
 func TestIdentity_LoadSaveRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent-id.json")
 
-	original := AgentIdentity{
+	original := Identity{
 		ID:     "roundtrip-id",
 		Secret: "roundtrip-secret",
 	}
@@ -387,6 +390,6 @@ func BenchmarkRegister(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		a.Register()
+		a.Register(context.Background())
 	}
 }

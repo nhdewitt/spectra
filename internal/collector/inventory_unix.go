@@ -64,6 +64,7 @@ func GetInstalledApps(ctx context.Context) ([]protocol.Application, error) {
 			continue
 		}
 
+		//nolint:gosec // G204: exe and args come from a fixed internal allowlist of package managers.
 		cmd := exec.CommandContext(ctx, mgr.exe, mgr.args...)
 		out, err := cmd.StdoutPipe()
 		if err != nil {

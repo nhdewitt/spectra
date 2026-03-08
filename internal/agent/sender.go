@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -17,7 +18,7 @@ const (
 )
 
 // runMetricSender consumes the channel and sends batches via HTTP
-func (a *Agent) runMetricSender() {
+func (a *Agent) runMetricSender(ctx context.Context) {
 	batch := make([]protocol.Envelope, 0, BatchSize)
 
 	ticker := time.NewTicker(SendInterval)
@@ -25,7 +26,7 @@ func (a *Agent) runMetricSender() {
 
 	flush := func() {
 		if len(batch) > 0 {
-			a.uploadBatch(batch)
+			a.uploadBatch(ctx, batch)
 			batch = batch[:0]
 		}
 	}
@@ -45,19 +46,19 @@ func (a *Agent) runMetricSender() {
 		case <-ticker.C:
 			flush()
 
-		case <-a.ctx.Done():
+		case <-ctx.Done():
 			flush()
 			return
 		}
 	}
 }
 
-func (a *Agent) uploadBatch(batch []protocol.Envelope) {
+func (a *Agent) uploadBatch(ctx context.Context, batch []protocol.Envelope) {
 	url := fmt.Sprintf("%s%s", a.Config.BaseURL, a.Config.MetricsPath)
 
 	// Try sending cached metrics first
 	if cached := a.cache.Drain(); len(cached) > 0 {
-		if err := a.postCompressed(url, cached); err != nil {
+		if err := a.postCompressed(ctx, url, cached); err != nil {
 			// Re-cache everything
 			a.cache.Add(cached)
 			a.cache.Add(batch)
@@ -68,14 +69,14 @@ func (a *Agent) uploadBatch(batch []protocol.Envelope) {
 	}
 
 	// Send current batch
-	if err := a.postCompressed(url, batch); err != nil {
+	if err := a.postCompressed(ctx, url, batch); err != nil {
 		a.cache.Add(batch)
 		log.Printf("Error sending batch of %d metrics, cached (%d total): %v", len(batch), a.cache.Len(), err)
 	}
 }
 
 // postCompressed marshals data to JSON, compresses it, and sends it to the server.
-func (a *Agent) postCompressed(url string, batch []protocol.Envelope) error {
+func (a *Agent) postCompressed(ctx context.Context, url string, batch []protocol.Envelope) error {
 	a.gzipMu.Lock()
 	a.gzipBuf.Reset()
 	a.gzipW.Reset(&a.gzipBuf)
@@ -91,7 +92,7 @@ func (a *Agent) postCompressed(url string, batch []protocol.Envelope) error {
 	payload := append([]byte(nil), a.gzipBuf.Bytes()...)
 	a.gzipMu.Unlock()
 
-	req, err := http.NewRequestWithContext(a.ctx, "POST", url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("create request error: %w", err)
 	}

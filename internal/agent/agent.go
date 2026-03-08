@@ -40,8 +40,8 @@ type Agent struct {
 	metricsCh chan protocol.Envelope
 	batch     []protocol.Envelope
 	wg        sync.WaitGroup
-	ctx       context.Context
 	cancel    context.CancelFunc
+	done      chan struct{}
 
 	cache *metricsCache
 
@@ -54,7 +54,7 @@ type Agent struct {
 	RetryConfig RetryConfig
 
 	Platform platform.Info
-	Identity AgentIdentity
+	Identity Identity
 }
 
 type RetryConfig struct {
@@ -99,7 +99,6 @@ func New(cfg Config) *Agent {
 		cfg.IdentityPath = identityPath()
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
 	id, err := loadIdentity(cfg.IdentityPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -113,8 +112,8 @@ func New(cfg Config) *Agent {
 		DriveCache: collector.NewDriveCache(),
 		metricsCh:  make(chan protocol.Envelope, 500),
 		batch:      make([]protocol.Envelope, 0, 50),
-		ctx:        ctx,
-		cancel:     cancel,
+		cancel:     nil,
+		done:       make(chan struct{}),
 		cache:      newMetricsCache(defaultMaxCacheSize),
 		gzipW:      gzip.NewWriter(io.Discard),
 		commonHeaders: map[string]string{
@@ -130,42 +129,45 @@ func New(cfg Config) *Agent {
 
 // Start initializes all subsystems and blocks until Shutdown is called
 func (a *Agent) Start() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancel = cancel
+
 	log.Printf("Spectra Agent starting on %s...\n", a.Config.Hostname)
 	log.Printf("Server: %s\n", a.Config.BaseURL)
 
 	if a.Identity.ID == "" {
-		if err := a.Register(); err != nil {
+		if err := a.Register(ctx); err != nil {
 			return fmt.Errorf("registration failed: %w", err)
 		}
 	}
 
 	// Mount Manager (Windows disk mapping)
-	go collector.RunMountManager(a.ctx, a.DriveCache, 30*time.Second)
+	go collector.RunMountManager(ctx, a.DriveCache, 30*time.Second)
 
 	// Metric Sender
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		a.runMetricSender()
+		a.runMetricSender(ctx)
 	}()
 
 	// Start Command Loop
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		a.runCommandLoop()
+		a.runCommandLoop(ctx)
 	}()
 
 	// Align to minute boundary
-	if err := waitForNextMinute(a.ctx); err != nil {
+	if err := waitForNextMinute(ctx); err != nil {
 		return fmt.Errorf("clock alignment cancelled: %w", err)
 	}
 
 	// Start Collectors
-	a.startCollectors()
+	a.startCollectors(ctx)
 
 	// Block until shutdown called
-	<-a.ctx.Done()
+	<-ctx.Done()
 	return nil
 }
 

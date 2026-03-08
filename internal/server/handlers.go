@@ -51,7 +51,7 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 
 	if s.DB != nil {
 		if err := s.DB.RegisterAgent(r.Context(), database.RegisterAgentParams{
-			ID:         uuidParam(agentID),
+			ID:         mustUUID(agentID),
 			SecretHash: string(hashedSecret),
 			Hostname:   req.Info.Hostname,
 			Os:         pgText(req.Info.OS),
