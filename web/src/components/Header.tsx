@@ -22,7 +22,7 @@ export function Header({ user, onLogout, onNavigate, currentPage }: HeaderProps)
             style={{
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "sapce-between",
+                justifyContent: "space-between",
                 padding: "0 24px",
                 height: 48,
                 background: theme.surface,

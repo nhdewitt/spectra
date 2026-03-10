@@ -18,6 +18,8 @@ import type {
     Updates,
     TimeRange,
     ProcessSort,
+    PlatformInfo,
+    ProvisionResponse,
 } from "./types";
 
 declare global {
@@ -107,4 +109,14 @@ export const api = {
         apiFetch<Application[]>(`/agents/${id}/applications`),
     agentUpdates: (id: string) =>
         apiFetch<Updates>(`/agents/${id}/updates`),
+
+    // Admin / Provisioning
+    platforms: () => apiFetch<PlatformInfo[]>("/admin/platforms"),
+    provision: (platform: string) =>
+        apiFetch<ProvisionResponse>("/admin/provision", {
+            method: "POST",
+            body: JSON.stringify({ platform }),
+        }),
+    generateToken: () =>
+        apiFetch<{ token: string }>("/admin/tokens", { method: "POST" }),
 };

@@ -3,7 +3,7 @@ import { api } from "./api";
 import { theme } from "./theme";
 import { Login, Header } from "./components";
 import type { ViewMode } from "./components";
-import { Overview, AgentDetail } from "./pages";
+import { Overview, AgentDetail, Admin } from "./pages";
 import type { User, Page, OverviewAgent } from "./types";
 
 export default function App() {
@@ -105,17 +105,7 @@ export default function App() {
         </div>
       )}
 
-      {page === "admin" && (
-        <div
-          style={{
-            padding: 24,
-            fontFamily: theme.font,
-            color: theme.textDim,
-          }}
-        >
-          User administration — coming soon.
-        </div>
-      )}
+      {page === "admin" && <Admin />}
     </div>
   );
 }

@@ -1,7 +1,11 @@
+// Auth
+
 export interface User {
     username: string;
     role: string;
 }
+
+// Agents
 
 export interface Agent {
     id: string;
@@ -15,6 +19,8 @@ export interface Agent {
     registered_at: string;
     last_seen: string | null;
 }
+
+// Overview (agents LEFT JOIN current_metrics)
 
 export interface OverviewAgent {
     id: string;
@@ -37,6 +43,8 @@ export interface OverviewAgent {
     reboot_required: boolean | null;
     updated_at: string | null;
 }
+
+// Time-series metrics
 
 export interface CPUMetric {
     time: string;
@@ -178,6 +186,8 @@ export interface PiMetric {
     gpu_temp: number;
 }
 
+// Current State
+
 export interface Process {
     agent_id: string;
     pid: number;
@@ -214,6 +224,38 @@ export interface Updates {
     updated_at: string;
 }
 
+// UI Types
+
 export type TimeRange = "5m" | "15m" | "1h" | "6h" | "24h" | "7d" | "30d"
 export type ProcessSort = "cpu" | "memory";
 export type Page = "overview" | "agents" | "admin";
+
+// Provisioning
+
+export interface PlatformInfo {
+    os: string;
+    arch: string;
+    variant?: string;
+    label: string;
+    filename: string;
+}
+
+export interface AgentConfig {
+    server: string;
+    token: string;
+}
+
+export interface InstallInstructions {
+    type: string;
+    content: string;
+    steps: string;
+}
+
+export interface ProvisionResponse {
+    token: string;
+    expires_at: string;
+    platform: string;
+    download_url: string;
+    config: AgentConfig;
+    install: InstallInstructions;
+}
