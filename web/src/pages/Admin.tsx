@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../api";
 import { OSIcon } from "../icons";
-import { theme } from "../theme";
+import { themeVars } from "../theme";
 import type { PlatformInfo, ProvisionResponse } from "../types";
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -25,10 +25,10 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
             style={{
                 padding: "4px 10px",
                 fontSize: 11,
-                fontFamily: theme.font,
-                color: copied ? theme.ok : failed ? theme.danger : theme.textMuted,
+                fontFamily: themeVars.font,
+                color: copied ? themeVars.ok : failed ? themeVars.danger : themeVars.textMuted,
                 background: "transparent",
-                border: `1px solid ${copied ? theme.ok : failed ? theme.danger : theme.border}`,
+                border: `1px solid ${copied ? themeVars.ok : failed ? themeVars.danger : themeVars.border}`,
                 cursor: "pointer",
                 letterSpacing: "0.02em",
                 transition: "all 0.15s ease",
@@ -84,8 +84,8 @@ function PlatformSelector({
                         <div
                             style={{
                                 fontSize: 10,
-                                fontFamily: theme.font,
-                                color: theme.textDim,
+                                fontFamily: themeVars.font,
+                                color: themeVars.textDim,
                                 letterSpacing: "0.05em",
                                 textTransform: "uppercase",
                                 marginBottom: 6,
@@ -104,14 +104,14 @@ function PlatformSelector({
                                     style={{
                                         padding: "8px 14px",
                                         fontSize: 12,
-                                        fontFamily: theme.font,
+                                        fontFamily: themeVars.font,
                                         color:
-                                            selected === p.filename ? theme.text : theme.textMuted,
+                                            selected === p.filename ? themeVars.text : themeVars.textMuted,
                                         background:
                                             selected === p.filename
-                                                ? theme.accentDim
-                                                : theme.surface,
-                                        border: `1px solid ${selected === p.filename ? theme.accent : theme.border}`,
+                                                ? themeVars.accentDim
+                                                : themeVars.surface,
+                                        border: `1px solid ${selected === p.filename ? themeVars.accent : themeVars.border}`,
                                         cursor: "pointer",
                                         transition: "all 0.1s ease",
                                     }}
@@ -149,9 +149,9 @@ function ProvisionResult({
                     <div
                         style={{
                             fontSize: 14,
-                            fontFamily: theme.font,
+                            fontFamily: themeVars.font,
                             fontWeight: 500,
-                            color: theme.text,
+                            color: themeVars.text,
                         }}
                     >
                         Agent Provisioned
@@ -159,8 +159,8 @@ function ProvisionResult({
                     <div
                         style={{
                             fontSize: 12,
-                            fontFamily: theme.font,
-                            color: theme.textMuted,
+                            fontFamily: themeVars.font,
+                            color: themeVars.textMuted,
                             marginTop: 4,
                         }}
                     >
@@ -173,10 +173,10 @@ function ProvisionResult({
                     style={{
                         padding: "6px 12px",
                         fontSize: 11,
-                        fontFamily: theme.font,
-                        color: theme.textMuted,
+                        fontFamily: themeVars.font,
+                        color: themeVars.textMuted,
                         background: "transparent",
-                        border: `1px solid ${theme.border}`,
+                        border: `1px solid ${themeVars.border}`,
                         cursor: "pointer",
                     }}
                 >
@@ -187,8 +187,8 @@ function ProvisionResult({
             {/* Token */}
             <div
                 style={{
-                    background: theme.surface,
-                    border: `1px solid ${theme.border}`,
+                    background: themeVars.surface,
+                    border: `1px solid ${themeVars.border}`,
                     padding: 16,
                 }}
             >
@@ -203,8 +203,8 @@ function ProvisionResult({
                     <div
                         style={{
                             fontSize: 10,
-                            fontFamily: theme.font,
-                            color: theme.textDim,
+                            fontFamily: themeVars.font,
+                            color: themeVars.textDim,
                             letterSpacing: "0.05em",
                             textTransform: "uppercase",
                         }}
@@ -216,8 +216,8 @@ function ProvisionResult({
                 <code
                     style={{
                         fontSize: 13,
-                        fontFamily: theme.font,
-                        color: theme.warn,
+                        fontFamily: themeVars.font,
+                        color: themeVars.warn,
                         wordBreak: "break-all",
                     }}
                 >
@@ -241,10 +241,10 @@ function ProvisionResult({
                         flex: 1,
                         padding: "12px 16px",
                         fontSize: 12,
-                        fontFamily: theme.font,
-                        color: theme.text,
-                        background: theme.surface,
-                        border: `1px solid ${theme.border}`,
+                        fontFamily: themeVars.font,
+                        color: themeVars.text,
+                        background: themeVars.surface,
+                        border: `1px solid ${themeVars.border}`,
                         cursor: "pointer",
                         textAlign: "left",
                     }}
@@ -252,7 +252,7 @@ function ProvisionResult({
                     <div style={{ fontWeight: 500, marginBottom: 4 }}>
                         ↓ spectra-agent.json
                     </div>
-                    <div style={{ fontSize: 11, color: theme.textDim }}>
+                    <div style={{ fontSize: 11, color: themeVars.textDim }}>
                         Config file - place in {configPath(result.platform)}
                     </div>
                 </button>
@@ -266,10 +266,10 @@ function ProvisionResult({
                             flex: 1,
                             padding: "12px 16px",
                             fontSize: 12,
-                            fontFamily: theme.font,
-                            color: theme.text,
-                            background: theme.surface,
-                            border: `1px solid ${theme.border}`,
+                            fontFamily: themeVars.font,
+                            color: themeVars.text,
+                            background: themeVars.surface,
+                            border: `1px solid ${themeVars.border}`,
                             cursor: "pointer",
                             textAlign: "left",
                             textDecoration: "none",
@@ -278,7 +278,7 @@ function ProvisionResult({
                         <div style={{ fontWeight: 500, marginBottom: 4 }}>
                             ↓ {result.platform}
                         </div>
-                        <div style={{ fontSize: 11, color: theme.textDim }}>
+                        <div style={{ fontSize: 11, color: themeVars.textDim }}>
                             Agent binary - SHA256 verified
                         </div>
                     </a>
@@ -288,8 +288,8 @@ function ProvisionResult({
             {/* Install instructions */}
             <div
                 style={{
-                    background: theme.surface,
-                    border: `1px solid ${theme.border}`,
+                    background: themeVars.surface,
+                    border: `1px solid ${themeVars.border}`,
                     padding: 16,
                 }}
             >
@@ -304,8 +304,8 @@ function ProvisionResult({
                     <div
                         style={{
                             fontSize: 10,
-                            fontFamily: theme.font,
-                            color: theme.textDim,
+                            fontFamily: themeVars.font,
+                            color: themeVars.textDim,
                             letterSpacing: "0.05em",
                             textTransform: "uppercase",
                         }}
@@ -318,11 +318,11 @@ function ProvisionResult({
                     style={{
                         margin: 0,
                         padding: 12,
-                        background: theme.bg,
-                        border: `1px solid ${theme.border}`,
-                        fontFamily: theme.font,
+                        background: themeVars.bg,
+                        border: `1px solid ${themeVars.border}`,
+                        fontFamily: themeVars.font,
                         fontSize: 12,
-                        color: theme.textMuted,
+                        color: themeVars.textMuted,
                         lineHeight: 1.6,
                         overflowX: "auto",
                         whiteSpace: "pre-wrap",
@@ -337,8 +337,8 @@ function ProvisionResult({
             {result.install.content && (
                 <div
                     style={{
-                        background: theme.surface,
-                        border: `1px solid ${theme.border}`,
+                        background: themeVars.surface,
+                        border: `1px solid ${themeVars.border}`,
                         padding: 16,
                     }}
                 >
@@ -353,8 +353,8 @@ function ProvisionResult({
                         <div
                             style={{
                                 fontSize: 10,
-                                fontFamily: theme.font,
-                                color: theme.textDim,
+                                fontFamily: themeVars.font,
+                                color: themeVars.textDim,
                                 letterSpacing: "0.05em",
                                 textTransform: "uppercase",
                             }}
@@ -367,11 +367,11 @@ function ProvisionResult({
                         style={{
                             margin: 0,
                             padding: 12,
-                            background: theme.bg,
-                            border: `1px solid ${theme.border}`,
-                            fontFamily: theme.font,
+                            background: themeVars.bg,
+                            border: `1px solid ${themeVars.border}`,
+                            fontFamily: themeVars.font,
                             fontSize: 12,
-                            color: theme.textMuted,
+                            color: themeVars.textMuted,
                             lineHeight: 1.6,
                             overflowX: "auto",
                             whiteSpace: "pre-wrap",
@@ -430,8 +430,8 @@ export function Admin() {
             <div
                 style={{
                     padding: 24,
-                    fontFamily: theme.font,
-                    color: theme.textMuted,
+                    fontFamily: themeVars.font,
+                    color: themeVars.textMuted,
                 }}
             >
                 Loading platforms...
@@ -452,9 +452,9 @@ export function Admin() {
             <div
                 style={{
                     fontSize: 15,
-                    fontFamily: theme.font,
+                    fontFamily: themeVars.font,
                     fontWeight: 600,
-                    color: theme.text,
+                    color: themeVars.text,
                     marginBottom: 4,
                 }}
             >
@@ -463,8 +463,8 @@ export function Admin() {
             <div
                 style={{
                     fontSize: 12,
-                    fontFamily: theme.font,
-                    color: theme.textMuted,
+                    fontFamily: themeVars.font,
+                    color: themeVars.textMuted,
                     marginBottom: 24,
                 }}
             >
@@ -474,8 +474,8 @@ export function Admin() {
             {/* Platform selector */}
             <div
                 style={{
-                    background: theme.surface,
-                    border: `1px solid ${theme.border}`,
+                    background: themeVars.surface,
+                    border: `1px solid ${themeVars.border}`,
                     padding: 20,
                     marginBottom: 16,
                 }}
@@ -483,8 +483,8 @@ export function Admin() {
                 <div
                     style={{
                         fontSize: 10,
-                        fontFamily: theme.font,
-                        color: theme.textDim,
+                        fontFamily: themeVars.font,
+                        color: themeVars.textDim,
                         letterSpacing: "0.05em",
                         textTransform: "uppercase",
                         marginBottom: 12,
@@ -503,15 +503,15 @@ export function Admin() {
                     <div
                         style={{
                             fontSize: 12,
-                            fontFamily: theme.font,
-                            color: theme.textDim,
+                            fontFamily: themeVars.font,
+                            color: themeVars.textDim,
                             padding: "12px 0",
                         }}
                     >
                         No pre-build binaries available. Run{" "}
                         <code
                             style={{
-                                background: theme.bg,
+                                background: themeVars.bg,
                                 padding: "2px 6px",
                                 fontSize: 11,
                             }}
@@ -537,11 +537,11 @@ export function Admin() {
                     style={{
                         padding: 12,
                         marginBottom: 16,
-                        background: theme.surface,
-                        border: `1px solid ${theme.danger}`,
+                        background: themeVars.surface,
+                        border: `1px solid ${themeVars.danger}`,
                         fontSize: 12,
-                        fontFamily: theme.font,
-                        color: theme.danger,
+                        fontFamily: themeVars.font,
+                        color: themeVars.danger,
                     }}
                 >
                     {error}
@@ -555,11 +555,11 @@ export function Admin() {
                 style={{
                     padding: "10px 24px",
                     fontSize: 13,
-                    fontFamily: theme.font,
+                    fontFamily: themeVars.font,
                     fontWeight: 500,
                     color: "#fff",
                     background:
-                        !selectedPlatform || provisioning ? theme.accentDim : theme.accent,
+                        !selectedPlatform || provisioning ? themeVars.accentDim : themeVars.accent,
                     border: "none",
                     cursor:
                         !selectedPlatform || provisioning ? "not-allowed" : "pointer",
@@ -597,8 +597,8 @@ function ManualPlatformSelector({
             <div
                 style={{
                     fontSize: 10,
-                    fontFamily: theme.font,
-                    color: theme.textDim,
+                    fontFamily: themeVars.font,
+                    color: themeVars.textDim,
                     letterSpacing: "0.05em",
                     textTransform: "uppercase",
                     marginBottom: 8,

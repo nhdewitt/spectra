@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { api, HttpError } from "../api";
-import { theme } from "../theme";
+import { themeVars } from "../theme";
 import type { User } from "../types";
 
 const labelStyle: React.CSSProperties = {
     display: "block",
     fontSize: 11,
-    fontFamily: theme.font,
-    color: theme.textMuted,
+    fontFamily: themeVars.font,
+    color: themeVars.textMuted,
     marginBottom: 6,
     letterSpacing: "0.05em",
     textTransform: "uppercase",
@@ -16,11 +16,11 @@ const labelStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
     width: "100%",
     padding: "10px 12px",
-    background: theme.bg,
-    border: `1px solid ${theme.border}`,
-    color: theme.text,
+    background: themeVars.bg,
+    border: `1px solid ${themeVars.border}`,
+    color: themeVars.text,
     fontSize: 14,
-    fontFamily: theme.font,
+    fontFamily: themeVars.font,
     outline: "none",
     boxSizing: "border-box",
 };
@@ -53,11 +53,11 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
         <div
             style={{
                 minHeight: "100vh",
-                background: theme.bg,
+                background: themeVars.bg,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontFamily: theme.fontSans,
+                fontFamily: themeVars.fontSans,
                 position: "relative",
                 overflow: "hidden",
             }}
@@ -91,7 +91,7 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
                             y="6"
                             width="4.5"
                             height="4.5"
-                            fill={theme.text}
+                            fill={themeVars.text}
                             transform="rotate(45 8 8)"
                         />
                     </pattern>
@@ -116,8 +116,8 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
             <div
                 style={{
                     width: 360,
-                    background: theme.surface,
-                    border: `1px solid ${theme.border}`,
+                    background: themeVars.surface,
+                    border: `1px solid ${themeVars.border}`,
                     padding: "40px 32px",
                     position: "relative",
                     zIndex: 1,
@@ -125,17 +125,17 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
             >
                 <div
                     style={{
-                        fontFamily: theme.font,
+                        fontFamily: themeVars.font,
                         fontSize: 20,
                         fontWeight: 600,
-                        color: theme.text,
+                        color: themeVars.text,
                         marginBottom: 4,
                         letterSpacing: "-0.02em",
                     }}
                 >
                     SPECTRA
                 </div>
-                <div style={{ fontSize: 13, color: theme.textMuted, marginBottom: 32 }}>
+                <div style={{ fontSize: 13, color: themeVars.textMuted, marginBottom: 32 }}>
                     System Monitoring
                 </div>
 
@@ -162,10 +162,10 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
                     {error && (
                         <div
                             style={{
-                                color: theme.danger,
+                                color: themeVars.danger,
                                 fontSize: 13,
                                 marginTop: 12,
-                                fontFamily: theme.font,
+                                fontFamily: themeVars.font,
                             }}
                         >
                             {error}
@@ -179,11 +179,11 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
                             width: "100%",
                             marginTop: 24,
                             padding: "10px 0",
-                            background: loading ? theme.accentDim : theme.accent,
+                            background: loading ? themeVars.accentDim : themeVars.accent,
                             color: "#fff",
                             border: "none",
                             fontSize: 14,
-                            fontFamily: theme.font,
+                            fontFamily: themeVars.font,
                             fontWeight: 500,
                             cursor: loading ? "wait" : "pointer",
                             letterSpacing: "0.02em",

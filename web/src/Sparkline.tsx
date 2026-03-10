@@ -1,5 +1,5 @@
 import { useId, useState, useRef } from "react";
-import { theme } from "./theme";
+import { themeVars } from "./theme";
 
 interface SparklineProps {
     /** Array of numeric values to plot (0-100 percentages). */
@@ -16,19 +16,13 @@ interface SparklineProps {
     yMax?: number;
 }
 
-const SEVERITY_COLORS = {
-    normal: "#a3a3a3",
-    warning: "#eab308",
-    critical: "#ef4444",
-};
-
 function severityColorForValue(
     value: number,
     thresholds: [number, number, number]
 ): string {
-    if (value >= thresholds[2]) return SEVERITY_COLORS.critical;
-    if (value >= thresholds[1]) return SEVERITY_COLORS.warning;
-    return SEVERITY_COLORS.normal;
+    if (value >= thresholds[2]) return themeVars.danger;
+    if (value >= thresholds[1]) return themeVars.warn;
+    return themeVars.textMuted;
 }
 
 /**
@@ -115,8 +109,8 @@ export function Sparkline({
                 height={height}
                 style={{
                     display: "block",
-                    background: "rgba(255,255,255,0.02)",
-                    border: `1px solid ${theme.border}`,
+                    background: themeVars.surfaceHover,
+                    border: `1px solid ${themeVars.border}`,
                     borderRadius: 2,
                 }}
             >
@@ -137,12 +131,12 @@ export function Sparkline({
                         top: "calc(100% + 6px)",
                         left: "50%",
                         transform: "translateX(-50%)",
-                        background: theme.surface,
-                        border: `1px solid ${theme.border}`,
+                        background: themeVars.surface,
+                        border: `1px solid ${themeVars.border}`,
                         padding: "6px 10px",
-                        fontFamily: theme.font,
+                        fontFamily: themeVars.font,
                         fontSize: 11,
-                        color: theme.text,
+                        color: themeVars.text,
                         whiteSpace: "nowrap",
                         zIndex: 50,
                         pointerEvents: "none",
@@ -153,7 +147,7 @@ export function Sparkline({
                         <div
                             style={{
                                 fontSize: 10,
-                                color: theme.textDim,
+                                color: themeVars.textDim,
                                 letterSpacing: "0.04em",
                                 textTransform: "uppercase",
                                 marginBottom: 2,
@@ -163,23 +157,23 @@ export function Sparkline({
                         </div>
                     )}
                     <div>
-                        <span style={{ color: theme.textMuted }}>now </span>
+                        <span style={{ color: themeVars.textMuted }}>now </span>
                         <span style={{ color: severityColorForValue(currentValue, thresholds) }}>
                             {currentValue.toFixed(1)}%
                         </span>
                     </div>
                     <div>
-                        <span style={{ color: theme.textMuted }}>peak </span>
+                        <span style={{ color: themeVars.textMuted }}>peak </span>
                         <span style={{ color: severityColorForValue(peak, thresholds) }}>
                             {peak.toFixed(1)}%
                         </span>
                     </div>
                     <div>
-                        <span style={{ color: theme.textMuted }}>avg </span>
+                        <span style={{ color: themeVars.textMuted }}>avg </span>
                         <span>{avg.toFixed(1)}%</span>
                     </div>
                     <div>
-                        <span style={{ color: theme.textMuted }}>min </span>
+                        <span style={{ color: themeVars.textMuted }}>min </span>
                         <span>{min.toFixed(1)}%</span>
                     </div>
                 </div>

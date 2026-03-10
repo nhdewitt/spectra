@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "./api";
-import { theme } from "./theme";
+import { initTheme, themeVars } from "./theme";
 import { Login, Header } from "./components";
 import type { ViewMode } from "./components";
 import { Overview, AgentDetail, Admin } from "./pages";
@@ -41,18 +41,22 @@ export default function App() {
       .finally(() => setChecking(false));
   }, []);
 
+  useEffect(() => {
+    initTheme();
+  }, []);
+
   // Loading splash
   if (checking) {
     return (
       <div
         style={{
           minHeight: "100vh",
-          background: theme.bg,
+          background: themeVars.bg,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontFamily: theme.font,
-          color: theme.textMuted,
+          fontFamily: themeVars.font,
+          color: themeVars.textMuted,
         }}
       >
         ...
@@ -67,7 +71,7 @@ export default function App() {
 
   // Authenticated shell
   return (
-    <div style={{ minHeight: "100vh", background: theme.bg }}>
+    <div style={{ minHeight: "100vh", background: themeVars.bg }}>
       <Header
         user={user}
         onLogout={handleLogout}
@@ -97,8 +101,8 @@ export default function App() {
         <div
           style={{
             padding: 24,
-            fontFamily: theme.font,
-            color: theme.textDim,
+            fontFamily: themeVars.font,
+            color: themeVars.textDim,
           }}
         >
           Agent management view — coming soon.

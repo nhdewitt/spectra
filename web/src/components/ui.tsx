@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { theme } from "../theme";
+import { themeVars } from "../theme";
 
 // StatBlock
 
@@ -16,8 +16,8 @@ export function StatBlock({ label, value, unit, color }: StatBlockProps) {
             <div
                 style={{
                     fontSize: 11,
-                    color: theme.textMuted,
-                    fontFamily: theme.font,
+                    color: themeVars.textMuted,
+                    fontFamily: themeVars.font,
                     letterSpacing: "0.04em",
                     textTransform: "uppercase",
                     marginBottom: 4,
@@ -30,8 +30,8 @@ export function StatBlock({ label, value, unit, color }: StatBlockProps) {
                     style={{
                         fontSize: 18,
                         fontWeight: 600,
-                        fontFamily: theme.font,
-                        color: color ?? theme.text,
+                        fontFamily: themeVars.font,
+                        color: color ?? themeVars.text,
                     }}
                 >
                     {value ?? "—"}
@@ -40,8 +40,8 @@ export function StatBlock({ label, value, unit, color }: StatBlockProps) {
                     <span
                         style={{
                             fontSize: 11,
-                            color: theme.textDim,
-                            fontFamily: theme.font,
+                            color: themeVars.textDim,
+                            fontFamily: themeVars.font,
                         }}
                     >
                         {unit}
@@ -63,8 +63,8 @@ export function DetailRow({
 }) {
     return (
         <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: theme.textDim }}>{label}</span>
-            <span style={{ color: theme.textMuted }}>{value ?? "—"}</span>
+            <span style={{ color: themeVars.textDim }}>{label}</span>
+            <span style={{ color: themeVars.textMuted }}>{value ?? "—"}</span>
         </div>
     );
 }
@@ -89,10 +89,10 @@ export function ViewToggle({
                     style={{
                         padding: "4px 10px",
                         fontSize: 11,
-                        fontFamily: theme.font,
-                        color: mode === m ? theme.text : theme.textMuted,
-                        background: mode === m ? theme.accentDim : "transparent",
-                        border: `1px solid ${mode === m ? theme.accent : theme.border}`,
+                        fontFamily: themeVars.font,
+                        color: mode === m ? themeVars.text : themeVars.textMuted,
+                        background: mode === m ? themeVars.accentDim : "transparent",
+                        border: `1px solid ${mode === m ? themeVars.accent : themeVars.border}`,
                         cursor: "pointer",
                         textTransform: "uppercase",
                         letterSpacing: "0.03em",
@@ -119,8 +119,8 @@ export function LoadingText() {
         <div
             style={{
                 padding: 24,
-                color: theme.textMuted,
-                fontFamily: theme.font,
+                color: themeVars.textMuted,
+                fontFamily: themeVars.font,
             }}
         >
             Loading{".".repeat(dots)}

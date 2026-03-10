@@ -1,3 +1,4 @@
+import { themeVars } from "./theme";
 import type { OverviewAgent } from "./types";
 
 /**
@@ -47,30 +48,29 @@ export function formatUptime(seconds: number | null | undefined): string {
  * Determine the health color of an agent based on last heartbeat timestamp.
  *
  * Thresholds:
- *   • < 2 minutes -> green (healthy / fresh)
- *   • < 10 minutes -> yellow (stale)
- *   • >= 10 minutes -> red (offline)
- *   • Missing timestamp -> gray (unknown)
+ *   • < 2 minutes -> themeVars.ok
+ *   • < 10 minutes -> themeVars.warn
+ *   • >= 10 minutes -> themeVars.danger
+ *   • Missing timestamp -> themeVars.textDim
  *
  * @param agent Agent object containing last_seen timestamp.
  * @returns     Hex color representing agent freshness state.
  */
 export function statusColor(agent: { last_seen: string | null }): string {
-    if (!agent.last_seen) return "#555";
+    if (!agent.last_seen) return themeVars.textDim;
     const ago = (Date.now() - new Date(agent.last_seen).getTime()) / 1000;
-    if (ago < 120) return "#22c55e";
-    if (ago < 600) return "#eab308";
-    return "#ef4444";
+    if (ago < 120) return themeVars.ok;
+    if (ago < 600) return themeVars.warn;
+    return themeVars.danger;
 }
 
 /**
  * Determine the health color of an agent based on last heartbeat timestamp.
  *
  * Thresholds:
- *   • < 2 minutes  -> green  (#22c55e) — healthy / fresh
- *   • < 10 minutes -> yellow (#eab308) — stale
- *   • >= 10 minutes -> red   (#ef4444) — offline
- *   • Missing timestamp -> gray (#555) — unknown
+ *   • value >= thresholds[2] -> themeVars.danger
+ *   • value >= thresholds[1] -> themeVars.warn
+ *   • otherwise              -> themeVars.textMuted
  *
  * @param agent Object containing a last_seen timestamp.
  * @returns     Hex color representing agent freshness state.
@@ -79,9 +79,9 @@ export function severityColor(
     value: number,
     thresholds: [number, number, number]
 ): string {
-    if (value >= thresholds[2]) return "#ef4444";
-    if (value >= thresholds[1]) return "#eab308";
-    return "#a3a3a3";
+    if (value >= thresholds[2]) return themeVars.danger;
+    if (value >= thresholds[1]) return themeVars.warn;
+    return themeVars.textMuted;
 }
 
 /**

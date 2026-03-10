@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { api } from "../api";
-import { theme } from "../theme";
+import { themeVars } from "../theme";
 import { OSIcon } from "../icons";
 import { Sparkline } from "../Sparkline";
 import { usePolling, useSparkHistory } from "../hooks";
@@ -44,8 +44,8 @@ function AgentCard({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: hovered ? theme.surfaceHover : theme.surface,
-        border: `1px solid ${hovered ? theme.borderLight : theme.border}`,
+        background: hovered ? themeVars.surfaceHover : themeVars.surface,
+        border: `1px solid ${hovered ? themeVars.borderLight : themeVars.border}`,
         padding: "16px 20px",
         cursor: "pointer",
         transition: "all 0.15s ease",
@@ -72,10 +72,10 @@ function AgentCard({
         <OSIcon os={agent.os} platform={agent.platform} size={16} />
         <div
           style={{
-            fontFamily: theme.font,
+            fontFamily: themeVars.font,
             fontSize: 14,
             fontWeight: 500,
-            color: theme.text,
+            color: themeVars.text,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -87,8 +87,8 @@ function AgentCard({
           style={{
             marginLeft: "auto",
             fontSize: 11,
-            fontFamily: theme.font,
-            color: theme.textDim,
+            fontFamily: themeVars.font,
+            color: themeVars.textDim,
           }}
         >
           {agent.platform || agent.os}
@@ -131,12 +131,12 @@ function AgentCard({
           style={{
             marginTop: 14,
             paddingTop: 12,
-            borderTop: `1px solid ${theme.border}`,
+            borderTop: `1px solid ${themeVars.border}`,
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
             gap: "6px 16px",
             fontSize: 12,
-            fontFamily: theme.font,
+            fontFamily: themeVars.font,
           }}
         >
           <DetailRow label="Platform" value={agent.platform} />
@@ -180,8 +180,8 @@ function AgentCard({
 
 const listHeaderStyle: React.CSSProperties = {
   fontSize: 10,
-  fontFamily: theme.font,
-  color: theme.textDim,
+  fontFamily: themeVars.font,
+  color: themeVars.textDim,
   letterSpacing: "0.05em",
   textTransform: "uppercase",
   padding: "8px 12px",
@@ -195,8 +195,8 @@ function AgentListHeader() {
         display: "grid",
         gridTemplateColumns: "28px 20px 1fr 80px 80px 80px 80px 80px 80px 80px 80px",
         alignItems: "center",
-        borderBottom: `1px solid ${theme.border}`,
-        background: theme.surface,
+        borderBottom: `1px solid ${themeVars.border}`,
+        background: themeVars.surface,
       }}
     >
       <div />
@@ -240,11 +240,11 @@ function AgentListRow({
         gridTemplateColumns: "28px 20px 1fr 80px 80px 80px 80px 80px 80px 80px 80px",
         alignItems: "center",
         padding: "6px 0",
-        background: hovered ? theme.surfaceHover : "transparent",
-        borderBottom: `1px solid ${theme.border}`,
+        background: hovered ? themeVars.surfaceHover : "transparent",
+        borderBottom: `1px solid ${themeVars.border}`,
         cursor: "pointer",
         transition: "background 0.1s ease",
-        fontFamily: theme.font,
+        fontFamily: themeVars.font,
         fontSize: 12,
       }}
     >
@@ -269,7 +269,7 @@ function AgentListRow({
       <div style={{ padding: "0 12px", overflow: "hidden" }}>
         <div
           style={{
-            color: theme.text,
+            color: themeVars.text,
             fontWeight: 500,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -278,7 +278,7 @@ function AgentListRow({
         >
           {agent.hostname}
         </div>
-        <div style={{ fontSize: 10, color: theme.textDim, marginTop: 1 }}>
+        <div style={{ fontSize: 10, color: themeVars.textDim, marginTop: 1 }}>
           {agent.platform} · {agent.arch}
         </div>
       </div>
@@ -354,7 +354,7 @@ function AgentListRow({
           color:
             temp && temp > 0
               ? severityColor(temp, [50, 70, 85])
-              : theme.textDim,
+              : themeVars.textDim,
         }}
       >
         {temp && temp > 0 ? `${temp.toFixed(0)}°` : "—"}
@@ -362,7 +362,7 @@ function AgentListRow({
 
       {/* UPTIME */}
       <div
-        style={{ textAlign: "right", padding: "0 12px", color: theme.textMuted }}
+        style={{ textAlign: "right", padding: "0 12px", color: themeVars.textMuted }}
       >
         {formatUptime(agent.uptime)}
       </div>
@@ -396,7 +396,7 @@ export function Overview({
   if (error) {
     return (
       <div
-        style={{ padding: 24, color: theme.danger, fontFamily: theme.font }}
+        style={{ padding: 24, color: themeVars.danger, fontFamily: themeVars.font }}
       >
         {error}
       </div>
@@ -417,8 +417,8 @@ export function Overview({
         <div
           style={{
             fontSize: 13,
-            fontFamily: theme.font,
-            color: theme.textMuted,
+            fontFamily: themeVars.font,
+            color: themeVars.textMuted,
           }}
         >
           {agents.length} agent{agents.length !== 1 ? "s" : ""} registered
@@ -429,12 +429,12 @@ export function Overview({
               display: "flex",
               gap: 12,
               fontSize: 11,
-              fontFamily: theme.font,
+              fontFamily: themeVars.font,
             }}
           >
-            <span style={{ color: theme.ok }}>● online</span>
-            <span style={{ color: theme.warn }}>● stale</span>
-            <span style={{ color: theme.danger }}>● offline</span>
+            <span style={{ color: themeVars.ok }}>● online</span>
+            <span style={{ color: themeVars.warn }}>● stale</span>
+            <span style={{ color: themeVars.danger }}>● offline</span>
           </div>
           <ViewToggle mode={viewMode} onChange={onViewModeChange} />
         </div>
@@ -463,7 +463,7 @@ export function Overview({
       {viewMode === "list" && (
         <div
           style={{
-            border: `1px solid ${theme.border}`,
+            border: `1px solid ${themeVars.border}`,
             overflow: "visible",
           }}
         >
@@ -485,8 +485,8 @@ export function Overview({
           style={{
             textAlign: "center",
             padding: "60px 0",
-            fontFamily: theme.font,
-            color: theme.textDim,
+            fontFamily: themeVars.font,
+            color: themeVars.textDim,
             fontSize: 14,
           }}
         >

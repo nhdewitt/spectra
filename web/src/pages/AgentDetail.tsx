@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { theme } from "../theme";
+import { themeVars } from "../theme";
 import { statusColor } from "../utils";
 import type { OverviewAgent, TimeRange } from "../types";
 
@@ -32,10 +32,10 @@ export function AgentDetail({
                     style={{
                         padding: "6px 12px",
                         fontSize: 12,
-                        fontFamily: theme.font,
-                        color: theme.textMuted,
+                        fontFamily: themeVars.font,
+                        color: themeVars.textMuted,
                         background: "transparent",
-                        border: `1px solid ${theme.border}`,
+                        border: `1px solid ${themeVars.border}`,
                         cursor: "pointer",
                     }}
                 >
@@ -52,10 +52,10 @@ export function AgentDetail({
                 <div>
                     <div
                         style={{
-                            fontFamily: theme.font,
+                            fontFamily: themeVars.font,
                             fontSize: 18,
                             fontWeight: 600,
-                            color: theme.text,
+                            color: themeVars.text,
                         }}
                     >
                         {agent.hostname}
@@ -63,8 +63,8 @@ export function AgentDetail({
                     <div
                         style={{
                             fontSize: 12,
-                            fontFamily: theme.font,
-                            color: theme.textMuted,
+                            fontFamily: themeVars.font,
+                            color: themeVars.textMuted,
                             marginTop: 2,
                         }}
                     >
@@ -83,10 +83,10 @@ export function AgentDetail({
                         style={{
                             padding: "5px 10px",
                             fontSize: 11,
-                            fontFamily: theme.font,
-                            color: timeRange === r ? theme.text : theme.textMuted,
-                            background: timeRange === r ? theme.accentDim : "transparent",
-                            border: `1px solid ${timeRange === r ? theme.accent : theme.border}`,
+                            fontFamily: themeVars.font,
+                            color: timeRange === r ? themeVars.text : themeVars.textMuted,
+                            background: timeRange === r ? themeVars.accentDim : "transparent",
+                            border: `1px solid ${timeRange === r ? themeVars.accent : themeVars.border}`,
                             cursor: "pointer",
                         }}
                     >
@@ -101,7 +101,7 @@ export function AgentDetail({
                     display: "flex",
                     gap: 4,
                     marginBottom: 20,
-                    borderBottom: `1px solid ${theme.border}`,
+                    borderBottom: `1px solid ${themeVars.border}`,
                     paddingBottom: 8,
                 }}
             >
@@ -112,9 +112,9 @@ export function AgentDetail({
                         style={{
                             padding: "6px 14px",
                             fontSize: 12,
-                            fontFamily: theme.font,
-                            color: activeTab === tab ? theme.text : theme.textMuted,
-                            background: activeTab === tab ? theme.accentDim : "transparent",
+                            fontFamily: themeVars.font,
+                            color: activeTab === tab ? themeVars.text : themeVars.textMuted,
+                            background: activeTab === tab ? themeVars.accentDim : "transparent",
                             border: "none",
                             cursor: "pointer",
                             textTransform: "uppercase",
@@ -129,12 +129,12 @@ export function AgentDetail({
             {/* Tab content (placeholder) */}
             <div
                 style={{
-                    background: theme.surface,
-                    border: `1px solid ${theme.border}`,
+                    background: themeVars.surface,
+                    border: `1px solid ${themeVars.border}`,
                     padding: 32,
                     textAlign: "center",
-                    fontFamily: theme.font,
-                    color: theme.textDim,
+                    fontFamily: themeVars.font,
+                    color: themeVars.textDim,
                     fontSize: 13,
                 }}
             >
@@ -142,7 +142,7 @@ export function AgentDetail({
                     <div>
                         Chart panels for CPU, Memory, Disk, Network, Temperature will render here.
                         <br />
-                        <span style={{ color: theme.textMuted }}>
+                        <span style={{ color: themeVars.textMuted }}>
                             Time range: {timeRange} · Agent: {agent.id}
                         </span>
                     </div>
