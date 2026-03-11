@@ -230,6 +230,11 @@ export type TimeRange = "5m" | "15m" | "1h" | "6h" | "24h" | "7d" | "30d"
 export type ProcessSort = "cpu" | "memory";
 export type Page = "overview" | "agents" | "admin";
 
+/* Unified time selection - either a quick preset or a custom start/end. */
+export type RangeSelection =
+    | { type: "quick"; range: TimeRange }
+    | { type: "custom"; start: string; end: string }; // ISO 8601 strings
+
 // Provisioning
 
 export interface PlatformInfo {

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { themeVars } from "../theme";
 import { statusColor } from "../utils";
-import type { OverviewAgent, TimeRange } from "../types";
+import { TimeRangePicker } from "../components";
+import type { OverviewAgent, RangeSelection } from "../types";
 
-const TIME_RANGES: TimeRange[] = ["5m", "15m", "1h", "6h", "24h", "7d", "30d"];
 const TABS = ["metrics", "processes", "services", "apps", "updates"] as const;
 
 export function AgentDetail({
@@ -13,8 +13,13 @@ export function AgentDetail({
     agent: OverviewAgent;
     onBack: () => void;
 }) {
-    const [timeRange, setTimeRange] = useState<TimeRange>("1h");
+    const [rangeSel, setRangeSel] = useState<RangeSelection>({ type: "quick", range: "1h" });
     const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("metrics");
+
+    const rangeLabel =
+        rangeSel.type === "quick"
+            ? rangeSel.range
+            : `${new Date(rangeSel.start).toLocaleString()} — ${new Date(rangeSel.end).toLocaleString()}`;
 
     return (
         <div style={{ padding: 24 }}>
@@ -74,25 +79,9 @@ export function AgentDetail({
                 </div>
             </div>
 
-            {/* Time range selector */}
-            <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
-                {TIME_RANGES.map((r) => (
-                    <button
-                        key={r}
-                        onClick={() => setTimeRange(r)}
-                        style={{
-                            padding: "5px 10px",
-                            fontSize: 11,
-                            fontFamily: themeVars.font,
-                            color: timeRange === r ? themeVars.text : themeVars.textMuted,
-                            background: timeRange === r ? themeVars.accentDim : "transparent",
-                            border: `1px solid ${timeRange === r ? themeVars.accent : themeVars.border}`,
-                            cursor: "pointer",
-                        }}
-                    >
-                        {r}
-                    </button>
-                ))}
+            {/* Time range picker */}
+            <div style={{ marginBottom: 20 }}>
+                <TimeRangePicker value={rangeSel} onChange={setRangeSel} />
             </div>
 
             {/* Tab bar */}
@@ -143,7 +132,7 @@ export function AgentDetail({
                         Chart panels for CPU, Memory, Disk, Network, Temperature will render here.
                         <br />
                         <span style={{ color: themeVars.textMuted }}>
-                            Time range: {timeRange} · Agent: {agent.id}
+                            Time range: {rangeLabel} · Agent: {agent.id}
                         </span>
                     </div>
                 )}
