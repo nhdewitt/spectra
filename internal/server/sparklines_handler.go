@@ -1,6 +1,8 @@
 package server
 
-import "net/http"
+import (
+	"net/http"
+)
 
 // sparklineData holds the sparkline arrays for a single agent.
 type sparklineData struct {

@@ -12,19 +12,28 @@ import (
 )
 
 const getRecentCPU = `-- name: GetRecentCPU :many
-SELECT agent_id, time, usage
-FROM metrics_cpu
-WHERE time >= NOW() - INTERVAL '5 minutes'
+SELECT agent_id, usage
+FROM (
+    SELECT
+        agent_id,
+        usage,
+        time,
+        ROW_NUMBER() OVER (
+            PARTITION BY agent_id
+            ORDER BY time DESC
+        ) AS rn
+    FROM metrics_cpu
+) t
+WHERE rn <= 30
 ORDER BY agent_id, time ASC
 `
 
 type GetRecentCPURow struct {
-	AgentID pgtype.UUID        `json:"agent_id"`
-	Time    pgtype.Timestamptz `json:"time"`
-	Usage   pgtype.Float8      `json:"usage"`
+	AgentID pgtype.UUID   `json:"agent_id"`
+	Usage   pgtype.Float8 `json:"usage"`
 }
 
-// Returns last 5 minutes of CPU usage for all agents, ordered chronologically.
+// Returns the latest 30 CPU samples per agent, ordered chronologically.
 func (q *Queries) GetRecentCPU(ctx context.Context) ([]GetRecentCPURow, error) {
 	rows, err := q.db.Query(ctx, getRecentCPU)
 	if err != nil {
@@ -34,7 +43,7 @@ func (q *Queries) GetRecentCPU(ctx context.Context) ([]GetRecentCPURow, error) {
 	items := []GetRecentCPURow{}
 	for rows.Next() {
 		var i GetRecentCPURow
-		if err := rows.Scan(&i.AgentID, &i.Time, &i.Usage); err != nil {
+		if err := rows.Scan(&i.AgentID, &i.Usage); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -46,20 +55,37 @@ func (q *Queries) GetRecentCPU(ctx context.Context) ([]GetRecentCPURow, error) {
 }
 
 const getRecentDiskMax = `-- name: GetRecentDiskMax :many
-SELECT agent_id, time, CAST(MAX(used_percent) AS DOUBLE PRECISION) AS max_percent
-FROM metrics_disk
-WHERE time >= NOW() - INTERVAL '5 minutes'
-GROUP BY agent_id, time
-ORDER BY agent_id, time ASC
+WITH disk_buckets AS (
+    SELECT
+        agent_id,
+        date_trunc('minute', time) AS bucket,
+        MAX(used_percent)::double precision AS max_percent
+    FROM metrics_disk
+    GROUP BY agent_id, date_trunc('minute', time)
+),
+ranked AS (
+    SELECT
+        agent_id,
+        max_percent,
+        bucket,
+        ROW_NUMBER() OVER (
+            PARTITION BY agent_id
+            ORDER BY bucket DESC
+        ) AS rn
+    FROM disk_buckets
+)
+SELECT agent_id, max_percent
+FROM ranked
+WHERE rn <= 30
+ORDER BY agent_id, bucket ASC
 `
 
 type GetRecentDiskMaxRow struct {
-	AgentID    pgtype.UUID        `json:"agent_id"`
-	Time       pgtype.Timestamptz `json:"time"`
-	MaxPercent float64            `json:"max_percent"`
+	AgentID    pgtype.UUID `json:"agent_id"`
+	MaxPercent float64     `json:"max_percent"`
 }
 
-// Returns last 5 minutes of max disk usage per timestamp per agent.
+// Returns the latest 30 disk max samples per agent, ordered chronologically.
 func (q *Queries) GetRecentDiskMax(ctx context.Context) ([]GetRecentDiskMaxRow, error) {
 	rows, err := q.db.Query(ctx, getRecentDiskMax)
 	if err != nil {
@@ -69,7 +95,7 @@ func (q *Queries) GetRecentDiskMax(ctx context.Context) ([]GetRecentDiskMaxRow, 
 	items := []GetRecentDiskMaxRow{}
 	for rows.Next() {
 		var i GetRecentDiskMaxRow
-		if err := rows.Scan(&i.AgentID, &i.Time, &i.MaxPercent); err != nil {
+		if err := rows.Scan(&i.AgentID, &i.MaxPercent); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -81,19 +107,28 @@ func (q *Queries) GetRecentDiskMax(ctx context.Context) ([]GetRecentDiskMaxRow, 
 }
 
 const getRecentMemory = `-- name: GetRecentMemory :many
-SELECT agent_id, time, ram_percent
-FROM metrics_memory
-WHERE time >= NOW() - INTERVAL '5 minutes'
+SELECT agent_id, ram_percent
+FROM (
+    SELECT
+        agent_id,
+        ram_percent,
+        time,
+        ROW_NUMBER() OVER (
+            PARTITION BY agent_id
+            ORDER BY time DESC
+        ) AS rn
+    FROM metrics_memory
+) t
+WHERE rn <= 30
 ORDER BY agent_id, time ASC
 `
 
 type GetRecentMemoryRow struct {
-	AgentID    pgtype.UUID        `json:"agent_id"`
-	Time       pgtype.Timestamptz `json:"time"`
-	RamPercent pgtype.Float8      `json:"ram_percent"`
+	AgentID    pgtype.UUID   `json:"agent_id"`
+	RamPercent pgtype.Float8 `json:"ram_percent"`
 }
 
-// Returns last 5 minutes of RAM percent for all agents, ordered chronologically.
+// Returns the latest 30 RAM samples per agent, ordered chronologically.
 func (q *Queries) GetRecentMemory(ctx context.Context) ([]GetRecentMemoryRow, error) {
 	rows, err := q.db.Query(ctx, getRecentMemory)
 	if err != nil {
@@ -103,7 +138,7 @@ func (q *Queries) GetRecentMemory(ctx context.Context) ([]GetRecentMemoryRow, er
 	items := []GetRecentMemoryRow{}
 	for rows.Next() {
 		var i GetRecentMemoryRow
-		if err := rows.Scan(&i.AgentID, &i.Time, &i.RamPercent); err != nil {
+		if err := rows.Scan(&i.AgentID, &i.RamPercent); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

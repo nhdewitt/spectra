@@ -128,20 +128,33 @@ function statusRank(agent: OverviewAgent): number {
 }
 
 /**
- * Sort agents alphabetically by hostname, grouped by status.
+ * Sort agents by status group, then hostname, with stable tie-breakers.
  * 
  * Groups (in order): online, stale, offline.
  * Within each group, agents are sorted alphabetically by hostname.
- * 
- * @param agents    List of agents to sort.
- * @returns         New array sorted by status group then hostname.
+ * If hostname matches, fall back to platform/OS and finally agent ID
+ * so order stays deterministic across refreshes.
  */
 export function sortAgentsByStatus(agents: OverviewAgent[]): OverviewAgent[] {
     return [...agents].sort((a, b) => {
         const rankDiff = statusRank(a) - statusRank(b);
         if (rankDiff !== 0) return rankDiff;
-        return a.hostname.localeCompare(b.hostname, undefined, {
+
+        const hostDiff = a.hostname.localeCompare(b.hostname, undefined, {
             sensitivity: "base",
         });
-    });
+        if (hostDiff !== 0) return hostDiff;
+
+        const osDiff = (a.os ?? "").localeCompare(b.os ?? "", undefined, {
+            sensitivity: "base",
+        });
+        if (osDiff !== 0) return osDiff;
+
+        const archDiff = (a.arch ?? "").localeCompare(b.arch ?? "", undefined, {
+            sensitivity: "base",
+        });
+        if (archDiff !== 0) return archDiff;
+
+        return a.id.localeCompare(b.id);
+    })
 }

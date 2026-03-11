@@ -153,7 +153,7 @@ export function Sparkline({
                                 marginBottom: 2,
                             }}
                         >
-                            {label} · {data.length * 10}s
+                            {label}
                         </div>
                     )}
                     <div>
