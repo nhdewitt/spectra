@@ -1,6 +1,9 @@
 package server
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,7 +13,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/nhdewitt/spectra/internal/database"
 	"github.com/nhdewitt/spectra/internal/protocol"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // RawEnvelope is used for unmarshalling metrics
@@ -19,6 +21,21 @@ type RawEnvelope struct {
 	Timestamp time.Time       `json:"timestamp"`
 	Hostname  string          `json:"hostname"`
 	Data      json.RawMessage `json:"data"`
+}
+
+// generateAgentSecret creates a 32-byte random secret, returned as hex.
+func generateAgentSecret() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// hashAgentSecret returns the raw SHA-256 bytes of a secret string.
+func hashAgentSecret(secret string) []byte {
+	sum := sha256.Sum256([]byte(secret))
+	return sum[:]
 }
 
 // handleAgentRegister accepts the HostInfo payload
@@ -35,13 +52,7 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agentID := uuid.New().String()
-	secret, err := generateSecret(32)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	hashedSecret, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	secret, err := generateAgentSecret()
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -51,15 +62,16 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 
 	if s.DB != nil {
 		if err := s.DB.RegisterAgent(r.Context(), database.RegisterAgentParams{
-			ID:         mustUUID(agentID),
-			SecretHash: string(hashedSecret),
-			Hostname:   req.Info.Hostname,
-			Os:         pgText(req.Info.OS),
-			Platform:   pgText(req.Info.Platform),
-			Arch:       pgText(req.Info.Arch),
-			CpuModel:   pgText(req.Info.CPUModel),
-			CpuCores:   pgInt4(int32(req.Info.CPUCores)),
-			RamTotal:   pgInt8(int64(req.Info.RAMTotal)),
+			ID:           mustUUID(agentID),
+			SecretSha256: hashAgentSecret(secret),
+			SecretHash:   "",
+			Hostname:     req.Info.Hostname,
+			Os:           pgText(req.Info.OS),
+			Platform:     pgText(req.Info.Platform),
+			Arch:         pgText(req.Info.Arch),
+			CpuModel:     pgText(req.Info.CPUModel),
+			CpuCores:     pgInt4(int32(req.Info.CPUCores)),
+			RamTotal:     pgInt8(int64(req.Info.RAMTotal)),
 		}); err != nil {
 			log.Printf("Error persisting agent registration: %v", err)
 		}

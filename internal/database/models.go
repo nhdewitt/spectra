@@ -20,6 +20,7 @@ type Agent struct {
 	RamTotal     pgtype.Int8        `json:"ram_total"`
 	RegisteredAt pgtype.Timestamptz `json:"registered_at"`
 	LastSeen     pgtype.Timestamptz `json:"last_seen"`
+	SecretSha256 []byte             `json:"secret_sha256"`
 }
 
 type CurrentApplication struct {

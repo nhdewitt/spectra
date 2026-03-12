@@ -2,6 +2,8 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -434,6 +436,87 @@ func TestHandleCommandResult_NoAuth(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/command/result", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "10.0.0.5:1234"
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status: got %d, want 401", rec.Code)
+	}
+}
+
+// -- SHA-256 ---
+func TestRequireAgentAuth_SHA256(t *testing.T) {
+	s, _, _, mock := newTestServer()
+
+	// Register agent with SHA-256 secret
+	secret := "test-sha256-secret"
+	sum := sha256.Sum256([]byte(secret))
+	agentID := "550e8400-e29b-41d4-a716-446655440000"
+	mock.AgentSHA256[agentID] = sum[:]
+
+	batch := []RawEnvelope{}
+	body, _ := json.Marshal(batch)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
+	req.Header.Set("X-Agent-ID", agentID)
+	req.Header.Set("X-Agent-Secret", secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusUnauthorized {
+		t.Error("should not be 401 with valid SHA-256 credentials")
+	}
+}
+
+func TestRequireAgentAuth_BcryptUpgrade(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+	// newTestServer registers with bcrypt, no SHA-256 yet
+
+	batch := []RawEnvelope{}
+	body, _ := json.Marshal(batch)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusUnauthorized {
+		t.Error("bcrypt fallback should work")
+	}
+
+	// Verify opportunistic upgrade happened
+	hash, ok := mock.AgentSHA256[agentID]
+	if !ok || len(hash) != sha256.Size {
+		t.Error("agent should have been upgraded to SHA-256")
+	}
+
+	// Verify the stored hash matches
+	expected := sha256.Sum256([]byte(secret))
+	if subtle.ConstantTimeCompare(hash, expected[:]) != 1 {
+		t.Error("stored SHA-256 hash should match the secret")
+	}
+}
+
+func TestRequireAgentAuth_SHA256WrongSecret(t *testing.T) {
+	s, _, _, mock := newTestServer()
+
+	secret := "correct-secret"
+	sum := sha256.Sum256([]byte(secret))
+	agentID := "550e8400-e29b-41d4-a716-446655440000"
+	mock.AgentSHA256[agentID] = sum[:]
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader([]byte("[]")))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "10.0.0.5:1234"
+	req.Header.Set("X-Agent-ID", agentID)
+	req.Header.Set("X-Agent-Secret", "wrong-secret")
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)

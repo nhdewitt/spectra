@@ -1,0 +1,1 @@
+ALTER TABLE agents ADD COLUMN secret_sha256 BYTEA;

@@ -1,6 +1,6 @@
 -- name: RegisterAgent :exec
-INSERT INTO agents (id, secret_hash, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+INSERT INTO agents (id, secret_hash, secret_sha256, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
 -- name: GetAgent :one
 SELECT id, secret_hash, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total, registered_at, last_seen
@@ -30,3 +30,15 @@ SELECT secret_hash FROM agents WHERE id = $1;
 
 -- name: TouchLastSeen :exec
 UPDATE agents SET last_seen = NOW() WHERE id = $1;
+
+-- name: GetAgentSecretSHA256 :one
+SELECT secret_sha256 FROM agents WHERE id = $1;
+
+-- name: SetAgentSecretSHA256 :exec
+UPDATE agents SET secret_sha256 = $2 WHERE id = $1;
+
+-- name: TouchLastSeenIfStale :exec
+UPDATE agents
+SET last_seen = NOW()
+WHERE id = $1
+    AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '60 seconds');

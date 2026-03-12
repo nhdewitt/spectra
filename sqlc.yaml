@@ -9,6 +9,7 @@ sql:
       - "internal/database/migrations/004_schema_additions.up.sql"
       - "internal/database/migrations/005_current_metrics.up.sql"
       - "internal/database/migrations/006_users_sessions.up.sql"
+      - "internal/database/migrations/007_agent_sha256_secret.up.sql"
     gen:
       go:
         package: "database"

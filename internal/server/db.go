@@ -57,7 +57,7 @@ type DB interface {
 	GetOverview(ctx context.Context) ([]database.GetOverviewRow, error)
 
 	// Read API - agent management
-	GetAgent(ctx context.Context, id pgtype.UUID) (database.Agent, error)
+	GetAgent(ctx context.Context, id pgtype.UUID) (database.GetAgentRow, error)
 	DeleteAgent(ctx context.Context, id pgtype.UUID) error
 
 	// Read API - time-series metrics (timestamp)
@@ -83,6 +83,11 @@ type DB interface {
 	GetRecentCPU(ctx context.Context) ([]database.GetRecentCPURow, error)
 	GetRecentMemory(ctx context.Context) ([]database.GetRecentMemoryRow, error)
 	GetRecentDiskMax(ctx context.Context) ([]database.GetRecentDiskMaxRow, error)
+
+	// SHA-256 migration
+	GetAgentSecretSHA256(ctx context.Context, id pgtype.UUID) ([]byte, error)
+	SetAgentSecretSHA256(ctx context.Context, arg database.SetAgentSecretSHA256Params) error
+	TouchLastSeenIfStale(ctx context.Context, id pgtype.UUID) error
 }
 
 // Compile-time check that *database.Queries satisfies the DB interface.

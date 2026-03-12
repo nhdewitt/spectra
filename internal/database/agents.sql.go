@@ -36,9 +36,23 @@ SELECT id, secret_hash, hostname, os, platform, arch, cpu_model, cpu_cores, ram_
 FROM agents WHERE id = $1
 `
 
-func (q *Queries) GetAgent(ctx context.Context, id pgtype.UUID) (Agent, error) {
+type GetAgentRow struct {
+	ID           pgtype.UUID        `json:"id"`
+	SecretHash   string             `json:"secret_hash"`
+	Hostname     string             `json:"hostname"`
+	Os           pgtype.Text        `json:"os"`
+	Platform     pgtype.Text        `json:"platform"`
+	Arch         pgtype.Text        `json:"arch"`
+	CpuModel     pgtype.Text        `json:"cpu_model"`
+	CpuCores     pgtype.Int4        `json:"cpu_cores"`
+	RamTotal     pgtype.Int8        `json:"ram_total"`
+	RegisteredAt pgtype.Timestamptz `json:"registered_at"`
+	LastSeen     pgtype.Timestamptz `json:"last_seen"`
+}
+
+func (q *Queries) GetAgent(ctx context.Context, id pgtype.UUID) (GetAgentRow, error) {
 	row := q.db.QueryRow(ctx, getAgent, id)
-	var i Agent
+	var i GetAgentRow
 	err := row.Scan(
 		&i.ID,
 		&i.SecretHash,
@@ -64,6 +78,17 @@ func (q *Queries) GetAgentSecret(ctx context.Context, id pgtype.UUID) (string, e
 	var secret_hash string
 	err := row.Scan(&secret_hash)
 	return secret_hash, err
+}
+
+const getAgentSecretSHA256 = `-- name: GetAgentSecretSHA256 :one
+SELECT secret_sha256 FROM agents WHERE id = $1
+`
+
+func (q *Queries) GetAgentSecretSHA256(ctx context.Context, id pgtype.UUID) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getAgentSecretSHA256, id)
+	var secret_sha256 []byte
+	err := row.Scan(&secret_sha256)
+	return secret_sha256, err
 }
 
 const listAgents = `-- name: ListAgents :many
@@ -115,26 +140,28 @@ func (q *Queries) ListAgents(ctx context.Context) ([]ListAgentsRow, error) {
 }
 
 const registerAgent = `-- name: RegisterAgent :exec
-INSERT INTO agents (id, secret_hash, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO agents (id, secret_hash, secret_sha256, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 
 type RegisterAgentParams struct {
-	ID         pgtype.UUID `json:"id"`
-	SecretHash string      `json:"secret_hash"`
-	Hostname   string      `json:"hostname"`
-	Os         pgtype.Text `json:"os"`
-	Platform   pgtype.Text `json:"platform"`
-	Arch       pgtype.Text `json:"arch"`
-	CpuModel   pgtype.Text `json:"cpu_model"`
-	CpuCores   pgtype.Int4 `json:"cpu_cores"`
-	RamTotal   pgtype.Int8 `json:"ram_total"`
+	ID           pgtype.UUID `json:"id"`
+	SecretHash   string      `json:"secret_hash"`
+	SecretSha256 []byte      `json:"secret_sha256"`
+	Hostname     string      `json:"hostname"`
+	Os           pgtype.Text `json:"os"`
+	Platform     pgtype.Text `json:"platform"`
+	Arch         pgtype.Text `json:"arch"`
+	CpuModel     pgtype.Text `json:"cpu_model"`
+	CpuCores     pgtype.Int4 `json:"cpu_cores"`
+	RamTotal     pgtype.Int8 `json:"ram_total"`
 }
 
 func (q *Queries) RegisterAgent(ctx context.Context, arg RegisterAgentParams) error {
 	_, err := q.db.Exec(ctx, registerAgent,
 		arg.ID,
 		arg.SecretHash,
+		arg.SecretSha256,
 		arg.Hostname,
 		arg.Os,
 		arg.Platform,
@@ -146,12 +173,38 @@ func (q *Queries) RegisterAgent(ctx context.Context, arg RegisterAgentParams) er
 	return err
 }
 
+const setAgentSecretSHA256 = `-- name: SetAgentSecretSHA256 :exec
+UPDATE agents SET secret_sha256 = $2 WHERE id = $1
+`
+
+type SetAgentSecretSHA256Params struct {
+	ID           pgtype.UUID `json:"id"`
+	SecretSha256 []byte      `json:"secret_sha256"`
+}
+
+func (q *Queries) SetAgentSecretSHA256(ctx context.Context, arg SetAgentSecretSHA256Params) error {
+	_, err := q.db.Exec(ctx, setAgentSecretSHA256, arg.ID, arg.SecretSha256)
+	return err
+}
+
 const touchLastSeen = `-- name: TouchLastSeen :exec
 UPDATE agents SET last_seen = NOW() WHERE id = $1
 `
 
 func (q *Queries) TouchLastSeen(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, touchLastSeen, id)
+	return err
+}
+
+const touchLastSeenIfStale = `-- name: TouchLastSeenIfStale :exec
+UPDATE agents
+SET last_seen = NOW()
+WHERE id = $1
+    AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '60 seconds')
+`
+
+func (q *Queries) TouchLastSeenIfStale(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, touchLastSeenIfStale, id)
 	return err
 }
 

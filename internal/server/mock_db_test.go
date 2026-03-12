@@ -60,8 +60,9 @@ type MockDB struct {
 	TouchLastSeenCount     int
 
 	// Auth
-	Users    map[string]mockUser    // username -> user
-	Sessions map[string]mockSession // token -> session
+	Users       map[string]mockUser    // username -> user
+	Sessions    map[string]mockSession // token -> session
+	AgentSHA256 map[string][]byte      // agentID -> sha256 hash
 
 	// Sparkline seed data
 	recentCPU     []database.GetRecentCPURow
@@ -89,9 +90,10 @@ type mockSession struct {
 
 func NewMockDB() *MockDB {
 	return &MockDB{
-		Agents:   make(map[string]string),
-		Users:    make(map[string]mockUser),
-		Sessions: make(map[string]mockSession),
+		Agents:      make(map[string]string),
+		Users:       make(map[string]mockUser),
+		Sessions:    make(map[string]mockSession),
+		AgentSHA256: make(map[string][]byte),
 	}
 }
 
@@ -322,10 +324,10 @@ func (m *MockDB) GetOverview(_ context.Context) ([]database.GetOverviewRow, erro
 	return []database.GetOverviewRow{}, m.Err
 }
 
-func (m *MockDB) GetAgent(_ context.Context, _ pgtype.UUID) (database.Agent, error) {
+func (m *MockDB) GetAgent(_ context.Context, _ pgtype.UUID) (database.GetAgentRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return database.Agent{}, nil
+	return database.GetAgentRow{}, nil
 }
 
 func (m *MockDB) DeleteAgent(_ context.Context, _ pgtype.UUID) error {
@@ -557,4 +559,36 @@ func (m *MockDB) GetRecentDiskMax(_ context.Context) ([]database.GetRecentDiskMa
 		return m.recentDiskMax, nil
 	}
 	return []database.GetRecentDiskMaxRow{}, nil
+}
+
+func (m *MockDB) GetAgentSecretSHA256(_ context.Context, id pgtype.UUID) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	idStr := formatUUID(id)
+	hash, ok := m.AgentSHA256[idStr]
+	if !ok {
+		return nil, fmt.Errorf("no sha256 hash for agent")
+	}
+	return hash, nil
+}
+
+func (m *MockDB) SetAgentSecretSHA256(_ context.Context, args database.SetAgentSecretSHA256Params) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Err != nil {
+		return m.Err
+	}
+	idStr := formatUUID(args.ID)
+	m.AgentSHA256[idStr] = args.SecretSha256
+	return nil
+}
+
+func (m *MockDB) TouchLastSeenIfStale(_ context.Context, _ pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.TouchLastSeenCount++
+	return m.Err
 }
