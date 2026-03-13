@@ -20,6 +20,7 @@ import (
 	"unsafe"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
+	"github.com/nhdewitt/spectra/internal/util"
 )
 
 var lastCPURawData map[string]CPURaw
@@ -159,7 +160,7 @@ func calcCoreUsage(deltaMap map[string]CPUDelta) []float64 {
 	for i := range numCores {
 		coreKey := fmt.Sprintf("cpu%d", i)
 		if delta, ok := deltaMap[coreKey]; ok && delta.Total > 0 {
-			usage[i] = percent(delta.Used, delta.Total)
+			usage[i] = util.Percent(delta.Used, delta.Total)
 		}
 	}
 
