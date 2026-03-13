@@ -23,26 +23,26 @@ import (
 	"github.com/nhdewitt/spectra/internal/util"
 )
 
-var lastCPURawData map[string]CPURaw
+var lastRawData map[string]Raw
 
 func Collect(ctx context.Context) ([]protocol.Metric, error) {
-	cur, err := readCPURaw()
+	cur, err := readRaw()
 	if err != nil {
 		return nil, fmt.Errorf("reading cpu ticks: %v", err)
 	}
 
 	// First sample - store and skip
-	if len(lastCPURawData) == 0 {
-		lastCPURawData = cur
+	if len(lastRawData) == 0 {
+		lastRawData = cur
 		return nil, nil
 	}
 
-	deltaMap, ok := calculateCPUDeltas(cur, lastCPURawData)
+	deltaMap, ok := calculateDeltas(cur, lastRawData)
 	if !ok {
-		lastCPURawData = nil
+		lastRawData = nil
 		return nil, nil
 	}
-	lastCPURawData = cur
+	lastRawData = cur
 
 	usage := util.Percent(deltaMap["cpu"].Used, deltaMap["cpu"].Total)
 	coreUsage := calcCoreUsage(deltaMap)
@@ -61,9 +61,9 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 	}}, nil
 }
 
-// readCPURaw calls host_processor_info and returns per-core data
+// readRaw calls host_processor_info and returns per-core data
 // plus a cpu aggregate, matching the Linux map layout.
-func readCPURaw() (map[string]CPURaw, error) {
+func readRaw() (map[string]Raw, error) {
 	var numCPU C.natural_t
 	var cpuInfo C.processor_info_array_t
 	var numCPUInfo C.mach_msg_type_number_t
@@ -91,13 +91,13 @@ func readCPURaw() (map[string]CPURaw, error) {
 
 	info := unsafe.Slice((*C.integer_t)(unsafe.Pointer(cpuInfo)), int(numCPUInfo))
 
-	result := make(map[string]CPURaw, n+1)
-	var agg CPURaw
+	result := make(map[string]Raw, n+1)
+	var agg Raw
 
 	for i := range n {
 		base := i * C.CPU_STATE_MAX
 
-		raw := CPURaw{
+		raw := Raw{
 			User:   uint64(info[base+C.CPU_STATE_USER]),
 			Nice:   uint64(info[base+C.CPU_STATE_NICE]),
 			System: uint64(info[base+C.CPU_STATE_SYSTEM]),
@@ -117,8 +117,8 @@ func readCPURaw() (map[string]CPURaw, error) {
 	return result, nil
 }
 
-func calculateCPUDeltas(current, previous map[string]CPURaw) (map[string]CPUDelta, bool) {
-	deltaMap := make(map[string]CPUDelta)
+func calculateDeltas(current, previous map[string]Raw) (map[string]Delta, bool) {
+	deltaMap := make(map[string]Delta)
 
 	for key, cur := range current {
 		prev, ok := previous[key]
@@ -131,7 +131,7 @@ func calculateCPUDeltas(current, previous map[string]CPURaw) (map[string]CPUDelt
 			return nil, false
 		}
 
-		delta := CPUDelta{}
+		delta := Delta{}
 
 		delta.User = cur.User - prev.User
 		delta.Nice = cur.Nice - prev.Nice
@@ -153,7 +153,7 @@ func calculateCPUDeltas(current, previous map[string]CPURaw) (map[string]CPUDelt
 	return deltaMap, true
 }
 
-func calcCoreUsage(deltaMap map[string]CPUDelta) []float64 {
+func calcCoreUsage(deltaMap map[string]Delta) []float64 {
 	numCores := len(deltaMap) - 1
 	usage := make([]float64, numCores)
 
