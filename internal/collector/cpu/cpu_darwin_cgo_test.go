@@ -13,7 +13,7 @@ import (
 )
 
 func TestCollect_FirstSampleNil(t *testing.T) {
-	lastCPURawData = nil
+	lastRawData = nil
 
 	ctx := context.Background()
 	metrics, err := Collect(ctx)
@@ -24,13 +24,13 @@ func TestCollect_FirstSampleNil(t *testing.T) {
 	if metrics != nil {
 		t.Errorf("first sample should return nil, got %v", metrics)
 	}
-	if lastCPURawData == nil {
-		t.Fatal("lastCPURawData should be populated after first sample")
+	if lastRawData == nil {
+		t.Fatal("lastRawData should be populated after first sample")
 	}
 }
 
 func TestCollect_SecondSampleReturnsMetrics(t *testing.T) {
-	lastCPURawData = nil
+	lastRawData = nil
 
 	ctx := context.Background()
 
@@ -84,7 +84,7 @@ func TestCollect_SecondSampleReturnsMetrics(t *testing.T) {
 }
 
 func TestCollect_DeltasMonotonic(t *testing.T) {
-	lastCPURawData = nil
+	lastRawData = nil
 
 	ctx := context.Background()
 
@@ -125,7 +125,7 @@ func TestCollect_DeltasMonotonic(t *testing.T) {
 }
 
 func TestCollect_Cancellation(t *testing.T) {
-	lastCPURawData = nil
+	lastRawData = nil
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -134,8 +134,8 @@ func TestCollect_Cancellation(t *testing.T) {
 	_, _ = Collect(ctx)
 }
 
-func TestReadCPURaw(t *testing.T) {
-	raw, err := readCPURaw()
+func TestReadRaw(t *testing.T) {
+	raw, err := readRaw()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
