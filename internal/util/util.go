@@ -1,0 +1,97 @@
+package util
+
+import (
+	"log"
+	"strconv"
+	"strings"
+	"time"
+
+	"golang.org/x/exp/constraints"
+)
+
+type Numeric interface {
+	constraints.Integer | constraints.Float
+}
+
+func Percent[T Numeric](part, total T) float64 {
+	if total == 0 {
+		return 0.0
+	}
+	return (float64(part) / float64(total)) * 100.0
+}
+
+func Rate(delta uint64, seconds float64) uint64 {
+	if seconds <= 0 {
+		return 0
+	}
+	return uint64(float64(delta) / seconds)
+}
+
+func Delta(curr, prev uint64) uint64 {
+	if curr < prev {
+		return 0
+	}
+	return curr - prev
+}
+
+// makeUintParser returns a function that parses fields[i] as uint64,
+// logging errors with source context and returning 0 on failure.
+func MakeUintParser(fields []string, source string) func(int) uint64 {
+	return func(index int) uint64 {
+		v, err := strconv.ParseUint(fields[index], 10, 64)
+		if err != nil {
+			log.Printf("error parsing %s field[%d] = %q: %v", source, index, fields[index], err)
+			return 0
+		}
+		return v
+	}
+}
+
+// validateTimeDelta calulates seconds elapsed.
+// If valid (>0), it returns the delta.
+// If invalid (<=0), it logs a warning and returns 0.
+func ValidateTimeDelta(now, last time.Time, source string) float64 {
+	delta := now.Sub(last).Seconds()
+	if delta <= 0 {
+		log.Printf("Warning [%s]: Invalid time delta (%f sec). Clock skew? Now: %v, Last: %v", source, delta, now, last)
+		return 0
+	}
+
+	return delta
+}
+
+func IsDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+func CleanVendor(v string) string {
+	v = strings.TrimSpace(v)
+	// Strip email portion
+	if idx := strings.Index(v, "<"); idx >= 0 {
+		v = strings.TrimSpace(v[:idx])
+	}
+	if strings.Contains(v, "@") {
+		return ""
+	}
+	return v
+}
+
+func NormalizeMax(temp, v float64) *float64 {
+	if v <= 0 || v < temp || v >= 200 {
+		return nil
+	}
+	return &v
+}
+
+// charsToString converts a NUL-terminated C char buffer to a Go string.
+// It accepts both signed and unsigned byte representations.
+func CharsToString[T ~int8 | ~uint8](ca []T) string {
+	buf := make([]byte, 0, len(ca))
+	for _, c := range ca {
+		if c == 0 {
+			break
+		}
+		buf = append(buf, byte(c))
+	}
+	return string(buf)
+}

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nhdewitt/spectra/internal/collector"
+	"github.com/nhdewitt/spectra/internal/collector/disk"
 	"github.com/nhdewitt/spectra/internal/platform"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
@@ -35,7 +35,7 @@ type Config struct {
 type Agent struct {
 	Config     Config
 	Client     *http.Client
-	DriveCache *collector.DriveCache
+	DriveCache *disk.DriveCache
 
 	metricsCh chan protocol.Envelope
 	batch     []protocol.Envelope
@@ -109,7 +109,7 @@ func New(cfg Config) *Agent {
 	return &Agent{
 		Config:     cfg,
 		Client:     client,
-		DriveCache: collector.NewDriveCache(),
+		DriveCache: disk.NewDriveCache(),
 		metricsCh:  make(chan protocol.Envelope, 500),
 		batch:      make([]protocol.Envelope, 0, 50),
 		cancel:     nil,
@@ -142,7 +142,7 @@ func (a *Agent) Start() error {
 	}
 
 	// Mount Manager (Windows disk mapping)
-	go collector.RunMountManager(ctx, a.DriveCache, 30*time.Second)
+	go disk.RunMountManager(ctx, a.DriveCache, 30*time.Second)
 
 	// Metric Sender
 	a.wg.Add(1)

@@ -6,6 +6,18 @@ import (
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/collector"
+	"github.com/nhdewitt/spectra/internal/collector/containers"
+	"github.com/nhdewitt/spectra/internal/collector/cpu"
+	"github.com/nhdewitt/spectra/internal/collector/disk"
+	"github.com/nhdewitt/spectra/internal/collector/memory"
+	"github.com/nhdewitt/spectra/internal/collector/network"
+	"github.com/nhdewitt/spectra/internal/collector/pi"
+	"github.com/nhdewitt/spectra/internal/collector/processes"
+	"github.com/nhdewitt/spectra/internal/collector/services"
+	"github.com/nhdewitt/spectra/internal/collector/system"
+	"github.com/nhdewitt/spectra/internal/collector/temperature"
+	"github.com/nhdewitt/spectra/internal/collector/wifi"
+	"github.com/nhdewitt/spectra/internal/inventory"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
@@ -18,23 +30,23 @@ type job struct {
 func (a *Agent) startCollectors(ctx context.Context) {
 	c := collector.New(a.Config.Hostname, a.metricsCh)
 
-	diskCol := collector.MakeDiskCollector(a.DriveCache)
-	diskIOCol := collector.MakeDiskIOCollector(a.DriveCache)
-	svcCol := collector.MakeServiceCollector(a.Platform.SystemctlPath)
-	tempCol := collector.MakeTemperatureCollector(a.Platform.ThermalZones)
+	diskCol := disk.MakeDiskCollector(a.DriveCache)
+	diskIOCol := disk.MakeDiskIOCollector(a.DriveCache)
+	svcCol := services.MakeCollector(a.Platform.SystemctlPath)
+	tempCol := temperature.MakeCollector(a.Platform.ThermalZones)
 
 	jobs := []job{
-		{5 * time.Second, collector.CollectCPU},
-		{10 * time.Second, collector.CollectMemory},
-		{5 * time.Second, collector.CollectNetwork},
-		{300 * time.Second, collector.CollectSystem},
+		{5 * time.Second, cpu.Collect},
+		{10 * time.Second, memory.Collect},
+		{5 * time.Second, network.Collect},
+		{300 * time.Second, system.Collect},
 		{60 * time.Second, diskCol},
 		{5 * time.Second, diskIOCol},
 		{60 * time.Second, svcCol},
-		{15 * time.Second, collector.CollectProcesses},
+		{15 * time.Second, processes.Collect},
 		{10 * time.Second, tempCol},
-		{30 * time.Second, collector.CollectWiFi},
-		{60 * time.Second, collector.CollectContainers},
+		{30 * time.Second, wifi.Collect},
+		{60 * time.Second, containers.Collect},
 	}
 
 	for _, j := range jobs {
@@ -43,10 +55,10 @@ func (a *Agent) startCollectors(ctx context.Context) {
 
 	if a.Platform.IsRaspberryPi {
 		piJobs := []job{
-			{15 * time.Second, collector.CollectPiClocks},
-			{10 * time.Second, collector.CollectPiThrottle},
-			{60 * time.Second, collector.CollectPiVoltage},
-			{60 * time.Second, collector.CollectPiGPU},
+			{15 * time.Second, pi.CollectClocks},
+			{10 * time.Second, pi.CollectThrottle},
+			{60 * time.Second, pi.CollectVoltage},
+			{60 * time.Second, pi.CollectGPU},
 		}
 		for _, j := range piJobs {
 			go c.Run(ctx, j.Interval, j.Fn)
@@ -55,7 +67,7 @@ func (a *Agent) startCollectors(ctx context.Context) {
 
 	// Nightly tasks
 	go a.runNightly(ctx, 2, 0, func() {
-		apps, err := collector.GetInstalledApps(ctx)
+		apps, err := inventory.GetInstalledApps(ctx)
 		if err != nil {
 			log.Printf("nightly apps failed: %v", err)
 			return
@@ -69,7 +81,7 @@ func (a *Agent) startCollectors(ctx context.Context) {
 	})
 
 	go a.runNightly(ctx, 2, 5, func() {
-		metrics, err := collector.CollectUpdates(ctx)
+		metrics, err := inventory.GetUpdates(ctx)
 		if err != nil {
 			log.Printf("nightly updates failed: %v", err)
 			return

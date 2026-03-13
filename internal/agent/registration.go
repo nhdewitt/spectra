@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nhdewitt/spectra/internal/collector"
+	"github.com/nhdewitt/spectra/internal/hostinfo"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
 // Register gathers host info and sends it to the server.
 func (a *Agent) Register(ctx context.Context) error {
-	info := collector.CollectHostInfo()
+	info := hostinfo.CollectHostInfo()
 	info.Hostname = a.Config.Hostname
 
 	regReq := protocol.RegisterRequest{

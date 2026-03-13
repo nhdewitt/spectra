@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nhdewitt/spectra/internal/collector"
+	"github.com/nhdewitt/spectra/internal/collector/cpu"
+	"github.com/nhdewitt/spectra/internal/collector/disk"
 )
 
 func TestJob_Struct(t *testing.T) {
 	j := job{
 		Interval: 5 * time.Second,
-		Fn:       collector.CollectCPU,
+		Fn:       cpu.Collect,
 	}
 
 	if j.Interval != 5*time.Second {
@@ -56,8 +57,8 @@ func TestStartCollectors_ContextCancelled(t *testing.T) {
 }
 
 func TestMakeDiskCollector(t *testing.T) {
-	cache := collector.NewDriveCache()
-	diskCol := collector.MakeDiskCollector(cache)
+	cache := disk.NewDriveCache()
+	diskCol := disk.MakeDiskCollector(cache)
 
 	if diskCol == nil {
 		t.Error("MakeDiskCollector returned nil")
@@ -65,8 +66,8 @@ func TestMakeDiskCollector(t *testing.T) {
 }
 
 func TestMakeDiskIOCollector(t *testing.T) {
-	cache := collector.NewDriveCache()
-	diskIOCol := collector.MakeDiskIOCollector(cache)
+	cache := disk.NewDriveCache()
+	diskIOCol := disk.MakeDiskIOCollector(cache)
 
 	if diskIOCol == nil {
 		t.Error("MakeDiskIOCollector returned nil")
@@ -74,21 +75,21 @@ func TestMakeDiskIOCollector(t *testing.T) {
 }
 
 func BenchmarkMakeDiskCollector(b *testing.B) {
-	cache := collector.NewDriveCache()
+	cache := disk.NewDriveCache()
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = collector.MakeDiskCollector(cache)
+		_ = disk.MakeDiskCollector(cache)
 	}
 }
 
 func BenchmarkMakeDiskIOCollector(b *testing.B) {
-	cache := collector.NewDriveCache()
+	cache := disk.NewDriveCache()
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = collector.MakeDiskIOCollector(cache)
+		_ = disk.MakeDiskIOCollector(cache)
 	}
 }
