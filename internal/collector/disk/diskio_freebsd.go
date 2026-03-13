@@ -32,8 +32,8 @@ const (
 )
 
 var (
-	lastDiskIORaw  map[string]DiskIORaw
-	lastDiskIOTime time.Time
+	lastIORaw  map[string]IORaw
+	lastIOTime time.Time
 )
 
 // Standard C long is 8 bytes on amd64/arm64
@@ -44,7 +44,7 @@ const longSize = 8
 // this check will fail instead of silently misparsing data.
 var expectedDevstatSize = int(unsafe.Sizeof(Devstat{}))
 
-type DiskIORaw struct {
+type IORaw struct {
 	DeviceName string
 	ReadBytes  uint64
 	WriteBytes uint64
@@ -125,7 +125,7 @@ func CollectDiskIO(ctx context.Context, cache *DriveCache) ([]protocol.Metric, e
 	mountMap := loadMountMap(cache)
 
 	// Parse kernel stats
-	currentRaw, err := getDevstats(mountMap)
+	currentIORaw, err := getDevstats(mountMap)
 	if err != nil {
 		return nil, err
 	}
@@ -133,34 +133,34 @@ func CollectDiskIO(ctx context.Context, cache *DriveCache) ([]protocol.Metric, e
 	now := time.Now()
 
 	// Baseline
-	if len(lastDiskIORaw) == 0 {
-		lastDiskIORaw = currentRaw
-		lastDiskIOTime = now
+	if len(lastIORaw) == 0 {
+		lastIORaw = currentIORaw
+		lastIOTime = now
 		return nil, nil
 	}
 
-	elapsed := now.Sub(lastDiskIOTime).Seconds()
+	elapsed := now.Sub(lastIOTime).Seconds()
 	if elapsed <= 0 {
 		return nil, nil
 	}
 
-	result := make([]protocol.Metric, 0, len(currentRaw))
+	result := make([]protocol.Metric, 0, len(currentIORaw))
 
-	for device, curr := range currentRaw {
-		prev, ok := lastDiskIORaw[device]
+	for device, curr := range currentIORaw {
+		prev, ok := lastIORaw[device]
 		if !ok {
 			continue
 		}
 		result = append(result, buildDiskIOMetric(device, curr, prev, elapsed))
 	}
 
-	lastDiskIORaw = currentRaw
-	lastDiskIOTime = now
+	lastIORaw = currentIORaw
+	lastIOTime = now
 
 	return result, nil
 }
 
-func buildDiskIOMetric(device string, curr, prev DiskIORaw, elapsed float64) protocol.DiskIOMetric {
+func buildDiskIOMetric(device string, curr, prev IORaw, elapsed float64) protocol.DiskIOMetric {
 	return protocol.DiskIOMetric{
 		Device:     device,
 		ReadBytes:  uint64(float64(util.Delta(curr.ReadBytes, prev.ReadBytes)) / elapsed),
@@ -173,16 +173,16 @@ func buildDiskIOMetric(device string, curr, prev DiskIORaw, elapsed float64) pro
 	}
 }
 
-// getDevstats retrieves the raw devstat data from kern.devstat.all.
-func getDevstats(mountMap map[string]MountInfo) (map[string]DiskIORaw, error) {
-	data, err := unix.SysctlRaw("kern.devstat.all")
+// getDevstats retrieves the IORaw devstat data from kern.devstat.all.
+func getDevstats(mountMap map[string]MountInfo) (map[string]IORaw, error) {
+	data, err := unix.SysctlIORaw("kern.devstat.all")
 	if err != nil {
 		return nil, fmt.Errorf("sysctl kern.devstat.all: %w", err)
 	}
 	return parseDevStats(data, mountMap)
 }
 
-func parseDevStats(data []byte, mountMap map[string]MountInfo) (map[string]DiskIORaw, error) {
+func parseDevStats(data []byte, mountMap map[string]MountInfo) (map[string]IORaw, error) {
 	// kern.devstat.all is prefixed with a uint64 generation number
 	// skip it before parsing the struct
 	if len(data) < longSize {
@@ -205,7 +205,7 @@ func parseDevStats(data []byte, mountMap map[string]MountInfo) (map[string]DiskI
 	}
 
 	reader := bytes.NewReader(data)
-	result := make(map[string]DiskIORaw, len(mountMap))
+	result := make(map[string]IORaw, len(mountMap))
 
 	for reader.Len() > 0 {
 		var stat Devstat
@@ -229,7 +229,7 @@ func parseDevStats(data []byte, mountMap map[string]MountInfo) (map[string]DiskI
 			inProgress = uint64(stat.StartCount - stat.EndCount)
 		}
 
-		result[deviceKey] = DiskIORaw{
+		result[deviceKey] = IORaw{
 			DeviceName: deviceKey,
 			ReadOps:    stat.Operations[DEVSTAT_READ],
 			WriteOps:   stat.Operations[DEVSTAT_WRITE],

@@ -53,7 +53,7 @@ func TestParseIoregOutput(t *testing.T) {
 	}
 }
 
-func mapKeys(m map[string]DiskIORaw) []string {
+func mapKeys(m map[string]IORaw) []string {
 	k := make([]string, 0, len(m))
 	for key := range m {
 		k = append(k, key)
@@ -175,7 +175,7 @@ func TestParseIOMediaName(t *testing.T) {
 }
 
 func TestBuildDiskIOMetric(t *testing.T) {
-	prev := DiskIORaw{
+	prev := IORaw{
 		ReadBytes:  1000,
 		WriteBytes: 2000,
 		ReadOps:    10,
@@ -183,7 +183,7 @@ func TestBuildDiskIOMetric(t *testing.T) {
 		ReadTime:   100,
 		WriteTime:  200,
 	}
-	curr := DiskIORaw{
+	curr := IORaw{
 		ReadBytes:  6000,
 		WriteBytes: 12000,
 		ReadOps:    60,
@@ -233,8 +233,8 @@ func TestReadDiskIOStats_Integration(t *testing.T) {
 }
 
 func TestCollectDiskIO_FirstSampleNil(t *testing.T) {
-	lastDiskIORaw = nil
-	lastDiskIOTime = time.Time{}
+	lastIORaw = nil
+	lastIOTime = time.Time{}
 
 	ctx := context.Background()
 
@@ -248,8 +248,8 @@ func TestCollectDiskIO_FirstSampleNil(t *testing.T) {
 }
 
 func TestCollectDiskIO_SecondSample(t *testing.T) {
-	lastDiskIORaw = nil
-	lastDiskIOTime = time.Time{}
+	lastIORaw = nil
+	lastIOTime = time.Time{}
 
 	ctx := context.Background()
 
@@ -310,7 +310,7 @@ func BenchmarkParseStatsDict(b *testing.B) {
 }
 
 func BenchmarkBuildDiskIOMetric(b *testing.B) {
-	prev := DiskIORaw{
+	prev := IORaw{
 		ReadBytes:  1000,
 		WriteBytes: 2000,
 		ReadOps:    10,
@@ -319,7 +319,7 @@ func BenchmarkBuildDiskIOMetric(b *testing.B) {
 		WriteTime:  200,
 	}
 
-	cur := DiskIORaw{
+	cur := IORaw{
 		ReadBytes:  6000,
 		WriteBytes: 12000,
 		ReadOps:    60,

@@ -14,7 +14,7 @@ import (
 )
 
 // Package-level state for delta calculation.
-var lastCPURawData map[string]CPURaw
+var lastRawData map[string]Raw
 
 // structSize represents the 40-byte size of kern.cp_times data
 const structSize = 40
@@ -43,17 +43,17 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 	}
 
 	// Baseline
-	if len(lastCPURawData) == 0 {
-		lastCPURawData = cur
+	if len(lastRawData) == 0 {
+		lastRawData = cur
 		return nil, nil
 	}
 
-	deltaMap, ok := calculateCPUDeltas(cur, lastCPURawData)
+	deltaMap, ok := calculateDeltas(cur, lastRawData)
 	if !ok {
-		lastCPURawData = nil // reset on rollover or change
+		lastRawData = nil // reset on rollover or change
 		return nil, nil
 	}
-	lastCPURawData = cur
+	lastRawData = cur
 
 	usage := util.Percent(deltaMap["cpu"].Used, deltaMap["cpu"].Total)
 	coreUsage := calcCoreUsage(deltaMap)
@@ -72,11 +72,11 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 	}}, nil
 }
 
-// calculateCPUDeltas takes the current and previous raw maps and returns a map containing
+// calculateDeltas takes the current and previous raw maps and returns a map containing
 // the delta for each key (cpu, cpu0, ...)
 // The FreeBSD build does not track IOWait/SoftIRQ/Steal/Guest/GuestNice
-func calculateCPUDeltas(current, previous map[string]CPURaw) (map[string]CPUDelta, bool) {
-	deltaMap := make(map[string]CPUDelta)
+func calculateDeltas(current, previous map[string]Raw) (map[string]Delta, bool) {
+	deltaMap := make(map[string]Delta)
 
 	for key, cur := range current {
 		prev, ok := previous[key]
@@ -88,7 +88,7 @@ func calculateCPUDeltas(current, previous map[string]CPURaw) (map[string]CPUDelt
 			return nil, false
 		}
 
-		delta := CPUDelta{}
+		delta := Delta{}
 
 		delta.User = cur.User - prev.User
 		delta.Nice = cur.Nice - prev.Nice
@@ -111,8 +111,8 @@ func calculateCPUDeltas(current, previous map[string]CPURaw) (map[string]CPUDelt
 	return deltaMap, true
 }
 
-func getCPUTimes() (map[string]CPURaw, error) {
-	result := make(map[string]CPURaw)
+func getCPUTimes() (map[string]Raw, error) {
+	result := make(map[string]Raw)
 
 	// Aggregate CPU times: kern.cp_time
 	rawAgg, err := unix.SysctlRaw("kern.cp_time")
@@ -127,7 +127,7 @@ func getCPUTimes() (map[string]CPURaw, error) {
 
 	if len(aggStats) > 0 {
 		agg := aggStats[0]
-		result["cpu"] = CPURaw{
+		result["cpu"] = Raw{
 			User:   agg.User,
 			Nice:   agg.Nice,
 			System: agg.Sys,
@@ -149,7 +149,7 @@ func getCPUTimes() (map[string]CPURaw, error) {
 
 	for i, stats := range coreStats {
 		key := fmt.Sprintf("cpu%d", i)
-		result[key] = CPURaw{
+		result[key] = Raw{
 			User:   stats.User,
 			Nice:   stats.Nice,
 			System: stats.Sys,
@@ -218,7 +218,7 @@ func parseLoadAvg(data []byte) (load1, load5, load15 float64, err error) {
 	return load1, load5, load15, nil
 }
 
-func calcCoreUsage(deltaMap map[string]CPUDelta) []float64 {
+func calcCoreUsage(deltaMap map[string]Delta) []float64 {
 	numCores := len(deltaMap) - 1
 	if numCores < 0 {
 		return []float64{}

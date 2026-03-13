@@ -1,6 +1,6 @@
 package cpu
 
-type CPURaw struct {
+type Raw struct {
 	User      uint64
 	Nice      uint64
 	System    uint64
@@ -13,7 +13,7 @@ type CPURaw struct {
 	GuestNice uint64
 }
 
-type CPUDelta struct {
+type Delta struct {
 	User      uint64
 	Nice      uint64
 	System    uint64

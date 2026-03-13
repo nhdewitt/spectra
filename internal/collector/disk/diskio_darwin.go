@@ -17,11 +17,11 @@ import (
 )
 
 var (
-	lastDiskIORaw  map[string]DiskIORaw
-	lastDiskIOTime time.Time
+	lastIORaw  map[string]IORaw
+	lastIOTime time.Time
 )
 
-type DiskIORaw struct {
+type IORaw struct {
 	DeviceName string
 	ReadBytes  uint64
 	WriteBytes uint64
@@ -43,41 +43,41 @@ func MakeDiskIOCollector(_ *DriveCache) collector.CollectFunc {
 }
 
 func CollectDiskIO(ctx context.Context) ([]protocol.Metric, error) {
-	currentRaw, err := readDiskIOStats(ctx)
+	currentIORaw, err := readDiskIOStats(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	now := time.Now()
 
-	if len(lastDiskIORaw) == 0 {
-		lastDiskIORaw = currentRaw
-		lastDiskIOTime = now
+	if len(lastIORaw) == 0 {
+		lastIORaw = currentIORaw
+		lastIOTime = now
 		return nil, nil
 	}
 
-	elapsed := now.Sub(lastDiskIOTime).Seconds()
+	elapsed := now.Sub(lastIOTime).Seconds()
 	if elapsed <= 0 {
 		return nil, nil
 	}
 
-	result := make([]protocol.Metric, 0, len(currentRaw))
+	result := make([]protocol.Metric, 0, len(currentIORaw))
 
-	for device, cur := range currentRaw {
-		prev, ok := lastDiskIORaw[device]
+	for device, cur := range currentIORaw {
+		prev, ok := lastIORaw[device]
 		if !ok {
 			continue
 		}
 		result = append(result, buildDiskIOMetric(device, cur, prev, elapsed))
 	}
 
-	lastDiskIORaw = currentRaw
-	lastDiskIOTime = now
+	lastIORaw = currentIORaw
+	lastIOTime = now
 
 	return result, nil
 }
 
-func buildDiskIOMetric(device string, cur, prev DiskIORaw, elapsed float64) protocol.DiskIOMetric {
+func buildDiskIOMetric(device string, cur, prev IORaw, elapsed float64) protocol.DiskIOMetric {
 	return protocol.DiskIOMetric{
 		Device:     device,
 		ReadBytes:  uint64(float64(util.Delta(cur.ReadBytes, prev.ReadBytes)) / elapsed),
@@ -102,7 +102,7 @@ func buildDiskIOMetric(device string, cur, prev DiskIORaw, elapsed float64) prot
 //	| }
 //	|
 //	+-o APPLE SSD AP0128Q Media  <class IOMedia, ...>
-func readDiskIOStats(ctx context.Context) (map[string]DiskIORaw, error) {
+func readDiskIOStats(ctx context.Context) (map[string]IORaw, error) {
 	out, err := exec.CommandContext(
 		ctx, "ioreg", "-d", "2", "-c",
 		"IOBlockStorageDriver", "-r", "-w", "0",
@@ -114,8 +114,8 @@ func readDiskIOStats(ctx context.Context) (map[string]DiskIORaw, error) {
 	return parseIoregOutput(out), nil
 }
 
-func parseIoregOutput(out []byte) map[string]DiskIORaw {
-	result := make(map[string]DiskIORaw)
+func parseIoregOutput(out []byte) map[string]IORaw {
+	result := make(map[string]IORaw)
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 
 	var stats map[string]uint64
@@ -132,7 +132,7 @@ func parseIoregOutput(out []byte) map[string]DiskIORaw {
 		if stats != nil && strings.Contains(trimmed, "class IOMedia") {
 			name := parseIOMediaName(trimmed)
 			if name != "" {
-				result[name] = DiskIORaw{
+				result[name] = IORaw{
 					DeviceName: name,
 					ReadBytes:  stats[`Bytes (Read)`],
 					WriteBytes: stats[`Bytes (Write)`],

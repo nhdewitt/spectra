@@ -16,7 +16,7 @@ import (
 	"github.com/nhdewitt/spectra/internal/util"
 )
 
-func parseFixture(t *testing.T, key string) map[string]CPURaw {
+func parseFixture(t *testing.T, key string) map[string]Raw {
 	t.Helper()
 
 	s, ok := procStatSamples[key]
@@ -42,7 +42,7 @@ func BenchmarkCollect(b *testing.B) {
 
 func BenchmarkCollect_FullCycle(b *testing.B) {
 	ctx := context.Background()
-	lastCPURawData = nil
+	lastRawData = nil
 
 	// Baseline
 	Collect(ctx)
@@ -54,7 +54,7 @@ func BenchmarkCollect_FullCycle(b *testing.B) {
 }
 
 func BenchmarkCalcCoreUsage_Allocs(b *testing.B) {
-	deltaMap := map[string]CPUDelta{
+	deltaMap := map[string]Delta{
 		"cpu":  {Used: 100, Total: 200},
 		"cpu0": {Used: 50, Total: 100},
 		"cpu1": {Used: 75, Total: 100},
@@ -73,13 +73,13 @@ func TestParseCPULine(t *testing.T) {
 	tests := []struct {
 		name    string
 		line    string
-		want    CPURaw
+		want    Raw
 		wantErr bool
 	}{
 		{
 			name: "valid aggregate cpu line",
 			line: "cpu  1000 200 300 5000 100 50 25 10 5 3",
-			want: CPURaw{
+			want: Raw{
 				User:      1000,
 				Nice:      200,
 				System:    300,
@@ -96,7 +96,7 @@ func TestParseCPULine(t *testing.T) {
 		{
 			name: "valid per-core cpu line",
 			line: "cpu0 500 100 150 2500 50 25 12 5 2 1",
-			want: CPURaw{
+			want: Raw{
 				User:      500,
 				Nice:      100,
 				System:    150,
@@ -113,7 +113,7 @@ func TestParseCPULine(t *testing.T) {
 		{
 			name: "large values (uint64 range)",
 			line: "cpu  18446744073709551615 0 0 0 0 0 0 0 0 0",
-			want: CPURaw{
+			want: Raw{
 				User: 18446744073709551615,
 			},
 			wantErr: false,
@@ -121,13 +121,13 @@ func TestParseCPULine(t *testing.T) {
 		{
 			name:    "insufficient fields",
 			line:    "cpu 100 200 300",
-			want:    CPURaw{},
+			want:    Raw{},
 			wantErr: true,
 		},
 		{
 			name:    "empty line",
 			line:    "",
-			want:    CPURaw{},
+			want:    Raw{},
 			wantErr: true,
 		},
 	}
@@ -149,22 +149,22 @@ func TestParseCPULine(t *testing.T) {
 func TestCalculateDelta(t *testing.T) {
 	tests := []struct {
 		name     string
-		current  map[string]CPURaw
-		previous map[string]CPURaw
+		current  map[string]Raw
+		previous map[string]Raw
 		wantKey  string
-		want     CPUDelta
+		want     Delta
 		wantOK   bool
 	}{
 		{
 			name: "basic delta calculation",
-			current: map[string]CPURaw{
+			current: map[string]Raw{
 				"cpu": {User: 200, Nice: 20, System: 50, Idle: 1000, IOWait: 10, IRQ: 5, SoftIRQ: 3, Steal: 1, Guest: 4, GuestNice: 2},
 			},
-			previous: map[string]CPURaw{
+			previous: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0, Guest: 2, GuestNice: 1},
 			},
 			wantKey: "cpu",
-			want: CPUDelta{
+			want: Delta{
 				User:      100,
 				Nice:      10,
 				System:    25,
@@ -182,14 +182,14 @@ func TestCalculateDelta(t *testing.T) {
 		},
 		{
 			name: "zero delta (no change)",
-			current: map[string]CPURaw{
+			current: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0, Guest: 0, GuestNice: 0},
 			},
-			previous: map[string]CPURaw{
+			previous: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0, Guest: 0, GuestNice: 0},
 			},
 			wantKey: "cpu",
-			want: CPUDelta{
+			want: Delta{
 				Total: 0,
 				Used:  0,
 			},
@@ -197,14 +197,14 @@ func TestCalculateDelta(t *testing.T) {
 		},
 		{
 			name: "high CPU usage scenario",
-			current: map[string]CPURaw{
+			current: map[string]Raw{
 				"cpu": {User: 1000, Nice: 0, System: 500, Idle: 100, IOWait: 0, IRQ: 0, SoftIRQ: 0, Steal: 0, Guest: 0, GuestNice: 0},
 			},
-			previous: map[string]CPURaw{
+			previous: map[string]Raw{
 				"cpu": {User: 0, Nice: 0, System: 0, Idle: 0, IOWait: 0, IRQ: 0, SoftIRQ: 0, Steal: 0, Guest: 0, GuestNice: 0},
 			},
 			wantKey: "cpu",
-			want: CPUDelta{
+			want: Delta{
 				User:   1000,
 				System: 500,
 				Idle:   100,
@@ -215,14 +215,14 @@ func TestCalculateDelta(t *testing.T) {
 		},
 		{
 			name: "guest time not double-counted",
-			current: map[string]CPURaw{
+			current: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 0, Idle: 0, IOWait: 0, IRQ: 0, SoftIRQ: 0, Steal: 0, Guest: 50, GuestNice: 5},
 			},
-			previous: map[string]CPURaw{
+			previous: map[string]Raw{
 				"cpu": {User: 0, Nice: 0, System: 0, Idle: 0, IOWait: 0, IRQ: 0, SoftIRQ: 0, Steal: 0, Guest: 0, GuestNice: 0},
 			},
 			wantKey: "cpu",
-			want: CPUDelta{
+			want: Delta{
 				User:      100,
 				Nice:      10,
 				Guest:     50,
@@ -236,34 +236,34 @@ func TestCalculateDelta(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := calculateCPUDeltas(tt.current, tt.previous)
+			got, ok := calculateDeltas(tt.current, tt.previous)
 			if ok != tt.wantOK {
-				t.Fatalf("calculateCPUDeltas() ok = %v, want %v", ok, tt.wantOK)
+				t.Fatalf("calculateDeltas() ok = %v, want %v", ok, tt.wantOK)
 			}
 			if !ok {
 				return
 			}
 			delta, exists := got[tt.wantKey]
 			if !exists {
-				t.Fatalf("calculateCPUDeltas() missing key %q", tt.wantKey)
+				t.Fatalf("calculateDeltas() missing key %q", tt.wantKey)
 			}
 			if delta != tt.want {
-				t.Errorf("calculateCPUDeltas()[%q] = %+v, want %+v", tt.wantKey, delta, tt.want)
+				t.Errorf("calculateDeltas()[%q] = %+v, want %+v", tt.wantKey, delta, tt.want)
 			}
 		})
 	}
 }
 
 func TestCalculateDelta_MissingPreviousKey(t *testing.T) {
-	current := map[string]CPURaw{
+	current := map[string]Raw{
 		"cpu":  {User: 100},
 		"cpu0": {User: 50},
 	}
-	previous := map[string]CPURaw{
+	previous := map[string]Raw{
 		"cpu": {User: 50},
 	}
 
-	got, ok := calculateCPUDeltas(current, previous)
+	got, ok := calculateDeltas(current, previous)
 
 	if ok {
 		t.Error("expected ok=-false when previous key is missing")
@@ -277,12 +277,12 @@ func TestCalculateDelta_MissingPreviousKey(t *testing.T) {
 func TestCalcCoreUsage(t *testing.T) {
 	tests := []struct {
 		name     string
-		deltaMap map[string]CPUDelta
+		deltaMap map[string]Delta
 		want     []float64
 	}{
 		{
 			name: "two cores with varying usage",
-			deltaMap: map[string]CPUDelta{
+			deltaMap: map[string]Delta{
 				"cpu":  {Used: 100, Total: 200},
 				"cpu0": {Used: 50, Total: 100},
 				"cpu1": {Used: 75, Total: 100},
@@ -291,7 +291,7 @@ func TestCalcCoreUsage(t *testing.T) {
 		},
 		{
 			name: "four cores",
-			deltaMap: map[string]CPUDelta{
+			deltaMap: map[string]Delta{
 				"cpu":  {Used: 100, Total: 400},
 				"cpu0": {Used: 0, Total: 100},
 				"cpu1": {Used: 25, Total: 100},
@@ -302,7 +302,7 @@ func TestCalcCoreUsage(t *testing.T) {
 		},
 		{
 			name: "single core",
-			deltaMap: map[string]CPUDelta{
+			deltaMap: map[string]Delta{
 				"cpu":  {Used: 80, Total: 100},
 				"cpu0": {Used: 80, Total: 100},
 			},
@@ -310,7 +310,7 @@ func TestCalcCoreUsage(t *testing.T) {
 		},
 		{
 			name: "no cores (only aggregate)",
-			deltaMap: map[string]CPUDelta{
+			deltaMap: map[string]Delta{
 				"cpu": {Used: 50, Total: 100},
 			},
 			want: []float64{},
@@ -334,7 +334,7 @@ func TestCalcCoreUsage(t *testing.T) {
 
 func TestCalcCoreUsage_ZeroTotal(t *testing.T) {
 	// Edge case: what happens with zero total (first sample or error)?
-	deltaMap := map[string]CPUDelta{
+	deltaMap := map[string]Delta{
 		"cpu":  {Used: 0, Total: 0},
 		"cpu0": {Used: 0, Total: 0},
 	}
@@ -348,7 +348,7 @@ func TestCalcCoreUsage_ZeroTotal(t *testing.T) {
 
 func TestCalcCoreUsage_SparseCores(t *testing.T) {
 	// Edge case: What if cpu1 is missing but cpu0 and cpu2 exist?
-	deltaMap := map[string]CPUDelta{
+	deltaMap := map[string]Delta{
 		"cpu":  {Used: 100, Total: 200},
 		"cpu0": {Used: 50, Total: 100},
 		// cpu1 missing
@@ -374,24 +374,24 @@ func BenchmarkParseCPULine(b *testing.B) {
 }
 
 func BenchmarkCalculateDelta(b *testing.B) {
-	current := map[string]CPURaw{
+	current := map[string]Raw{
 		"cpu":  {User: 200, Nice: 20, System: 50, Idle: 1000, IOWait: 10, IRQ: 5, SoftIRQ: 3, Steal: 1, Guest: 0},
 		"cpu0": {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0, Guest: 0},
 		"cpu1": {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 3, SoftIRQ: 2, Steal: 1, Guest: 0},
 	}
-	previous := map[string]CPURaw{
+	previous := map[string]Raw{
 		"cpu":  {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0, Guest: 0},
 		"cpu0": {User: 50, Nice: 5, System: 12, Idle: 250, IOWait: 2, IRQ: 1, SoftIRQ: 0, Steal: 0, Guest: 0},
 		"cpu1": {User: 50, Nice: 5, System: 12, Idle: 250, IOWait: 2, IRQ: 1, SoftIRQ: 1, Steal: 0, Guest: 0},
 	}
 
 	for b.Loop() {
-		_, _ = calculateCPUDeltas(current, previous)
+		_, _ = calculateDeltas(current, previous)
 	}
 }
 
 func BenchmarkCalcCoreUsage(b *testing.B) {
-	deltaMap := map[string]CPUDelta{
+	deltaMap := map[string]Delta{
 		"cpu":  {Used: 100, Total: 200},
 		"cpu0": {Used: 50, Total: 100},
 		"cpu1": {Used: 75, Total: 100},
@@ -462,7 +462,7 @@ func TestCollect_Integration(t *testing.T) {
 		t.Skip("skipping: requires Linux /proc filesystem")
 	}
 
-	lastCPURawData = nil
+	lastRawData = nil
 	ctx := context.Background()
 
 	// First call - baseline
@@ -489,21 +489,21 @@ func TestCollect_Integration(t *testing.T) {
 
 func TestCollect_CounterReset(t *testing.T) {
 	// Simulate what happens when counters reset (reboot, overflow)
-	lastCPURawData = map[string]CPURaw{
+	lastRawData = map[string]Raw{
 		"cpu": {User: 1000, Nice: 100, System: 500, Idle: 5000, IOWait: 50, IRQ: 10, SoftIRQ: 5, Steal: 0},
 	}
 
 	ctx := context.Background()
 	metrics, err := Collect(ctx)
-	// After reset detection, lastCPURawData should be nil
+	// After reset detection, lastRawData should be nil
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if metrics != nil {
 		t.Error("expected nil metrics after counter reset")
 	}
-	if lastCPURawData != nil {
-		t.Error("expected lastCPURawData to be reset to nil")
+	if lastRawData != nil {
+		t.Error("expected lastRawData to be reset to nil")
 	}
 }
 
@@ -660,7 +660,7 @@ func createTempFile(t *testing.T, content string) string {
 
 // parseProcStatContent parses a /proc/stat format file for testing.
 // This mirrors parseProcStat but accepts a filepath.
-func parseProcStatContent(t *testing.T, path string) map[string]CPURaw {
+func parseProcStatContent(t *testing.T, path string) map[string]Raw {
 	t.Helper()
 
 	data, err := os.ReadFile(path)
@@ -668,7 +668,7 @@ func parseProcStatContent(t *testing.T, path string) map[string]CPURaw {
 		t.Fatalf("failed to read file: %v", err)
 	}
 
-	result := make(map[string]CPURaw)
+	result := make(map[string]Raw)
 	for _, line := range strings.Split(string(data), "\n") {
 		if !strings.HasPrefix(line, "cpu") {
 			break
@@ -765,18 +765,18 @@ func TestCollect_StateReset(t *testing.T) {
 		t.Skip("skipping: requires Linux /proc filesystem")
 	}
 
-	lastCPURawData = nil
+	lastRawData = nil
 	ctx := context.Background()
 
 	_, _ = Collect(ctx)
 
-	if lastCPURawData == nil {
-		t.Error("lastCPURawData should be set after first collection")
+	if lastRawData == nil {
+		t.Error("lastRawData should be set after first collection")
 	}
 
-	lastCPURawData = nil
-	if lastCPURawData != nil {
-		t.Error("lastCPURawData should be nil after reset")
+	lastRawData = nil
+	if lastRawData != nil {
+		t.Error("lastRawData should be nil after reset")
 	}
 }
 
@@ -787,7 +787,7 @@ func TestCollect_SequentialCalls(t *testing.T) {
 		t.Skip("skipping: requires Linux /proc filesystem")
 	}
 
-	lastCPURawData = nil
+	lastRawData = nil
 	ctx := context.Background()
 
 	_, _ = Collect(ctx)
@@ -806,42 +806,42 @@ func TestCollect_SequentialCalls(t *testing.T) {
 func TestCalculateDelta_CounterRegression(t *testing.T) {
 	tests := []struct {
 		name     string
-		current  map[string]CPURaw
-		previous map[string]CPURaw
+		current  map[string]Raw
+		previous map[string]Raw
 	}{
 		{
 			name: "user counter decreased",
-			current: map[string]CPURaw{
+			current: map[string]Raw{
 				"cpu": {User: 50, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0},
 			},
-			previous: map[string]CPURaw{
+			previous: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0},
 			},
 		},
 		{
 			name: "idle counter decreased",
-			current: map[string]CPURaw{
+			current: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 25, Idle: 400, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0},
 			},
-			previous: map[string]CPURaw{
+			previous: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0},
 			},
 		},
 		{
 			name: "system counter decreased",
-			current: map[string]CPURaw{
+			current: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 20, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0},
 			},
-			previous: map[string]CPURaw{
+			previous: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0},
 			},
 		},
 		{
 			name: "steal counter decreased",
-			current: map[string]CPURaw{
+			current: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 0},
 			},
-			previous: map[string]CPURaw{
+			previous: map[string]Raw{
 				"cpu": {User: 100, Nice: 10, System: 25, Idle: 500, IOWait: 5, IRQ: 2, SoftIRQ: 1, Steal: 5},
 			},
 		},
@@ -849,7 +849,7 @@ func TestCalculateDelta_CounterRegression(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := calculateCPUDeltas(tt.current, tt.previous)
+			got, ok := calculateDeltas(tt.current, tt.previous)
 			if ok {
 				t.Error("expected ok=false when counter decreased")
 			}
@@ -905,14 +905,14 @@ func TestProcStatFromDeltas(t *testing.T) {
 		name      string
 		fixtures  []string
 		wantOK    bool
-		wantDelta CPUDelta
+		wantDelta Delta
 		wantUsage float64
 	}{
 		{
 			name:     "normal usage",
 			fixtures: []string{"delta_normal_t0", "delta_normal_t1"},
 			wantOK:   true,
-			wantDelta: CPUDelta{
+			wantDelta: Delta{
 				User: 1000, Nice: 100, System: 500, Idle: 8000, IOWait: 200, IRQ: 10, SoftIRQ: 20, Steal: 5, Total: 9835, Used: 1635,
 			},
 			wantUsage: 16.62,
@@ -921,7 +921,7 @@ func TestProcStatFromDeltas(t *testing.T) {
 			name:     "high cpu",
 			fixtures: []string{"delta_high_cpu_t0", "delta_high_cpu_t1"},
 			wantOK:   true,
-			wantDelta: CPUDelta{
+			wantDelta: Delta{
 				User: 9000, Nice: 100, System: 800, Idle: 100, IOWait: 50, IRQ: 20, SoftIRQ: 30, Steal: 0, Total: 10100, Used: 9950,
 			},
 			wantUsage: 98.51,
@@ -930,7 +930,7 @@ func TestProcStatFromDeltas(t *testing.T) {
 			name:     "idle system",
 			fixtures: []string{"delta_idle_t0", "delta_idle_t1"},
 			wantOK:   true,
-			wantDelta: CPUDelta{
+			wantDelta: Delta{
 				User: 10, Nice: 0, System: 5, Idle: 10000, IOWait: 5, IRQ: 0, SoftIRQ: 0, Steal: 0, Total: 10020, Used: 15,
 			},
 			wantUsage: 0.15,
@@ -952,7 +952,7 @@ func TestProcStatFromDeltas(t *testing.T) {
 			prev := parseFixture(t, tt.fixtures[0])
 			cur := parseFixture(t, tt.fixtures[1])
 
-			deltaMap, ok := calculateCPUDeltas(cur, prev)
+			deltaMap, ok := calculateDeltas(cur, prev)
 			if ok != tt.wantOK {
 				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
 			}

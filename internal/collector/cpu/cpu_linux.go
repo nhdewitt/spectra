@@ -16,7 +16,7 @@ import (
 )
 
 // Package-level state for delta calculation
-var lastCPURawData map[string]CPURaw
+var lastRawData map[string]Raw
 
 func Collect(ctx context.Context) ([]protocol.Metric, error) {
 	cur, err := parseProcStat()
@@ -25,17 +25,17 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 	}
 
 	// First sample - store and skip
-	if len(lastCPURawData) == 0 {
-		lastCPURawData = cur
+	if len(lastRawData) == 0 {
+		lastRawData = cur
 		return nil, nil
 	}
 
-	deltaMap, ok := calculateCPUDeltas(cur, lastCPURawData)
+	deltaMap, ok := calculateDeltas(cur, lastRawData)
 	if !ok {
-		lastCPURawData = nil
+		lastRawData = nil
 		return nil, nil
 	}
-	lastCPURawData = cur
+	lastRawData = cur
 
 	usage := util.Percent(deltaMap["cpu"].Used, deltaMap["cpu"].Total)
 	iowait := util.Percent(deltaMap["cpu"].IOWait, deltaMap["cpu"].Total)
@@ -56,10 +56,10 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 	}}, nil
 }
 
-// calculateCPUDeltas takes the current and previous raw maps and returns a map containing
+// calculateDeltas takes the current and previous raw maps and returns a map containing
 // the delta for each key (cpu, cpu0, ...)
-func calculateCPUDeltas(current, previous map[string]CPURaw) (map[string]CPUDelta, bool) {
-	deltaMap := make(map[string]CPUDelta)
+func calculateDeltas(current, previous map[string]Raw) (map[string]Delta, bool) {
+	deltaMap := make(map[string]Delta)
 
 	for key, cur := range current {
 		prev, ok := previous[key]
@@ -72,7 +72,7 @@ func calculateCPUDeltas(current, previous map[string]CPURaw) (map[string]CPUDelt
 			return nil, false
 		}
 
-		delta := CPUDelta{}
+		delta := Delta{}
 
 		delta.User = cur.User - prev.User
 		delta.Nice = cur.Nice - prev.Nice
@@ -95,7 +95,7 @@ func calculateCPUDeltas(current, previous map[string]CPURaw) (map[string]CPUDelt
 	return deltaMap, true
 }
 
-func parseProcStat() (map[string]CPURaw, error) {
+func parseProcStat() (map[string]Raw, error) {
 	f, err := os.Open("/proc/stat")
 	if err != nil {
 		return nil, err
@@ -105,8 +105,8 @@ func parseProcStat() (map[string]CPURaw, error) {
 	return parseProcStatFrom(f)
 }
 
-func parseProcStatFrom(r io.Reader) (map[string]CPURaw, error) {
-	result := make(map[string]CPURaw)
+func parseProcStatFrom(r io.Reader) (map[string]Raw, error) {
+	result := make(map[string]Raw)
 	scanner := bufio.NewScanner(r)
 
 	for scanner.Scan() {
@@ -127,15 +127,15 @@ func parseProcStatFrom(r io.Reader) (map[string]CPURaw, error) {
 	return result, scanner.Err()
 }
 
-func parseCPULine(line string) (CPURaw, error) {
+func parseCPULine(line string) (Raw, error) {
 	fields := strings.Fields(line)
 	if len(fields) < 11 {
-		return CPURaw{}, fmt.Errorf("insufficient fields: %d", len(fields))
+		return Raw{}, fmt.Errorf("insufficient fields: %d", len(fields))
 	}
 
 	parse := util.MakeUintParser(fields, "/proc/stat")
 
-	return CPURaw{
+	return Raw{
 		User:      parse(1),
 		Nice:      parse(2),
 		System:    parse(3),
@@ -152,7 +152,7 @@ func parseCPULine(line string) (CPURaw, error) {
 // calcCoreUsage returns per-core CPU usage util.Percentages.
 // Assumes contiguous core numbering (cpu0, cpu1, ..., cpuN-1).
 // Missing cores will show 0% usage.
-func calcCoreUsage(deltaMap map[string]CPUDelta) []float64 {
+func calcCoreUsage(deltaMap map[string]Delta) []float64 {
 	numCores := len(deltaMap) - 1 // exclude aggregate "cpu"
 	usage := make([]float64, numCores)
 

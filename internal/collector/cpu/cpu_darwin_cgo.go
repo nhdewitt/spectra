@@ -44,7 +44,7 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 	}
 	lastCPURawData = cur
 
-	usage := percent(deltaMap["cpu"].Used, deltaMap["cpu"].Total)
+	usage := util.Percent(deltaMap["cpu"].Used, deltaMap["cpu"].Total)
 	coreUsage := calcCoreUsage(deltaMap)
 
 	load1, load5, load15, err := parseLoadAvg()

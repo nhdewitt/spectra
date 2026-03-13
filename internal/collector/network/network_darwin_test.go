@@ -10,8 +10,8 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-func TestCollectNetworkRaw(t *testing.T) {
-	raw, err := collectNetworkRaw()
+func TestCollectRaw(t *testing.T) {
+	raw, err := collectRaw()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestCollectNetworkRaw(t *testing.T) {
 }
 
 func TestCollect_FirstSampleNil(t *testing.T) {
-	lastNetworkRaw = nil
+	lastRaw = nil
 	lastNetworkTime = time.Time{}
 
 	ctx := context.Background()
@@ -50,7 +50,7 @@ func TestCollect_FirstSampleNil(t *testing.T) {
 }
 
 func TestCollect_SecondSample(t *testing.T) {
-	lastNetworkRaw = nil
+	lastRaw = nil
 	lastNetworkTime = time.Time{}
 
 	ctx := context.Background()
@@ -77,8 +77,8 @@ func TestCollect_SecondSample(t *testing.T) {
 	}
 }
 
-func TestCollectNetworkRaw_HasTraffic(t *testing.T) {
-	raw, err := collectNetworkRaw()
+func TestCollectRaw_HasTraffic(t *testing.T) {
+	raw, err := collectRaw()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -96,8 +96,8 @@ func TestCollectNetworkRaw_HasTraffic(t *testing.T) {
 	}
 }
 
-func BenchmarkCollectNetworkRaw(b *testing.B) {
+func BenchmarkCollectRaw(b *testing.B) {
 	for b.Loop() {
-		_, _ = collectNetworkRaw()
+		_, _ = collectRaw()
 	}
 }

@@ -19,13 +19,13 @@ const bytesPerSector float64 = 512.0
 
 var (
 	// Persistent state: Mape of device name to its cumulative I/O stats from the last run.
-	lastDiskIORaw map[string]DiskIORaw
+	lastIORaw map[string]IORaw
 
 	// Package-level variable to track the last successful run time
-	lastDiskIOTime time.Time
+	lastIOTime time.Time
 )
 
-type DiskIORaw struct {
+type IORaw struct {
 	DeviceName   string // Field 2
 	ReadSectors  uint64 // Field 4 (512-byte sectors)
 	WriteSectors uint64 // Field 8 (512-byte sectors)
@@ -36,7 +36,7 @@ type DiskIORaw struct {
 	InProgress   uint64 // Field 11
 }
 
-type DiskIODelta struct {
+type Delta struct {
 	ReadOps      uint64
 	ReadSectors  uint64
 	WriteOps     uint64
@@ -54,28 +54,28 @@ func MakeDiskIOCollector(cache *DriveCache) collector.CollectFunc {
 func CollectDiskIO(ctx context.Context, cache *DriveCache) ([]protocol.Metric, error) {
 	mountMap := loadMountMap(cache)
 
-	currentRaw, err := parseProcDiskstats(mountMap)
+	currentIORaw, err := parseProcDiskstats(mountMap)
 	if err != nil {
 		return nil, err
 	}
 
 	now := time.Now()
 
-	if len(lastDiskIORaw) == 0 {
-		lastDiskIORaw = currentRaw
-		lastDiskIOTime = now
+	if len(lastIORaw) == 0 {
+		lastIORaw = currentIORaw
+		lastIOTime = now
 		return nil, nil
 	}
 
-	elapsed := now.Sub(lastDiskIOTime).Seconds()
+	elapsed := now.Sub(lastIOTime).Seconds()
 	if elapsed <= 0 {
 		return nil, nil
 	}
 
-	result := make([]protocol.Metric, 0, len(currentRaw))
+	result := make([]protocol.Metric, 0, len(currentIORaw))
 
-	for device, curr := range currentRaw {
-		prev, ok := lastDiskIORaw[device]
+	for device, curr := range currentIORaw {
+		prev, ok := lastIORaw[device]
 		if !ok {
 			continue
 		}
@@ -83,13 +83,13 @@ func CollectDiskIO(ctx context.Context, cache *DriveCache) ([]protocol.Metric, e
 		result = append(result, buildDiskIOMetric(device, curr, prev, elapsed))
 	}
 
-	lastDiskIORaw = currentRaw
-	lastDiskIOTime = now
+	lastIORaw = currentIORaw
+	lastIOTime = now
 
 	return result, nil
 }
 
-func buildDiskIOMetric(device string, curr, prev DiskIORaw, elapsed float64) protocol.DiskIOMetric {
+func buildDiskIOMetric(device string, curr, prev IORaw, elapsed float64) protocol.DiskIOMetric {
 	readBytesDelta := float64(curr.ReadSectors-prev.ReadSectors) * bytesPerSector
 	writeBytesDelta := float64(curr.WriteSectors-prev.WriteSectors) * bytesPerSector
 
@@ -105,14 +105,14 @@ func buildDiskIOMetric(device string, curr, prev DiskIORaw, elapsed float64) pro
 	}
 }
 
-func parseProcDiskstats(mountMap map[string]MountInfo) (map[string]DiskIORaw, error) {
+func parseProcDiskstats(mountMap map[string]MountInfo) (map[string]IORaw, error) {
 	f, err := os.Open("/proc/diskstats")
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	result := make(map[string]DiskIORaw)
+	result := make(map[string]IORaw)
 	scanner := bufio.NewScanner(f)
 
 	for scanner.Scan() {
@@ -126,19 +126,19 @@ func parseProcDiskstats(mountMap map[string]MountInfo) (map[string]DiskIORaw, er
 			continue
 		}
 
-		result[device] = parseDiskIORaw(device, fields)
+		result[device] = parseIORaw(device, fields)
 	}
 
 	return result, scanner.Err()
 }
 
-func parseDiskIORaw(device string, fields []string) DiskIORaw {
+func parseIORaw(device string, fields []string) IORaw {
 	parse := func(index int) uint64 {
 		v, _ := strconv.ParseUint(fields[index], 10, 64)
 		return v
 	}
 
-	return DiskIORaw{
+	return IORaw{
 		DeviceName:   device,
 		ReadOps:      parse(3),
 		ReadSectors:  parse(5),

@@ -96,45 +96,45 @@ func TestParseLoadAvg_OK(t *testing.T) {
 	assertApprox(t, l15, 5.0, 1e-12)
 }
 
-func TestCalculateCPUDeltas_MissingKey(t *testing.T) {
-	cur := map[string]CPURaw{
+func TestCalculateDeltas_MissingKey(t *testing.T) {
+	cur := map[string]Raw{
 		"cpu": {User: 2, Nice: 0, System: 0, IRQ: 0, Idle: 2},
 	}
-	prev := map[string]CPURaw{
+	prev := map[string]Raw{
 		"cpu0": {User: 1, Nice: 0, System: 0, IRQ: 0, Idle: 1},
 	}
 
-	_, ok := calculateCPUDeltas(cur, prev)
+	_, ok := calculateDeltas(cur, prev)
 	if ok {
 		t.Fatalf("expected ok=false when previous missing key")
 	}
 }
 
-func TestCalculateCPUDeltas_RolloverDetected(t *testing.T) {
-	cur := map[string]CPURaw{
+func TestCalculateDeltas_RolloverDetected(t *testing.T) {
+	cur := map[string]Raw{
 		"cpu": {User: 1, Nice: 0, System: 0, IRQ: 0, Idle: 0},
 	}
-	prev := map[string]CPURaw{
+	prev := map[string]Raw{
 		"cpu": {User: 2, Nice: 0, System: 0, IRQ: 0, Idle: 0},
 	}
 
-	_, ok := calculateCPUDeltas(cur, prev)
+	_, ok := calculateDeltas(cur, prev)
 	if ok {
 		t.Fatalf("expected ok=false when current < previous (rollover/regression)")
 	}
 }
 
-func TestCalculateCPUDeltas_OK_ComputesTotals(t *testing.T) {
-	cur := map[string]CPURaw{
+func TestCalculateDeltas_OK_ComputesTotals(t *testing.T) {
+	cur := map[string]Raw{
 		"cpu":  {User: 15, Nice: 3, System: 7, IRQ: 2, Idle: 100},
 		"cpu0": {User: 9, Nice: 1, System: 2, IRQ: 1, Idle: 40},
 	}
-	prev := map[string]CPURaw{
+	prev := map[string]Raw{
 		"cpu":  {User: 10, Nice: 1, System: 4, IRQ: 1, Idle: 90},
 		"cpu0": {User: 7, Nice: 1, System: 1, IRQ: 1, Idle: 35},
 	}
 
-	dm, ok := calculateCPUDeltas(cur, prev)
+	dm, ok := calculateDeltas(cur, prev)
 	if !ok {
 		t.Fatalf("expected ok=true")
 	}
@@ -159,7 +159,7 @@ func TestCalculateCPUDeltas_OK_ComputesTotals(t *testing.T) {
 }
 
 func TestCalcCoreUsage_OnlyAggregate(t *testing.T) {
-	dm := map[string]CPUDelta{
+	dm := map[string]Delta{
 		"cpu": {Used: 50, Total: 100},
 	}
 	got := calcCoreUsage(dm)
@@ -170,7 +170,7 @@ func TestCalcCoreUsage_OnlyAggregate(t *testing.T) {
 
 func TestCalcCoreUsage_TwoCores(t *testing.T) {
 	// percent(Used,Total) should yield 25, 50.
-	dm := map[string]CPUDelta{
+	dm := map[string]Delta{
 		"cpu":  {Used: 75, Total: 100},
 		"cpu0": {Used: 1, Total: 4},
 		"cpu1": {Used: 1, Total: 2},
@@ -186,7 +186,7 @@ func TestCalcCoreUsage_TwoCores(t *testing.T) {
 }
 
 func TestCalcCoreUsage_MissingCoreEntryLeavesZero(t *testing.T) {
-	dm := map[string]CPUDelta{
+	dm := map[string]Delta{
 		"cpu":  {Used: 10, Total: 20},
 		"cpu0": {Used: 1, Total: 2},
 		// cpu1 missing

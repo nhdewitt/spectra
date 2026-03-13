@@ -12,11 +12,11 @@ import (
 	"github.com/nhdewitt/spectra/internal/util"
 )
 
-func collectNetworkRaw() (map[string]NetworkRaw, error) {
+func collectRaw() (map[string]Raw, error) {
 	return parseNetDev()
 }
 
-func parseNetDev() (map[string]NetworkRaw, error) {
+func parseNetDev() (map[string]Raw, error) {
 	f, err := os.Open("/proc/net/dev")
 	if err != nil {
 		return nil, err
@@ -26,8 +26,8 @@ func parseNetDev() (map[string]NetworkRaw, error) {
 	return parseNetDevFrom(f)
 }
 
-func parseNetDevFrom(r io.Reader) (map[string]NetworkRaw, error) {
-	result := make(map[string]NetworkRaw)
+func parseNetDevFrom(r io.Reader) (map[string]Raw, error) {
+	result := make(map[string]Raw)
 	scanner := bufio.NewScanner(r)
 
 	for scanner.Scan() {
@@ -49,7 +49,7 @@ func parseNetDevFrom(r io.Reader) (map[string]NetworkRaw, error) {
 			continue
 		}
 
-		raw := NetworkRaw{
+		raw := Raw{
 			Interface: iface,
 		}
 

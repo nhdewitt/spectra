@@ -176,7 +176,7 @@ func TestShouldIgnoreInterface_CommonPhysical(t *testing.T) {
 }
 
 func TestCollect_Baseline(t *testing.T) {
-	lastNetworkRaw = nil
+	lastRaw = nil
 	lastNetworkTime = time.Time{}
 
 	ctx := context.Background()
@@ -188,13 +188,13 @@ func TestCollect_Baseline(t *testing.T) {
 	if metrics != nil {
 		t.Error("expected nil metrics on baseline")
 	}
-	if lastNetworkRaw == nil {
-		t.Error("lastNetworkRaw should be populated")
+	if lastRaw == nil {
+		t.Error("lastRaw should be populated")
 	}
 }
 
 func TestCollect_SecondCall(t *testing.T) {
-	lastNetworkRaw = nil
+	lastRaw = nil
 	lastNetworkTime = time.Time{}
 
 	ctx := context.Background()
@@ -217,7 +217,7 @@ func TestCollect_SecondCall(t *testing.T) {
 }
 
 func TestCollect_ZeroElapsed(t *testing.T) {
-	lastNetworkRaw = map[string]NetworkRaw{
+	lastRaw = map[string]Raw{
 		"eth0": {Interface: "eth0", RxBytes: 100},
 	}
 	lastNetworkTime = time.Now().Add(1 * time.Second)
@@ -230,8 +230,8 @@ func TestCollect_ZeroElapsed(t *testing.T) {
 	if metrics != nil {
 		t.Error("expected nil metrics when elapsed <= 0")
 	}
-	if lastNetworkRaw != nil {
-		t.Error("lastNetworkRaw should be reset to nil")
+	if lastRaw != nil {
+		t.Error("lastRaw should be reset to nil")
 	}
 }
 
@@ -285,7 +285,7 @@ func BenchmarkShouldIgnoreInterface_NoMatch(b *testing.B) {
 }
 
 func BenchmarkCollect(b *testing.B) {
-	lastNetworkRaw = nil
+	lastRaw = nil
 	ctx := context.Background()
 	_, _ = Collect(ctx)
 

@@ -12,8 +12,8 @@ import (
 	"github.com/nhdewitt/spectra/internal/util"
 )
 
-// NetworkRaw holds the cumulative counters for a single interface.
-type NetworkRaw struct {
+// Raw holds the cumulative counters for a single interface.
+type Raw struct {
 	Interface string
 	MAC       string
 	MTU       uint32
@@ -29,7 +29,7 @@ type NetworkRaw struct {
 }
 
 var (
-	lastNetworkRaw  map[string]NetworkRaw
+	lastRaw         map[string]Raw
 	lastNetworkTime time.Time
 )
 
@@ -39,7 +39,7 @@ var ignoredInterfacePrefixes = []string{
 }
 
 func Collect(ctx context.Context) ([]protocol.Metric, error) {
-	current, err := collectNetworkRaw()
+	current, err := collectRaw()
 	if err != nil {
 		return nil, fmt.Errorf("collecting network stats: %w", err)
 	}
@@ -47,22 +47,22 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 	now := time.Now()
 
 	// Baseline
-	if len(lastNetworkRaw) == 0 {
-		lastNetworkRaw = current
+	if len(lastRaw) == 0 {
+		lastRaw = current
 		lastNetworkTime = now
 		return nil, nil
 	}
 
 	elapsed := now.Sub(lastNetworkTime).Seconds()
 	if elapsed <= 0 {
-		lastNetworkRaw = nil
+		lastRaw = nil
 		return nil, nil
 	}
 
 	var results []protocol.Metric
 
 	for iface, curr := range current {
-		prev, ok := lastNetworkRaw[iface]
+		prev, ok := lastRaw[iface]
 		if !ok {
 			continue
 		}
@@ -88,7 +88,7 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 		results = append(results, metric)
 	}
 
-	lastNetworkRaw = current
+	lastRaw = current
 	lastNetworkTime = now
 
 	return results, nil

@@ -17,8 +17,8 @@ import (
 	"golang.org/x/net/route"
 )
 
-// NetworkRaw holds the cumulative counters for a single interface.
-type NetworkRaw struct {
+// Raw holds the cumulative counters for a single interface.
+type Raw struct {
 	Interface string
 	MAC       string
 	MTU       uint32
@@ -34,7 +34,7 @@ type NetworkRaw struct {
 }
 
 var (
-	lastNetworkRaw  map[string]NetworkRaw
+	lastRaw         map[string]Raw
 	lastNetworkTime time.Time
 )
 
@@ -97,15 +97,15 @@ var ignoredInterfacePrefixes = []string{
 }
 
 func Collect(ctx context.Context) ([]protocol.Metric, error) {
-	current, err := collectNetworkRaw()
+	current, err := collectRaw()
 	if err != nil {
 		return nil, fmt.Errorf("collecting network stats: %w", err)
 	}
 
 	now := time.Now()
 
-	if len(lastNetworkRaw) == 0 {
-		lastNetworkRaw = current
+	if len(lastRaw) == 0 {
+		lastRaw = current
 		lastNetworkTime = now
 		return nil, nil
 	}
@@ -117,7 +117,7 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 
 	var results []protocol.Metric
 	for iface, cur := range current {
-		prev, ok := lastNetworkRaw[iface]
+		prev, ok := lastRaw[iface]
 		if !ok {
 			continue
 		}
@@ -140,14 +140,14 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 		results = append(results, metric)
 	}
 
-	lastNetworkRaw = current
+	lastRaw = current
 	lastNetworkTime = now
 
 	return results, nil
 }
 
-// collectNetworkRaw fetches network counters via NET_RT_IFLIST2.
-func collectNetworkRaw() (map[string]NetworkRaw, error) {
+// collectRaw fetches network counters via NET_RT_IFLIST2.
+func collectRaw() (map[string]Raw, error) {
 	// Build index->ifInfo from net.Interfaces()
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -173,7 +173,7 @@ func collectNetworkRaw() (map[string]NetworkRaw, error) {
 		return nil, fmt.Errorf("FetchRIB NET_RT_IFLIST2: %w", err)
 	}
 
-	result := make(map[string]NetworkRaw)
+	result := make(map[string]Raw)
 
 	for len(rib) > 0 {
 		if len(rib) < 4 {
@@ -195,7 +195,7 @@ func collectNetworkRaw() (map[string]NetworkRaw, error) {
 				info, ok := infoIdx[msg.Index]
 				if ok && (msg.Data.Ibytes > 0 || msg.Data.Obytes > 0) {
 					// If no data has been sent, assume we can ignore the interface
-					result[info.Name] = NetworkRaw{
+					result[info.Name] = Raw{
 						Interface: info.Name,
 						MAC:       info.MAC,
 						MTU:       info.MTU,

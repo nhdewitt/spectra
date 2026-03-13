@@ -12,15 +12,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// collectNetworkRaw gathers counters for all network interfaces using
+// collectRaw gathers counters for all network interfaces using
 // net.Interfaces() (metadata) and sysctl (traffic stats).
-func collectNetworkRaw() (map[string]NetworkRaw, error) {
+func collectRaw() (map[string]Raw, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, fmt.Errorf("listing interfaces: %w", err)
 	}
 
-	result := make(map[string]NetworkRaw, len(ifaces))
+	result := make(map[string]Raw, len(ifaces))
 
 	for _, iface := range ifaces {
 		// Skip loopback
@@ -28,7 +28,7 @@ func collectNetworkRaw() (map[string]NetworkRaw, error) {
 			continue
 		}
 
-		raw := NetworkRaw{
+		raw := Raw{
 			Interface: iface.Name,
 			MAC:       strings.ToUpper(iface.HardwareAddr.String()),
 			MTU:       uint32(iface.MTU),
