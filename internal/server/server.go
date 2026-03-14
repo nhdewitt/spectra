@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -21,6 +22,7 @@ type Server struct {
 	LoginTracker *loginTracker
 	Limiters     *tieredLimiters
 	Releases     *releaseManifest
+	httpServer   *http.Server
 }
 
 func New(cfg Config, db DB) *Server {
@@ -90,7 +92,7 @@ func (s *Server) routes() {
 
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.Config.Port)
-	srv := &http.Server{
+	s.httpServer = &http.Server{
 		Addr:         addr,
 		Handler:      s.Router,
 		ReadTimeout:  30 * time.Second,
@@ -99,5 +101,10 @@ func (s *Server) Start() error {
 	}
 
 	fmt.Printf("Spectra Server listening on %s...\n", addr)
-	return srv.ListenAndServe()
+	return s.httpServer.ListenAndServe()
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.Limiters.Stop()
+	return s.httpServer.Shutdown(ctx)
 }

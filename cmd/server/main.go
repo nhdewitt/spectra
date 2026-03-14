@@ -4,6 +4,10 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/nhdewitt/spectra/internal/database"
 	"github.com/nhdewitt/spectra/internal/server"
@@ -39,7 +43,27 @@ func main() {
 
 	srv := server.New(srvCfg, queries)
 
-	if err := srv.Start(); err != nil {
-		log.Fatalf("Server exited: %v", err)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Start()
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-quit:
+		log.Printf("Received %v, shutting down...", sig)
+	case err := <-errCh:
+		log.Printf("Server error: %v", err)
+		return
 	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("Shutdown error: %v", err)
+	}
+	log.Println("Server stopped cleanly")
 }
