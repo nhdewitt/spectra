@@ -2,7 +2,10 @@ import { useState } from "react";
 import { themeVars } from "../theme";
 import { statusColor } from "../utils";
 import { TimeRangePicker } from "../components";
+import { MetricsTab } from "../components/MetricsTab";
 import type { OverviewAgent, RangeSelection } from "../types";
+import { api } from "../api";
+import { usePolling } from "../hooks/usePolling";
 
 const TABS = ["metrics", "processes", "services", "apps", "updates"] as const;
 
@@ -15,6 +18,11 @@ export function AgentDetail({
 }) {
     const [rangeSel, setRangeSel] = useState<RangeSelection>({ type: "quick", range: "1h" });
     const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("metrics");
+    const { data: liveAgent } = usePolling(
+        () => api.agent(agent.id),
+        30_000
+    );
+    const lastSeen = liveAgent?.last_seen ?? agent.last_seen;
 
     const rangeLabel =
         rangeSel.type === "quick"
@@ -51,7 +59,7 @@ export function AgentDetail({
                         width: 10,
                         height: 10,
                         borderRadius: "50%",
-                        background: statusColor(agent),
+                        background: statusColor({ last_seen: lastSeen }),
                     }}
                 />
                 <div>
@@ -128,13 +136,7 @@ export function AgentDetail({
                 }}
             >
                 {activeTab === "metrics" && (
-                    <div>
-                        Chart panels for CPU, Memory, Disk, Network, Temperature will render here.
-                        <br />
-                        <span style={{ color: themeVars.textMuted }}>
-                            Time range: {rangeLabel} · Agent: {agent.id}
-                        </span>
-                    </div>
+                    <MetricsTab agentId={agent.id} rangeSel={rangeSel} cores={agent.cpu_cores} />
                 )}
                 {activeTab === "processes" && "Process table will render here."}
                 {activeTab === "services" && "Services table will render here."}

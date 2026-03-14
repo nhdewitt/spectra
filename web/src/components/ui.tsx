@@ -127,3 +127,59 @@ export function LoadingText() {
         </div>
     );
 }
+
+export function MetricSelector({
+    label,
+    options,
+    value,
+    onChange,
+}: {
+    label: string;
+    options: string[];
+    value: string;
+    onChange: (v: string) => void;
+}) {
+    if (options.length <= 1) return null;
+
+    return (
+        <div
+            style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 8,
+            }}
+        >
+            <span
+                style={{
+                    fontSize: 11,
+                    fontFamily: themeVars.font,
+                    color: themeVars.textDim,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                }}
+            >
+                {label}:
+            </span>
+            <select
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                style={{
+                    fontSize: 11,
+                    fontFamily: themeVars.font,
+                    color: themeVars.text,
+                    background: themeVars.surface,
+                    border: `1px solid ${themeVars.border}`,
+                    padding: "3px 6px",
+                    cursor: "pointer",
+                }}
+            >
+                {options.map((o) => (
+                    <option key={o} value={o}>
+                        {o}
+                    </option>
+                ))}
+            </select>
+        </div>
+    );
+}

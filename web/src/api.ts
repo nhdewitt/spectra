@@ -67,6 +67,10 @@ function rangeQuery(sel: RangeSelection): string {
 
 const defaultRange: RangeSelection = { type: "quick", range: "1h" };
 
+type MetricRequestOptions = {
+    signal?: AbortSignal;
+};
+
 export const api = {
     // Auth
     login: (username: string, password: string) =>
@@ -88,26 +92,26 @@ export const api = {
     deleteAgent: (id: string) => apiFetch<null>(`/agents/${id}`, { method: "DELETE" }),
 
     // Time-series metrics
-    agentCPU: (id: string, sel: RangeSelection = defaultRange) =>
-        apiFetch<CPUMetric[]>(`/agents/${id}/cpu?${rangeQuery(sel)}`),
-    agentMemory: (id: string, sel: RangeSelection = defaultRange) =>
-        apiFetch<MemoryMetric[]>(`/agents/${id}/memory?${rangeQuery(sel)}`),
-    agentDisk: (id: string, sel: RangeSelection = defaultRange) =>
-        apiFetch<DiskMetric[]>(`/agents/${id}/disk?${rangeQuery(sel)}`),
-    agentDiskIO: (id: string, sel: RangeSelection = defaultRange) =>
-        apiFetch<DiskIOMetric[]>(`/agents/${id}/diskio?${rangeQuery(sel)}`),
-    agentNetwork: (id: string, sel: RangeSelection = defaultRange) =>
-        apiFetch<NetworkMetric[]>(`/agents/${id}/network?${rangeQuery(sel)}`),
-    agentTemperature: (id: string, sel: RangeSelection = defaultRange) =>
-        apiFetch<TemperatureMetric[]>(`/agents/${id}/temperature?${rangeQuery(sel)}`),
-    agentSystem: (id: string, sel: RangeSelection = defaultRange) =>
-        apiFetch<SystemMetric[]>(`/agents/${id}/system?${rangeQuery(sel)}`),
-    agentContainers: (id: string, sel: RangeSelection = defaultRange) =>
-        apiFetch<ContainerMetric[]>(`/agents/${id}/containers?${rangeQuery(sel)}`),
-    agentWifi: (id: string, sel: RangeSelection = defaultRange) =>
-        apiFetch<WifiMetric[]>(`/agents/${id}/wifi?${rangeQuery(sel)}`),
-    agentPi: (id: string, sel: RangeSelection = defaultRange) =>
-        apiFetch<PiMetric[]>(`/agents/${id}/pi?${rangeQuery(sel)}`),
+    agentCPU: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
+        apiFetch<CPUMetric[]>(`/agents/${id}/cpu?${rangeQuery(sel)}`, opts),
+    agentMemory: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
+        apiFetch<MemoryMetric[]>(`/agents/${id}/memory?${rangeQuery(sel)}`, opts),
+    agentDisk: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
+        apiFetch<DiskMetric[]>(`/agents/${id}/disk?${rangeQuery(sel)}`, opts),
+    agentDiskIO: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
+        apiFetch<DiskIOMetric[]>(`/agents/${id}/diskio?${rangeQuery(sel)}`, opts),
+    agentNetwork: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
+        apiFetch<NetworkMetric[]>(`/agents/${id}/network?${rangeQuery(sel)}`, opts),
+    agentTemperature: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
+        apiFetch<TemperatureMetric[]>(`/agents/${id}/temperature?${rangeQuery(sel)}`, opts),
+    agentSystem: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
+        apiFetch<SystemMetric[]>(`/agents/${id}/system?${rangeQuery(sel)}`, opts),
+    agentContainers: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
+        apiFetch<ContainerMetric[]>(`/agents/${id}/containers?${rangeQuery(sel)}`, opts),
+    agentWifi: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
+        apiFetch<WifiMetric[]>(`/agents/${id}/wifi?${rangeQuery(sel)}`, opts),
+    agentPi: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
+        apiFetch<PiMetric[]>(`/agents/${id}/pi?${rangeQuery(sel)}`, opts),
 
     // Current state
     agentProcesses: (id: string, sort: ProcessSort = "cpu", limit = 20) =>
