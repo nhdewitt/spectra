@@ -8,15 +8,38 @@ interface UseMetricResult<T extends { time: string }> {
     refetch: () => void;
 }
 
+function rangeStart(sel: RangeSelection): Date {
+    if (sel.type === "custom") return new Date(sel.start);
+
+    const now = new Date();
+    const ms: Record<string, number> = {
+        "5m": 5 * 60_000,
+        "15m": 15 * 60_000,
+        "1h": 60 * 60_000,
+        "6h": 6 * 60 * 60_000,
+        "24h": 24 * 60 * 60_000,
+        "7d": 7 * 24 * 60 * 60_000,
+        "30d": 30 * 24 * 60 * 60_000,
+    };
+    return new Date(now.getTime() - (ms[sel.range] ?? 60 * 60_000));
+}
+
 function downsample<T extends { time: string }>(data: T[], maxPoints: number): T[] {
     if (data.length <= maxPoints) return data;
 
     const step = data.length / maxPoints;
     const result: T[] = [];
+    let nextSample = 0;
 
-    for (let i = 0; i < maxPoints; i++) {
-        const point = data[Math.floor(i * step)];
-        if (point) result.push(point);
+    for (let i = 0; i < data.length; i++) {
+        const point = data[i]!;
+        const isGap = (point as Record<string, unknown>)._gap != null ||
+            (point as Record<string, unknown>)._gapEnd === true;
+
+        if (isGap || i >= nextSample) {
+            result.push(point);
+            if (!isGap) nextSample += step;
+        }
     }
 
     const last = data[data.length - 1];
@@ -31,7 +54,6 @@ function insertGaps<T extends { time: string }>(data: T[], maxGapMs: number): T[
     if (data.length < 2) return data;
 
     const result: T[] = [];
-    let currMs = Date.parse(data[0]!.time);
 
     for (let i = 0; i < data.length; i++) {
         const point = data[i]!;
@@ -40,20 +62,33 @@ function insertGaps<T extends { time: string }>(data: T[], maxGapMs: number): T[
         if (i === data.length - 1) break;
 
         const nextPoint = data[i + 1]!;
+        const currMs = Date.parse(point.time);
         const nextMs = Date.parse(nextPoint.time);
 
         if (nextMs - currMs > maxGapMs) {
-            const gap = { ...point } as T;
-            for (const key in gap as Record<string, unknown>) {
+            const gapStart = { ...point } as T;
+            const gapEnd = { ...nextPoint } as T;
+
+            for (const key of Object.keys(gapStart)) {
                 if (key !== "time" && key !== "agent_id") {
-                    (gap as Record<string, unknown>)[key] = null;
+                    (gapStart as Record<string, unknown>)[key] = null;
+                    (gapEnd as Record<string, unknown>)[key] = null;
                 }
             }
-            gap.time = new Date(currMs + 1).toISOString();
-            result.push(gap);
-        }
 
-        currMs = nextMs;
+            gapStart.time = new Date(currMs + 1).toISOString();
+            gapEnd.time = new Date(nextMs - 1).toISOString();
+
+            (gapStart as Record<string, unknown>)._gap = {
+                gapStart: point.time,
+                gapEnd: nextPoint.time,
+                gapMinutes: Math.round((nextMs - currMs) / 60_000),
+            };
+            (gapEnd as Record<string, unknown>)._gapEnd = true;
+
+            result.push(gapStart);
+            result.push(gapEnd);
+        }
     }
 
     return result;
@@ -82,14 +117,50 @@ function gapThreshold(sel: RangeSelection): number {
 }
 
 function prepareMetricData<T extends { time: string }>(
-    result: T[],
-    rangeSel: RangeSelection,
-    maxPoints = 500
+    raw: T[],
+    sel: RangeSelection,
 ): T[] {
-    return insertGaps(
-        downsample([...result].reverse(), maxPoints),
-        gapThreshold(rangeSel)
-    );
+    const sorted = [...raw].reverse();
+    const gapped = insertGaps(sorted, gapThreshold(sel));
+    const downsampled = downsample(gapped, 500);
+
+    if (downsampled.length === 0) return downsampled;
+
+    const start = rangeStart(sel);
+    const firstPoint = downsampled[0]!;
+    const firstMs = Date.parse(firstPoint.time);
+    const startMs = start.getTime();
+
+    // If data starts after the range start, insert a leading gap.
+    if (firstMs - startMs > gapThreshold(sel)) {
+        const empty = { ...firstPoint } as T;
+        for (const key of Object.keys(empty)) {
+            if (key !== "time" && key !== "agent_id") {
+                (empty as Record<string, unknown>)[key] = null;
+            }
+        }
+
+        const startMarker = { ...empty };
+        startMarker.time = start.toISOString();
+        (startMarker as Record<string, unknown>)._gap = {
+            gapStart: start.toISOString(),
+            gapEnd: firstPoint.time,
+            gapMinutes: Math.round((firstMs - startMs) / 60_000),
+        };
+
+        const gapEnd = { ...empty };
+        gapEnd.time = new Date(firstMs - 1).toISOString();
+        (gapEnd as Record<string, unknown>)._gapEnd = true;
+
+        downsampled.unshift(gapEnd);
+        downsampled.unshift(startMarker);
+    }
+
+    for (const point of downsampled) {
+        (point as Record<string, unknown>)._ts = Date.parse(point.time);
+    }
+
+    return downsampled;
 }
 
 function isAbortError(err: unknown): boolean {

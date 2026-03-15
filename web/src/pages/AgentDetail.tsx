@@ -6,6 +6,10 @@ import { MetricsTab } from "../components/MetricsTab";
 import type { OverviewAgent, RangeSelection } from "../types";
 import { api } from "../api";
 import { usePolling } from "../hooks/usePolling";
+import { ProcessesTab } from "../components/ProcessesTab";
+import { ServicesTab } from "../components/ServicesTab";
+import { ApplicationsTab } from "../components/ApplicationsTab";
+import { UpdatesTab } from "../components/UpdatesTab";
 
 const TABS = ["metrics", "processes", "services", "apps", "updates"] as const;
 
@@ -28,6 +32,8 @@ export function AgentDetail({
         rangeSel.type === "quick"
             ? rangeSel.range
             : `${new Date(rangeSel.start).toLocaleString()} — ${new Date(rangeSel.end).toLocaleString()}`;
+    
+    const isTimeSeriesTab = activeTab === "metrics";
 
     return (
         <div style={{ padding: 24 }}>
@@ -88,7 +94,15 @@ export function AgentDetail({
             </div>
 
             {/* Time range picker */}
-            <div style={{ marginBottom: 20 }}>
+            <div
+                style={{
+                    marginBottom: 20,
+                    opacity: isTimeSeriesTab ? 1 : 0.3,
+                    pointerEvents: isTimeSeriesTab ? "auto" : "none",
+                    filter: isTimeSeriesTab ? "none" : "blur(1px)",
+                    transition: "opacity 0.2s, filter 0.2s",
+                }}
+            >
                 <TimeRangePicker value={rangeSel} onChange={setRangeSel} />
             </div>
 
@@ -129,7 +143,6 @@ export function AgentDetail({
                     background: themeVars.surface,
                     border: `1px solid ${themeVars.border}`,
                     padding: 32,
-                    textAlign: "center",
                     fontFamily: themeVars.font,
                     color: themeVars.textDim,
                     fontSize: 13,
@@ -138,10 +151,10 @@ export function AgentDetail({
                 {activeTab === "metrics" && (
                     <MetricsTab agentId={agent.id} rangeSel={rangeSel} cores={agent.cpu_cores} />
                 )}
-                {activeTab === "processes" && "Process table will render here."}
-                {activeTab === "services" && "Services table will render here."}
-                {activeTab === "apps" && "Applications list will render here."}
-                {activeTab === "updates" && "Pending updates will render here."}
+                {activeTab === "processes" && <ProcessesTab agentId={agent.id} />}
+                {activeTab === "services" && <ServicesTab agentId={agent.id} />}
+                {activeTab === "apps" && <ApplicationsTab agentId={agent.id} />}
+                {activeTab === "updates" && <UpdatesTab agentId={agent.id} />}
             </div>
         </div>
     );

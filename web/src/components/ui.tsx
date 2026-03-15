@@ -183,3 +183,28 @@ export function MetricSelector({
         </div>
     );
 }
+
+export const tableHeaderStyle: React.CSSProperties = {
+    padding: "6px 10px",
+    fontSize: 11,
+    fontFamily: themeVars.font,
+    color: themeVars.textDim,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    textAlign: "left",
+    borderBottom: `1px solid ${themeVars.border}`,
+    whiteSpace: "nowrap",
+};
+
+export const tableCellStyle: React.CSSProperties = {
+    padding: "5px 10px",
+    fontSize: 12,
+    fontFamily: themeVars.font,
+    color: themeVars.text,
+    borderBottom: `1px solid ${themeVars.border}`,
+};
+
+export const tableMutedCellStyle: React.CSSProperties = {
+    ...tableCellStyle,
+    color: themeVars.textMuted,
+};

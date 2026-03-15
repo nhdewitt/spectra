@@ -141,7 +141,7 @@ function ChartToolTip({
     formatter,
 }: {
     active?: boolean;
-    payload?: Array<{ name: string; value: number; color: string }>;
+    payload?: Array<{ name: string; value: number; color: string; payload?: Record<string, unknown> }>;
     label?: string;
     unit?: string;
     formatter?: (value: number, key: string) => string;
@@ -159,7 +159,7 @@ function ChartToolTip({
             }}
         >
             <div style={{ color: themeVars.textDim, marginBottom: 4 }}>
-                {label ? formatTimeFull(label) : ""}
+                {label ? formatTimeFull(new Date(label as unknown as number).toISOString()) : ""}
             </div>
             {payload.map((entry) => (
                 <div
@@ -289,8 +289,11 @@ export function MetricChart<T extends { time: string} >({
                                 strokeDasharray="3 3"
                             />
                             <XAxis
-                                dataKey="time"
-                                tickFormatter={(iso: string) => formatTimeByRange(iso, rangeSel)}
+                                dataKey="_ts"
+                                type="number"
+                                scale="time"
+                                domain={["dataMin", "dataMax"]}
+                                tickFormatter={(ts: number) => formatTimeByRange(new Date(ts).toISOString(), rangeSel)}
                                 tick={AXIS_STYLE}
                                 stroke={themeVars.border}
                                 minTickGap={40}
