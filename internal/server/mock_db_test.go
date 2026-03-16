@@ -396,6 +396,66 @@ func (m *MockDB) GetPiRange(_ context.Context, _ database.GetPiRangeParams) ([]d
 	return []database.GetPiRangeRow{}, nil
 }
 
+func (m *MockDB) GetCPUBucketed(_ context.Context, _ database.GetCPUBucketedParams) ([]database.GetCPUBucketedRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetCPUBucketedRow{}, nil
+}
+
+func (m *MockDB) GetMemoryBucketed(_ context.Context, _ database.GetMemoryBucketedParams) ([]database.GetMemoryBucketedRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetMemoryBucketedRow{}, nil
+}
+
+func (m *MockDB) GetDiskBucketed(_ context.Context, _ database.GetDiskBucketedParams) ([]database.GetDiskBucketedRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetDiskBucketedRow{}, nil
+}
+
+func (m *MockDB) GetDiskIOBucketed(_ context.Context, _ database.GetDiskIOBucketedParams) ([]database.GetDiskIOBucketedRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetDiskIOBucketedRow{}, nil
+}
+
+func (m *MockDB) GetNetworkBucketed(_ context.Context, _ database.GetNetworkBucketedParams) ([]database.GetNetworkBucketedRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetNetworkBucketedRow{}, nil
+}
+
+func (m *MockDB) GetTemperatureBucketed(_ context.Context, _ database.GetTemperatureBucketedParams) ([]database.GetTemperatureBucketedRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetTemperatureBucketedRow{}, nil
+}
+
+func (m *MockDB) GetSystemBucketed(_ context.Context, _ database.GetSystemBucketedParams) ([]database.GetSystemBucketedRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetSystemBucketedRow{}, nil
+}
+
+func (m *MockDB) GetContainerBucketed(_ context.Context, _ database.GetContainerBucketedParams) ([]database.GetContainerBucketedRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetContainerBucketedRow{}, nil
+}
+
+func (m *MockDB) GetWifiBucketed(_ context.Context, _ database.GetWifiBucketedParams) ([]database.GetWifiBucketedRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetWifiBucketedRow{}, nil
+}
+
+func (m *MockDB) GetPiBucketed(_ context.Context, _ database.GetPiBucketedParams) ([]database.GetPiBucketedRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetPiBucketedRow{}, nil
+}
+
 func (m *MockDB) GetProcessesByCPU(_ context.Context, _ database.GetProcessesByCPUParams) ([]database.CurrentProcess, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -71,6 +71,16 @@ type DB interface {
 	GetContainerRange(ctx context.Context, arg database.GetContainerRangeParams) ([]database.MetricsContainer, error)
 	GetWifiRange(ctx context.Context, arg database.GetWifiRangeParams) ([]database.MetricsWifi, error)
 	GetPiRange(ctx context.Context, arg database.GetPiRangeParams) ([]database.GetPiRangeRow, error)
+	GetCPUBucketed(ctx context.Context, arg database.GetCPUBucketedParams) ([]database.GetCPUBucketedRow, error)
+	GetMemoryBucketed(ctx context.Context, arg database.GetMemoryBucketedParams) ([]database.GetMemoryBucketedRow, error)
+	GetDiskBucketed(ctx context.Context, arg database.GetDiskBucketedParams) ([]database.GetDiskBucketedRow, error)
+	GetDiskIOBucketed(ctx context.Context, arg database.GetDiskIOBucketedParams) ([]database.GetDiskIOBucketedRow, error)
+	GetNetworkBucketed(ctx context.Context, arg database.GetNetworkBucketedParams) ([]database.GetNetworkBucketedRow, error)
+	GetTemperatureBucketed(ctx context.Context, arg database.GetTemperatureBucketedParams) ([]database.GetTemperatureBucketedRow, error)
+	GetSystemBucketed(ctx context.Context, arg database.GetSystemBucketedParams) ([]database.GetSystemBucketedRow, error)
+	GetContainerBucketed(ctx context.Context, arg database.GetContainerBucketedParams) ([]database.GetContainerBucketedRow, error)
+	GetWifiBucketed(ctx context.Context, arg database.GetWifiBucketedParams) ([]database.GetWifiBucketedRow, error)
+	GetPiBucketed(ctx context.Context, arg database.GetPiBucketedParams) ([]database.GetPiBucketedRow, error)
 
 	// Read API - current state
 	GetProcessesByCPU(ctx context.Context, args database.GetProcessesByCPUParams) ([]database.CurrentProcess, error)

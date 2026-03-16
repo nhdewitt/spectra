@@ -221,15 +221,26 @@ func (s *Server) handleGetCPU(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.GetCPURange(r.Context(), database.GetCPURangeParams{
-		AgentID: uid, StartTime: start, EndTime: end,
-	})
+
+	var (
+		result any
+		err    error
+	)
+
+	if bucket := bucketInterval(start, end); bucket == "" {
+		result, err = s.DB.GetCPURange(r.Context(), database.GetCPURangeParams{
+			AgentID: uid, StartTime: start, EndTime: end,
+		})
+	} else {
+		result, err = s.DB.GetCPUBucketed(r.Context(), database.GetCPUBucketedParams{
+			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
+		})
+	}
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-
-	respondJSON(w, http.StatusOK, rows)
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleGetMemory returns memory metrics for an agent over a time range.
@@ -238,15 +249,26 @@ func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.GetMemoryRange(r.Context(), database.GetMemoryRangeParams{
-		AgentID: uid, StartTime: start, EndTime: end,
-	})
+
+	var (
+		result any
+		err    error
+	)
+
+	if bucket := bucketInterval(start, end); bucket == "" {
+		result, err = s.DB.GetMemoryRange(r.Context(), database.GetMemoryRangeParams{
+			AgentID: uid, StartTime: start, EndTime: end,
+		})
+	} else {
+		result, err = s.DB.GetMemoryBucketed(r.Context(), database.GetMemoryBucketedParams{
+			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
+		})
+	}
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-
-	respondJSON(w, http.StatusOK, rows)
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleGetDisk returns disk metrics for an agent over a time range.
@@ -255,15 +277,26 @@ func (s *Server) handleGetDisk(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.GetDiskRange(r.Context(), database.GetDiskRangeParams{
-		AgentID: uid, StartTime: start, EndTime: end,
-	})
+
+	var (
+		result any
+		err    error
+	)
+
+	if bucket := bucketInterval(start, end); bucket == "" {
+		result, err = s.DB.GetDiskRange(r.Context(), database.GetDiskRangeParams{
+			AgentID: uid, StartTime: start, EndTime: end,
+		})
+	} else {
+		result, err = s.DB.GetDiskBucketed(r.Context(), database.GetDiskBucketedParams{
+			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
+		})
+	}
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-
-	respondJSON(w, http.StatusOK, rows)
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleGetDiskIO returns diskio metrics for an agent over a time range.
@@ -272,15 +305,26 @@ func (s *Server) handleGetDiskIO(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.GetDiskIORange(r.Context(), database.GetDiskIORangeParams{
-		AgentID: uid, StartTime: start, EndTime: end,
-	})
+
+	var (
+		result any
+		err    error
+	)
+
+	if bucket := bucketInterval(start, end); bucket == "" {
+		result, err = s.DB.GetDiskIORange(r.Context(), database.GetDiskIORangeParams{
+			AgentID: uid, StartTime: start, EndTime: end,
+		})
+	} else {
+		result, err = s.DB.GetDiskIOBucketed(r.Context(), database.GetDiskIOBucketedParams{
+			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
+		})
+	}
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-
-	respondJSON(w, http.StatusOK, rows)
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleGetNetwork returns network metrics for an agent over a time range.
@@ -289,15 +333,26 @@ func (s *Server) handleGetNetwork(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.GetNetworkRange(r.Context(), database.GetNetworkRangeParams{
-		AgentID: uid, StartTime: start, EndTime: end,
-	})
+
+	var (
+		result any
+		err    error
+	)
+
+	if bucket := bucketInterval(start, end); bucket == "" {
+		result, err = s.DB.GetNetworkRange(r.Context(), database.GetNetworkRangeParams{
+			AgentID: uid, StartTime: start, EndTime: end,
+		})
+	} else {
+		result, err = s.DB.GetNetworkBucketed(r.Context(), database.GetNetworkBucketedParams{
+			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
+		})
+	}
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-
-	respondJSON(w, http.StatusOK, rows)
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleGetTemperature returns temperature metrics for an agent over a time range.
@@ -306,15 +361,26 @@ func (s *Server) handleGetTemperature(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.GetTemperatureRange(r.Context(), database.GetTemperatureRangeParams{
-		AgentID: uid, StartTime: start, EndTime: end,
-	})
+
+	var (
+		result any
+		err    error
+	)
+
+	if bucket := bucketInterval(start, end); bucket == "" {
+		result, err = s.DB.GetTemperatureRange(r.Context(), database.GetTemperatureRangeParams{
+			AgentID: uid, StartTime: start, EndTime: end,
+		})
+	} else {
+		result, err = s.DB.GetTemperatureBucketed(r.Context(), database.GetTemperatureBucketedParams{
+			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
+		})
+	}
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-
-	respondJSON(w, http.StatusOK, rows)
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleGetSystem returns system metrics for an agent over a time range.
@@ -323,15 +389,26 @@ func (s *Server) handleGetSystem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.GetSystemRange(r.Context(), database.GetSystemRangeParams{
-		AgentID: uid, StartTime: start, EndTime: end,
-	})
+
+	var (
+		result any
+		err    error
+	)
+
+	if bucket := bucketInterval(start, end); bucket == "" {
+		result, err = s.DB.GetSystemRange(r.Context(), database.GetSystemRangeParams{
+			AgentID: uid, StartTime: start, EndTime: end,
+		})
+	} else {
+		result, err = s.DB.GetSystemBucketed(r.Context(), database.GetSystemBucketedParams{
+			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
+		})
+	}
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-
-	respondJSON(w, http.StatusOK, rows)
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleGetContainers returns container metrics for an agent over a time range.
@@ -340,15 +417,26 @@ func (s *Server) handleGetContainers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.GetContainerRange(r.Context(), database.GetContainerRangeParams{
-		AgentID: uid, StartTime: start, EndTime: end,
-	})
+
+	var (
+		result any
+		err    error
+	)
+
+	if bucket := bucketInterval(start, end); bucket == "" {
+		result, err = s.DB.GetContainerRange(r.Context(), database.GetContainerRangeParams{
+			AgentID: uid, StartTime: start, EndTime: end,
+		})
+	} else {
+		result, err = s.DB.GetContainerBucketed(r.Context(), database.GetContainerBucketedParams{
+			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
+		})
+	}
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-
-	respondJSON(w, http.StatusOK, rows)
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleGetWifi returns WiFi metrics for an agent over a time range.
@@ -357,15 +445,26 @@ func (s *Server) handleGetWifi(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.GetWifiRange(r.Context(), database.GetWifiRangeParams{
-		AgentID: uid, StartTime: start, EndTime: end,
-	})
+
+	var (
+		result any
+		err    error
+	)
+
+	if bucket := bucketInterval(start, end); bucket == "" {
+		result, err = s.DB.GetWifiRange(r.Context(), database.GetWifiRangeParams{
+			AgentID: uid, StartTime: start, EndTime: end,
+		})
+	} else {
+		result, err = s.DB.GetWifiBucketed(r.Context(), database.GetWifiBucketedParams{
+			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
+		})
+	}
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-
-	respondJSON(w, http.StatusOK, rows)
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleGetPi returns Raspberry Pi metrics for an agent over a time range.
@@ -374,15 +473,26 @@ func (s *Server) handleGetPi(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.DB.GetPiRange(r.Context(), database.GetPiRangeParams{
-		AgentID: uid, StartTime: start, EndTime: end,
-	})
+
+	var (
+		result any
+		err    error
+	)
+
+	if bucket := bucketInterval(start, end); bucket == "" {
+		result, err = s.DB.GetPiRange(r.Context(), database.GetPiRangeParams{
+			AgentID: uid, StartTime: start, EndTime: end,
+		})
+	} else {
+		result, err = s.DB.GetPiBucketed(r.Context(), database.GetPiBucketedParams{
+			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
+		})
+	}
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-
-	respondJSON(w, http.StatusOK, rows)
+	respondJSON(w, http.StatusOK, result)
 }
 
 // handleGetProcesses returns the top processes for an agent, sorted by CPU or memory.

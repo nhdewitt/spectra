@@ -120,7 +120,7 @@ function prepareMetricData<T extends { time: string }>(
     raw: T[],
     sel: RangeSelection,
 ): T[] {
-    const sorted = [...raw].reverse();
+    const sorted = [...raw];
     const gapped = insertGaps(sorted, gapThreshold(sel));
     const downsampled = downsample(gapped, 500);
 

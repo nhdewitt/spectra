@@ -175,7 +175,7 @@ func buildDiskIOMetric(device string, curr, prev IORaw, elapsed float64) protoco
 
 // getDevstats retrieves the IORaw devstat data from kern.devstat.all.
 func getDevstats(mountMap map[string]MountInfo) (map[string]IORaw, error) {
-	data, err := unix.SysctlIORaw("kern.devstat.all")
+	data, err := unix.SysctlRaw("kern.devstat.all")
 	if err != nil {
 		return nil, fmt.Errorf("sysctl kern.devstat.all: %w", err)
 	}
