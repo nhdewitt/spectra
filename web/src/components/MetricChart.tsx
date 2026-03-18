@@ -161,36 +161,38 @@ function ChartToolTip({
             <div style={{ color: themeVars.textDim, marginBottom: 4 }}>
                 {label ? formatTimeFull(new Date(label as unknown as number).toISOString()) : ""}
             </div>
-            {payload.map((entry) => (
-                <div
-                    key={entry.name}
-                    style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        marginBottom: 2,
-                    }}
-                >
-                    <span
+            {payload
+                .filter((entry) => entry.name !== "_ts" && entry.name !== "_gap" && entry.name !== "_gapEnd")
+                .map((entry) => (
+                    <div
+                        key={entry.name}
                         style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: "50%",
-                            background: entry.color,
-                            flexShrink: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            marginBottom: 2,
                         }}
-                    />
-                    <span style={{ color: themeVars.textMuted }}>
-                        {entry.name}
-                    </span>
-                    <span style={{ color: themeVars.text, fontWeight: 500 }}>
-                        {formatter
-                            ? formatter(entry.value, entry.name)
-                            : formatCompactNumber(entry.value)}
-                        {unit && !formatter ? ` ${unit}` : ""}
-                    </span>
-                </div>
-            ))}
+                    >
+                        <span
+                            style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                background: entry.color,
+                                flexShrink: 0,
+                            }}
+                        />
+                        <span style={{ color: themeVars.textMuted }}>
+                            {entry.name}
+                        </span>
+                        <span style={{ color: themeVars.text, fontWeight: 500 }}>
+                            {formatter
+                                ? formatter(entry.value, entry.name)
+                                : formatCompactNumber(entry.value)}
+                            {unit && !formatter ? ` ${unit}` : ""}
+                        </span>
+                    </div>
+                ))}
         </div>
     );
 }

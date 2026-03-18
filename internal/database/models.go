@@ -21,6 +21,7 @@ type Agent struct {
 	RegisteredAt pgtype.Timestamptz `json:"registered_at"`
 	LastSeen     pgtype.Timestamptz `json:"last_seen"`
 	SecretSha256 []byte             `json:"secret_sha256"`
+	IpAddress    pgtype.Text        `json:"ip_address"`
 }
 
 type CurrentApplication struct {

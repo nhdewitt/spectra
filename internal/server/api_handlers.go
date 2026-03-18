@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"time"
@@ -427,6 +428,9 @@ func (s *Server) handleGetContainers(w http.ResponseWriter, r *http.Request) {
 		result, err = s.DB.GetContainerRange(r.Context(), database.GetContainerRangeParams{
 			AgentID: uid, StartTime: start, EndTime: end,
 		})
+		if rows, ok := result.([]database.MetricsContainer); ok {
+			log.Printf("containers: got %d rows", len(rows))
+		}
 	} else {
 		result, err = s.DB.GetContainerBucketed(r.Context(), database.GetContainerBucketedParams{
 			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,
@@ -602,6 +606,21 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, rows)
+}
+
+func (s *Server) handleGetLatestSystem(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseAgentID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	row, err := s.DB.GetLatestSystem(r.Context(), mustUUID(agentID))
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, row)
 }
 
 func (s *Server) parseRangeRequest(w http.ResponseWriter, r *http.Request) (pgtype.UUID, pgtype.Timestamptz, pgtype.Timestamptz, bool) {

@@ -4,7 +4,6 @@ package containers
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -285,9 +284,9 @@ func TestCollectProxmox_Integration(t *testing.T) {
 	}
 
 	// Reset cached node for clean test
-	cachedNodeOnce = sync.Once{}
+	cachedNodeMu.Lock()
 	cachedNode = ""
-	cachedNodeErr = nil
+	cachedNodeMu.Unlock()
 
 	ctx := context.Background()
 	result, err := collectProxmox(ctx)
@@ -325,9 +324,9 @@ func TestLocalProxmoxNode_Integration(t *testing.T) {
 	}
 
 	// Reset cache
-	cachedNodeOnce = sync.Once{}
+	cachedNodeMu.Lock()
 	cachedNode = ""
-	cachedNodeErr = nil
+	cachedNodeMu.Unlock()
 
 	ctx := context.Background()
 	node, err := localProxmoxNode(ctx)
@@ -388,9 +387,9 @@ func TestCollectProxmox_FiltersLocalNode(t *testing.T) {
 	}
 
 	// Reset cache
-	cachedNodeOnce = sync.Once{}
+	cachedNodeMu.Lock()
 	cachedNode = ""
-	cachedNodeErr = nil
+	cachedNodeMu.Unlock()
 
 	ctx := context.Background()
 
@@ -433,9 +432,9 @@ func TestCollectProxmox_ContextCancel(t *testing.T) {
 	}
 
 	// Reset cache to force API call
-	cachedNodeOnce = sync.Once{}
+	cachedNodeMu.Lock()
 	cachedNode = ""
-	cachedNodeErr = nil
+	cachedNodeMu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -451,9 +450,9 @@ func TestCollectProxmox_Timeout(t *testing.T) {
 	}
 
 	// Reset cache to force API call
-	cachedNodeOnce = sync.Once{}
+	cachedNodeMu.Lock()
 	cachedNode = ""
-	cachedNodeErr = nil
+	cachedNodeMu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 	defer cancel()
@@ -576,9 +575,9 @@ func BenchmarkCollectProxmox_ColdCache(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		// Reset cache each iteration
-		cachedNodeOnce = sync.Once{}
+		cachedNodeMu.Lock()
 		cachedNode = ""
-		cachedNodeErr = nil
+		cachedNodeMu.Unlock()
 
 		_, _ = collectProxmox(ctx)
 	}

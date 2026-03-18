@@ -57,3 +57,10 @@ SELECT time, agent_id, metric_type, arm_freq_hz, core_freq_hz, gpu_freq_hz, core
 FROM metrics_pi
 WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 ORDER BY TIME ASC;
+
+-- name: GetLatestSystem :one
+SELECT time, agent_id, uptime, process_count, user_count, boot_time
+FROM metrics_system
+WHERE agent_id = @agent_id
+ORDER BY time DESC
+LIMIT 1;

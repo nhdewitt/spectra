@@ -646,9 +646,15 @@ func (m *MockDB) SetAgentSecretSHA256(_ context.Context, args database.SetAgentS
 	return nil
 }
 
-func (m *MockDB) TouchLastSeenIfStale(_ context.Context, _ pgtype.UUID) error {
+func (m *MockDB) TouchLastSeenIfStale(_ context.Context, _ database.TouchLastSeenIfStaleParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.TouchLastSeenCount++
 	return m.Err
+}
+
+func (m *MockDB) GetLatestSystem(_ context.Context, _ pgtype.UUID) (database.MetricsSystem, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return database.MetricsSystem{}, nil
 }

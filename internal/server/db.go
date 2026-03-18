@@ -88,6 +88,7 @@ type DB interface {
 	GetServices(ctx context.Context, id pgtype.UUID) ([]database.CurrentService, error)
 	GetApplications(ctx context.Context, id pgtype.UUID) ([]database.CurrentApplication, error)
 	GetUpdates(ctx context.Context, id pgtype.UUID) (database.CurrentUpdate, error)
+	GetLatestSystem(ctx context.Context, id pgtype.UUID) (database.MetricsSystem, error)
 
 	// Read API - Sparklines
 	GetRecentCPU(ctx context.Context) ([]database.GetRecentCPURow, error)
@@ -97,7 +98,7 @@ type DB interface {
 	// SHA-256 migration
 	GetAgentSecretSHA256(ctx context.Context, id pgtype.UUID) ([]byte, error)
 	SetAgentSecretSHA256(ctx context.Context, arg database.SetAgentSecretSHA256Params) error
-	TouchLastSeenIfStale(ctx context.Context, id pgtype.UUID) error
+	TouchLastSeenIfStale(ctx context.Context, arg database.TouchLastSeenIfStaleParams) error
 }
 
 // Compile-time check that *database.Queries satisfies the DB interface.

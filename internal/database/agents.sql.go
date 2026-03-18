@@ -32,7 +32,7 @@ func (q *Queries) DeleteAgent(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, secret_hash, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total, registered_at, last_seen
+SELECT id, secret_hash, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total, registered_at, last_seen, ip_address
 FROM agents WHERE id = $1
 `
 
@@ -48,6 +48,7 @@ type GetAgentRow struct {
 	RamTotal     pgtype.Int8        `json:"ram_total"`
 	RegisteredAt pgtype.Timestamptz `json:"registered_at"`
 	LastSeen     pgtype.Timestamptz `json:"last_seen"`
+	IpAddress    pgtype.Text        `json:"ip_address"`
 }
 
 func (q *Queries) GetAgent(ctx context.Context, id pgtype.UUID) (GetAgentRow, error) {
@@ -65,6 +66,7 @@ func (q *Queries) GetAgent(ctx context.Context, id pgtype.UUID) (GetAgentRow, er
 		&i.RamTotal,
 		&i.RegisteredAt,
 		&i.LastSeen,
+		&i.IpAddress,
 	)
 	return i, err
 }
@@ -140,8 +142,8 @@ func (q *Queries) ListAgents(ctx context.Context) ([]ListAgentsRow, error) {
 }
 
 const registerAgent = `-- name: RegisterAgent :exec
-INSERT INTO agents (id, secret_hash, secret_sha256, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO agents (id, secret_hash, secret_sha256, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total, ip_address)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 `
 
 type RegisterAgentParams struct {
@@ -155,6 +157,7 @@ type RegisterAgentParams struct {
 	CpuModel     pgtype.Text `json:"cpu_model"`
 	CpuCores     pgtype.Int4 `json:"cpu_cores"`
 	RamTotal     pgtype.Int8 `json:"ram_total"`
+	IpAddress    pgtype.Text `json:"ip_address"`
 }
 
 func (q *Queries) RegisterAgent(ctx context.Context, arg RegisterAgentParams) error {
@@ -169,6 +172,7 @@ func (q *Queries) RegisterAgent(ctx context.Context, arg RegisterAgentParams) er
 		arg.CpuModel,
 		arg.CpuCores,
 		arg.RamTotal,
+		arg.IpAddress,
 	)
 	return err
 }
@@ -198,13 +202,18 @@ func (q *Queries) TouchLastSeen(ctx context.Context, id pgtype.UUID) error {
 
 const touchLastSeenIfStale = `-- name: TouchLastSeenIfStale :exec
 UPDATE agents
-SET last_seen = NOW()
+SET last_seen = NOW(), ip_address = $2
 WHERE id = $1
     AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '60 seconds')
 `
 
-func (q *Queries) TouchLastSeenIfStale(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, touchLastSeenIfStale, id)
+type TouchLastSeenIfStaleParams struct {
+	ID        pgtype.UUID `json:"id"`
+	IpAddress pgtype.Text `json:"ip_address"`
+}
+
+func (q *Queries) TouchLastSeenIfStale(ctx context.Context, arg TouchLastSeenIfStaleParams) error {
+	_, err := q.db.Exec(ctx, touchLastSeenIfStale, arg.ID, arg.IpAddress)
 	return err
 }
 

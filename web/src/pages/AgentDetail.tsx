@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { themeVars } from "../theme";
-import { statusColor } from "../utils";
-import { TimeRangePicker } from "../components";
+import { formatBytes, formatUptime, statusColor } from "../utils";
+import { StatBlock, TimeRangePicker } from "../components";
 import { MetricsTab } from "../components/MetricsTab";
 import type { OverviewAgent, RangeSelection } from "../types";
 import { api } from "../api";
@@ -10,8 +10,9 @@ import { ProcessesTab } from "../components/ProcessesTab";
 import { ServicesTab } from "../components/ServicesTab";
 import { ApplicationsTab } from "../components/ApplicationsTab";
 import { UpdatesTab } from "../components/UpdatesTab";
+import { ContainersTab } from "../components/ContainersTab";
 
-const TABS = ["metrics", "processes", "services", "apps", "updates"] as const;
+const TABS = ["metrics", "processes", "services", "containers", "apps", "updates"] as const;
 
 export function AgentDetail({
     agent,
@@ -26,6 +27,10 @@ export function AgentDetail({
         () => api.agent(agent.id),
         30_000
     );
+    const { data: systemInfo } = usePolling(
+        () => api.agentSystemLatest(agent.id),
+        30_000
+    );
     const lastSeen = liveAgent?.last_seen ?? agent.last_seen;
 
     const rangeLabel =
@@ -33,7 +38,7 @@ export function AgentDetail({
             ? rangeSel.range
             : `${new Date(rangeSel.start).toLocaleString()} — ${new Date(rangeSel.end).toLocaleString()}`;
     
-    const isTimeSeriesTab = activeTab === "metrics";
+    const isTimeSeriesTab = activeTab === "metrics" || activeTab === "containers";
 
     return (
         <div style={{ padding: 24 }}>
@@ -89,10 +94,45 @@ export function AgentDetail({
                     >
                         {agent.os} · {agent.platform} · {agent.arch} · {agent.cpu_cores}{" "}
                         {agent.cpu_cores === 1 ? "core" : "cores"}
+                        {liveAgent?.ip_address && ` · ${liveAgent.ip_address}`}
                     </div>
                 </div>
             </div>
 
+            {/* System info stats row */}
+            <div
+                style={{
+                    display: "flex",
+                    gap: 24,
+                    marginBottom: 20,
+                    flexWrap: "wrap",
+                }}
+            >
+                {systemInfo && (
+                    <>
+                        <StatBlock label="Uptime" value={formatUptime(systemInfo.uptime)} />
+                        <StatBlock
+                            label="Boot"
+                            value={systemInfo.boot_time
+                                ? new Date(Number(systemInfo.boot_time) * 1000).toLocaleDateString(undefined, {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                })
+                                : null}
+                        />
+                        <StatBlock label="Users" value={String(systemInfo.user_count)} />
+                        <StatBlock label="Processes" value={String(systemInfo.process_count)} />
+                    </>
+                )}
+                {liveAgent && (
+                    <>
+                        <StatBlock label="CPU" value={liveAgent.cpu_model ?? null} />
+                        <StatBlock label="RAM" value={formatBytes(liveAgent.ram_total)} />
+                    </>
+                )}
+            </div>
             {/* Time range picker */}
             <div
                 style={{
@@ -137,7 +177,7 @@ export function AgentDetail({
                 ))}
             </div>
 
-            {/* Tab content (placeholder) */}
+            {/* Tab content */}
             <div
                 style={{
                     background: themeVars.surface,
@@ -153,6 +193,7 @@ export function AgentDetail({
                 )}
                 {activeTab === "processes" && <ProcessesTab agentId={agent.id} />}
                 {activeTab === "services" && <ServicesTab agentId={agent.id} />}
+                {activeTab === "containers" && <ContainersTab agentId={agent.id} rangeSel={rangeSel} />}
                 {activeTab === "apps" && <ApplicationsTab agentId={agent.id} />}
                 {activeTab === "updates" && <UpdatesTab agentId={agent.id} />}
             </div>

@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import { themeVars } from "../theme";
 import { MetricSelector } from "./ui";
+import { PiPanels } from "./PiPanels";
 
 interface PanelProps {
     agentId: string;
@@ -21,7 +22,7 @@ interface MetricsTabProps extends PanelProps {
     cores: number;
 }
 
-type PivotedRow = { time: string; [sensor: string]: string | number | null };
+type PivotedRow = { time: string; _ts?: number; [sensor: string]: string | number | null | undefined };
 
 type MetricFetcher<T extends { time: string }> = (
     id: string,
@@ -314,7 +315,7 @@ function TemperaturePanel({ agentId, rangeSel }: PanelProps) {
     );
 
     const sensors = useMemo(
-        () => [...new Set(data.map((d: TemperatureMetric) => d.sensor))],
+        () => [...new Set(data.map((d: TemperatureMetric) => d.sensor))].filter(Boolean) as string[],
         [data]
     );
 
@@ -323,6 +324,7 @@ function TemperaturePanel({ agentId, rangeSel }: PanelProps) {
         const byTime = new Map<string, PivotedRow>();
 
         for (const d of data) {
+            if (!d.sensor) continue;
             const key = roundToInterval(d.time, interval);
             let row = byTime.get(key);
             if (!row) {
@@ -342,6 +344,7 @@ function TemperaturePanel({ agentId, rangeSel }: PanelProps) {
                     row[s] = last[s];
                 }
             }
+            row._ts = Date.parse(row.time);
         }
         return rows;
     }, [data, sensors]);
@@ -408,6 +411,8 @@ export function MetricsTab({ agentId, rangeSel, cores }: MetricsTabProps) {
                 <TemperaturePanel agentId={agentId} rangeSel={rangeSel} />
                 <WifiPanel agentId={agentId} rangeSel={rangeSel} />
             </div>
+
+            <PiPanels agentId={agentId} rangeSel={rangeSel} />
         </div>
     );
 }

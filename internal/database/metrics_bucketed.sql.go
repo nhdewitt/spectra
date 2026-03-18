@@ -494,24 +494,24 @@ SELECT
     time_bucket(($1)::text::interval, time)::timestamptz AS time,
     agent_id,
     MAX(metric_type)::text AS metric_type,
-    AVG(arm_freq_hz)::float8 AS arm_freq_hz,
-    AVG(core_freq_hz)::float8 AS core_freq_hz,
-    AVG(gpu_freq_hz)::float8 AS gpu_freq_hz,
-    AVG(core_volts)::float8 AS core_volts,
-    AVG(sdram_c_volts)::float8 AS sdram_c_volts,
-    AVG(sdram_i_volts)::float8 AS sdram_i_volts,
-    AVG(sdram_p_volts)::float8 AS sdram_p_volts,
-    AVG(soft_temp_limit)::float8 AS soft_temp_limit,
-    BOOL_OR(throttled) AS throttled,
-    BOOL_OR(under_voltage) AS under_voltage,
-    BOOL_OR(freq_capped) AS freq_capped,
-    BOOL_OR(undervoltage_occurred) AS undervoltage_occurred,
-    BOOL_OR(freq_cap_occurred) AS freq_cap_occurred,
-    BOOL_OR(throttled_occurred) AS throttled_occurred,
-    BOOL_OR(soft_temp_limit_occurred) AS soft_temp_limit_occurred,
-    AVG(gpu_mem_total)::float8 AS gpu_mem_total,
-    AVG(gpu_mem_used)::float8 AS gpu_mem_used,
-    AVG(gpu_temp)::float8 AS gpu_temp
+    COALESCE(AVG(arm_freq_hz), 0)::float8 AS arm_freq_hz,
+    COALESCE(AVG(core_freq_hz), 0)::float8 AS core_freq_hz,
+    COALESCE(AVG(gpu_freq_hz), 0)::float8 AS gpu_freq_hz,
+    COALESCE(AVG(core_volts), 0)::float8 AS core_volts,
+    COALESCE(AVG(sdram_c_volts), 0)::float8 AS sdram_c_volts,
+    COALESCE(AVG(sdram_i_volts), 0)::float8 AS sdram_i_volts,
+    COALESCE(AVG(sdram_p_volts), 0)::float8 AS sdram_p_volts,
+    COALESCE(BOOL_OR(soft_temp_limit), false) AS soft_temp_limit,
+    COALESCE(BOOL_OR(throttled), false) AS throttled,
+    COALESCE(BOOL_OR(under_voltage), false) AS under_voltage,
+    COALESCE(BOOL_OR(freq_capped), false) AS freq_capped,
+    COALESCE(BOOL_OR(undervoltage_occurred), false) AS undervoltage_occurred,
+    COALESCE(BOOL_OR(freq_cap_occurred), false) AS freq_cap_occurred,
+    COALESCE(BOOL_OR(throttled_occurred), false) AS throttled_occurred,
+    COALESCE(BOOL_OR(soft_temp_limit_occurred), false) AS soft_temp_limit_occurred,
+    COALESCE(AVG(gpu_mem_total), 0)::float8 AS gpu_mem_total,
+    COALESCE(AVG(gpu_mem_used), 0)::float8 AS gpu_mem_used,
+    COALESCE(AVG(gpu_temp), 0)::float8 AS gpu_temp
 FROM metrics_pi
 WHERE agent_id = $2 AND time >= $3 AND time <= $4
 GROUP BY 1, 2
@@ -536,14 +536,14 @@ type GetPiBucketedRow struct {
 	SdramCVolts           float64            `json:"sdram_c_volts"`
 	SdramIVolts           float64            `json:"sdram_i_volts"`
 	SdramPVolts           float64            `json:"sdram_p_volts"`
-	SoftTempLimit         float64            `json:"soft_temp_limit"`
-	Throttled             bool               `json:"throttled"`
-	UnderVoltage          bool               `json:"under_voltage"`
-	FreqCapped            bool               `json:"freq_capped"`
-	UndervoltageOccurred  bool               `json:"undervoltage_occurred"`
-	FreqCapOccurred       bool               `json:"freq_cap_occurred"`
-	ThrottledOccurred     bool               `json:"throttled_occurred"`
-	SoftTempLimitOccurred bool               `json:"soft_temp_limit_occurred"`
+	SoftTempLimit         interface{}        `json:"soft_temp_limit"`
+	Throttled             interface{}        `json:"throttled"`
+	UnderVoltage          interface{}        `json:"under_voltage"`
+	FreqCapped            interface{}        `json:"freq_capped"`
+	UndervoltageOccurred  interface{}        `json:"undervoltage_occurred"`
+	FreqCapOccurred       interface{}        `json:"freq_cap_occurred"`
+	ThrottledOccurred     interface{}        `json:"throttled_occurred"`
+	SoftTempLimitOccurred interface{}        `json:"soft_temp_limit_occurred"`
 	GpuMemTotal           float64            `json:"gpu_mem_total"`
 	GpuMemUsed            float64            `json:"gpu_mem_used"`
 	GpuTemp               float64            `json:"gpu_temp"`

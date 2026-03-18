@@ -72,6 +72,7 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 			CpuModel:     pgText(req.Info.CPUModel),
 			CpuCores:     pgInt4(int32(req.Info.CPUCores)),
 			RamTotal:     pgInt8(int64(req.Info.RAMTotal)),
+			IpAddress:    pgText(clientIP(r)),
 		}); err != nil {
 			log.Printf("Error persisting agent registration: %v", err)
 		}
@@ -92,6 +93,16 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSONBody(r, &rawEnvelopes); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if s.DB != nil {
+		if err := s.DB.TouchLastSeenIfStale(r.Context(), database.TouchLastSeenIfStaleParams{
+			ID:        mustUUID(agentID),
+			IpAddress: pgText(clientIP(r)),
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.WriteHeader(http.StatusAccepted)

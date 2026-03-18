@@ -18,6 +18,7 @@ export interface Agent {
     ram_total: number;
     registered_at: string;
     last_seen: string | null;
+    ip_address: string | null;
 }
 
 // Overview (agents LEFT JOIN current_metrics)
@@ -42,6 +43,7 @@ export interface OverviewAgent {
     process_count: number | null;
     reboot_required: boolean | null;
     updated_at: string | null;
+    ip_address: string | null;
 }
 
 // Time-series metrics

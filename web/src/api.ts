@@ -122,6 +122,8 @@ export const api = {
         apiFetch<Application[]>(`/agents/${id}/applications`),
     agentUpdates: (id: string) =>
         apiFetch<Updates>(`/agents/${id}/updates`),
+    agentSystemLatest: (id: string) =>
+        apiFetch<SystemMetric>(`/agents/${id}/system/latest`),
 
     // Admin / Provisioning
     platforms: () => apiFetch<PlatformInfo[]>("/admin/platforms"),

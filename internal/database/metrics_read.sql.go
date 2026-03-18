@@ -192,6 +192,28 @@ func (q *Queries) GetDiskRange(ctx context.Context, arg GetDiskRangeParams) ([]M
 	return items, nil
 }
 
+const getLatestSystem = `-- name: GetLatestSystem :one
+SELECT time, agent_id, uptime, process_count, user_count, boot_time
+FROM metrics_system
+WHERE agent_id = $1
+ORDER BY time DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestSystem(ctx context.Context, agentID pgtype.UUID) (MetricsSystem, error) {
+	row := q.db.QueryRow(ctx, getLatestSystem, agentID)
+	var i MetricsSystem
+	err := row.Scan(
+		&i.Time,
+		&i.AgentID,
+		&i.Uptime,
+		&i.ProcessCount,
+		&i.UserCount,
+		&i.BootTime,
+	)
+	return i, err
+}
+
 const getMemoryRange = `-- name: GetMemoryRange :many
 SELECT time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent
 FROM metrics_memory

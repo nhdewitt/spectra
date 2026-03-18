@@ -27,9 +27,9 @@ const (
 )
 
 var (
-	cachedNode     string
-	cachedNodeOnce sync.Once
-	cachedNodeErr  error
+	cachedNode    string
+	cachedNodeMu  sync.Mutex
+	cachedNodeErr error
 )
 
 type pveNode struct {
@@ -52,10 +52,20 @@ type proxmoxClusterRow struct {
 }
 
 func localProxmoxNode(ctx context.Context) (string, error) {
-	cachedNodeOnce.Do(func() {
-		cachedNode, cachedNodeErr = resolveProxmoxNode(ctx)
-	})
-	return cachedNode, cachedNodeErr
+	cachedNodeMu.Lock()
+	defer cachedNodeMu.Unlock()
+
+	if cachedNode != "" {
+		return cachedNode, nil
+	}
+
+	node, err := resolveProxmoxNode(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	cachedNode = node
+	return node, nil
 }
 
 func resolveProxmoxNode(ctx context.Context) (string, error) {
