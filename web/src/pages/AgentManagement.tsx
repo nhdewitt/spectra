@@ -573,6 +573,15 @@ export function AgentManagement() {
         return () => clearInterval(id);
     }, [loadAgents]);
 
+    useEffect(() => {
+        if (!selectedId) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setSelectedId(null);
+        };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, [selectedId]);
+
     const filtered = useMemo(() => {
         if (!search) return agents;
         const q = search.toLowerCase();
