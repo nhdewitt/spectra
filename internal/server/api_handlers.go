@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/hex"
 	"fmt"
-	"log"
 	"net/http"
 	"regexp"
 	"time"
@@ -428,9 +427,6 @@ func (s *Server) handleGetContainers(w http.ResponseWriter, r *http.Request) {
 		result, err = s.DB.GetContainerRange(r.Context(), database.GetContainerRangeParams{
 			AgentID: uid, StartTime: start, EndTime: end,
 		})
-		if rows, ok := result.([]database.MetricsContainer); ok {
-			log.Printf("containers: got %d rows", len(rows))
-		}
 	} else {
 		result, err = s.DB.GetContainerBucketed(r.Context(), database.GetContainerBucketedParams{
 			AgentID: uid, StartTime: start, EndTime: end, BucketInterval: bucket,

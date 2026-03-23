@@ -11,6 +11,7 @@ sql:
       - "internal/database/migrations/006_users_sessions.up.sql"
       - "internal/database/migrations/007_agent_sha256_secret.up.sql"
       - "internal/database/migrations/008_agent_ip.up.sql"
+      - "internal/database/migrations/009_agent_config.up.sql"
     gen:
       go:
         package: "database"

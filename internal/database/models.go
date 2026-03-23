@@ -24,6 +24,13 @@ type Agent struct {
 	IpAddress    pgtype.Text        `json:"ip_address"`
 }
 
+type AgentConfig struct {
+	AgentID     pgtype.UUID        `json:"agent_id"`
+	ConfigKey   string             `json:"config_key"`
+	ConfigValue []byte             `json:"config_value"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type CurrentApplication struct {
 	AgentID   pgtype.UUID        `json:"agent_id"`
 	Name      string             `json:"name"`

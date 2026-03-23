@@ -658,3 +658,33 @@ func (m *MockDB) GetLatestSystem(_ context.Context, _ pgtype.UUID) (database.Met
 	defer m.mu.Unlock()
 	return database.MetricsSystem{}, nil
 }
+
+func (m *MockDB) GetAgentConfig(_ context.Context, _ pgtype.UUID) ([]database.AgentConfig, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.AgentConfig{}, nil
+}
+
+func (m *MockDB) GetAgentConfigByKey(_ context.Context, _ database.GetAgentConfigByKeyParams) (database.AgentConfig, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return database.AgentConfig{}, nil
+}
+
+func (m *MockDB) SetAgentConfig(_ context.Context, _ database.SetAgentConfigParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}
+
+func (m *MockDB) DeleteAgentConfig(_ context.Context, _ database.DeleteAgentConfigParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}
+
+func (m *MockDB) DeleteAllAgentConfig(_ context.Context, _ pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}

@@ -91,6 +91,19 @@ export const api = {
     agent: (id: string) => apiFetch<Agent>(`/agents/${id}`),
     deleteAgent: (id: string) => apiFetch<null>(`/agents/${id}`, { method: "DELETE" }),
 
+    // Agent config
+    agentConfig: (id: string) =>
+        apiFetch<Record<string, unknown>>(`/agents/${id}/config`),
+    setAgentConfig: (id: string, key: string, value: unknown) =>
+        apiFetch<null>(`/agents/${id}/config`, {
+            method: "PUT",
+            body: JSON.stringify({ key, value }),
+        }),
+    deleteAgentConfig: (id: string, key: string) =>
+        apiFetch<null>(`/agents/${id}/config?key=${encodeURIComponent(key)}`, {
+            method: "DELETE",
+        }),
+
     // Time-series metrics
     agentCPU: (id: string, sel: RangeSelection = defaultRange, opts: MetricRequestOptions = {}) =>
         apiFetch<CPUMetric[]>(`/agents/${id}/cpu?${rangeQuery(sel)}`, opts),

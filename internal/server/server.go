@@ -23,6 +23,8 @@ type Server struct {
 	Limiters     *tieredLimiters
 	Releases     *releaseManifest
 	httpServer   *http.Server
+
+	done chan struct{}
 }
 
 func New(cfg Config, db DB) *Server {
@@ -39,6 +41,7 @@ func New(cfg Config, db DB) *Server {
 		LoginTracker: newLoginTracker(),
 		Limiters:     newTieredLimiters(),
 		Releases:     newReleaseManifest(cfg.ReleasesDir),
+		done:         make(chan struct{}),
 	}
 	s.routes()
 	return s
@@ -68,6 +71,9 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/agents", s.requireUserAuth(s.rateLimitAuthed(s.handleListAgents)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAgent)))
 	s.Router.HandleFunc("DELETE /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAgent)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/config", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAgentConfig)))
+	s.Router.HandleFunc("PUT /api/v1/agents/{id}/config", s.requireUserAuth(s.rateLimitAuthed(s.handleSetAgentConfig)))
+	s.Router.HandleFunc("DELETE /api/v1/agents/{id}/config", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAgentConfig)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/cpu", s.requireUserAuth(s.rateLimitAuthed(s.handleGetCPU)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/memory", s.requireUserAuth(s.rateLimitAuthed(s.handleGetMemory)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/disk", s.requireUserAuth(s.rateLimitAuthed(s.handleGetDisk)))
@@ -106,6 +112,7 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	close(s.done)
 	s.Limiters.Stop()
 	return s.httpServer.Shutdown(ctx)
 }

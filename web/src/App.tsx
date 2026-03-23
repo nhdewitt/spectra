@@ -3,7 +3,7 @@ import { api } from "./api";
 import { initTheme, themeVars } from "./theme";
 import { Login, Header } from "./components";
 import type { ViewMode } from "./components";
-import { Overview, AgentDetail, Admin } from "./pages";
+import { Overview, AgentDetail, Admin, AgentManagement } from "./pages";
 import type { User, Page, OverviewAgent } from "./types";
 
 export default function App() {
@@ -98,15 +98,7 @@ export default function App() {
       )}
 
       {page === "agents" && !selectedAgent && (
-        <div
-          style={{
-            padding: 24,
-            fontFamily: themeVars.font,
-            color: themeVars.textDim,
-          }}
-        >
-          Agent management view — coming soon.
-        </div>
+        <AgentManagement />
       )}
 
       {page === "admin" && <Admin />}

@@ -27,9 +27,8 @@ const (
 )
 
 var (
-	cachedNode    string
-	cachedNodeMu  sync.Mutex
-	cachedNodeErr error
+	cachedNode   string
+	cachedNodeMu sync.Mutex
 )
 
 type pveNode struct {

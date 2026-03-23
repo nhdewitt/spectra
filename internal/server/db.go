@@ -99,6 +99,13 @@ type DB interface {
 	GetAgentSecretSHA256(ctx context.Context, id pgtype.UUID) ([]byte, error)
 	SetAgentSecretSHA256(ctx context.Context, arg database.SetAgentSecretSHA256Params) error
 	TouchLastSeenIfStale(ctx context.Context, arg database.TouchLastSeenIfStaleParams) error
+
+	// Interface
+	GetAgentConfig(ctx context.Context, id pgtype.UUID) ([]database.AgentConfig, error)
+	GetAgentConfigByKey(ctx context.Context, arg database.GetAgentConfigByKeyParams) (database.AgentConfig, error)
+	SetAgentConfig(ctx context.Context, arg database.SetAgentConfigParams) error
+	DeleteAgentConfig(ctx context.Context, arg database.DeleteAgentConfigParams) error
+	DeleteAllAgentConfig(ctx context.Context, id pgtype.UUID) error
 }
 
 // Compile-time check that *database.Queries satisfies the DB interface.

@@ -109,7 +109,12 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		for _, env := range rawEnvelopes {
-			s.processMetric(agentID, env)
+			select {
+			case <-s.done:
+				return
+			default:
+				s.processMetric(agentID, env)
+			}
 		}
 	}()
 }
