@@ -53,10 +53,6 @@ func TestHandleAgentRegister_Success(t *testing.T) {
 	if resp.Secret == "" {
 		t.Error("Secret should not be empty")
 	}
-
-	if !s.Store.Exists(resp.AgentID) {
-		t.Error("agent should be registered in store")
-	}
 }
 
 func TestHandleAgentRegister_InvalidToken(t *testing.T) {
@@ -314,7 +310,7 @@ func TestHandleAgentCommand_NoCommands(t *testing.T) {
 
 func TestHandleAgentCommand_WithCommand(t *testing.T) {
 	s, agentID, secret, _ := newTestServer()
-	s.Store.QueueCommand(agentID, protocol.Command{
+	s.CmdQueue.Send(agentID, protocol.Command{
 		ID:   "cmd-123",
 		Type: protocol.CmdFetchLogs,
 	})

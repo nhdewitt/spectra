@@ -17,8 +17,8 @@ func TestHandleAdminTriggerLogs_Success(t *testing.T) {
 
 	s.Router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("status: got %d, want 200", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status: got %d, want 202", rec.Code)
 	}
 }
 
@@ -52,8 +52,9 @@ func TestHandleAdminTriggerLogs_MissingAgent(t *testing.T) {
 func TestHandleAdminTriggerLogs_UnknownAgent(t *testing.T) {
 	s, _, _, mock := newTestServer()
 	setupTestSession(mock)
+	mock.GetAgentErr = errFake
 
-	req := authedRequest(httptest.NewRequest(http.MethodPost, "/api/v1/admin/logs?agent=nonexistent", nil))
+	req := authedRequest(httptest.NewRequest(http.MethodPost, "/api/v1/admin/logs?agent=00000000-0000-0000-0000-000000000000", nil))
 	rec := httptest.NewRecorder()
 
 	s.Router.ServeHTTP(rec, req)
@@ -72,8 +73,8 @@ func TestHandleAdminTriggerDisk_Success(t *testing.T) {
 
 	s.Router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("status: got %d, want 200", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status: got %d, want 202", rec.Code)
 	}
 }
 
@@ -113,8 +114,8 @@ func TestHandleAdminTriggerNetwork_Success(t *testing.T) {
 
 	s.Router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("status: got %d, want 200", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status: got %d, want 202", rec.Code)
 	}
 }
 

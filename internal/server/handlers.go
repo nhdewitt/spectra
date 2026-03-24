@@ -57,8 +57,6 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.Store.Register(agentID, secret, req.Info)
-
 	if s.DB != nil {
 		if err := s.DB.RegisterAgent(r.Context(), database.RegisterAgentParams{
 			ID:           mustUUID(agentID),
@@ -121,7 +119,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAgentCommand(w http.ResponseWriter, r *http.Request) {
 	agentID := getAgentID(r)
 
-	cmd, err := s.Store.WaitForCommand(r.Context(), agentID, s.Config.CommandTimeout)
+	cmd, err := s.CmdQueue.Wait(r.Context(), agentID, s.Config.CommandTimeout)
 	if err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		return

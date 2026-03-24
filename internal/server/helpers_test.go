@@ -1,11 +1,11 @@
 package server
 
 import (
+	"crypto/sha256"
 	"errors"
 	"net/http"
 	"time"
 
-	"github.com/nhdewitt/spectra/internal/protocol"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -24,10 +24,8 @@ func newTestServer() (*Server, string, string, *MockDB) {
 	hash, _ := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
 	mock.Agents[agentID] = string(hash)
 
-	s.Store.Register(agentID, secret, protocol.HostInfo{
-		Hostname: "test-host",
-		OS:       "linux",
-	})
+	sum := sha256.Sum256([]byte(secret))
+	mock.AgentSHA256[agentID] = sum[:]
 
 	return s, agentID, secret, mock
 }
@@ -36,12 +34,4 @@ func newTestServer() (*Server, string, string, *MockDB) {
 func setAgentAuth(req *http.Request, agentID, secret string) {
 	req.Header.Set("X-Agent-ID", agentID)
 	req.Header.Set("X-Agent-Secret", secret)
-}
-
-// registerTestAgent is a shorthand for registering a test agent in the store.
-func registerTestAgent(store *AgentStore, agentID string) {
-	store.Register(agentID, "secret-"+agentID, protocol.HostInfo{
-		Hostname: "host-" + agentID,
-		OS:       "linux",
-	})
 }

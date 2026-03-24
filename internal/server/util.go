@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
@@ -58,7 +59,7 @@ func (s *Server) queueHelper(w http.ResponseWriter, agentID string, cmdType prot
 		Payload: payload,
 	}
 
-	err := s.Store.QueueCommand(agentID, cmd)
+	err := s.CmdQueue.Send(agentID, cmd)
 	if err != nil {
 		http.Error(w, "Queue full or agent not found", http.StatusServiceUnavailable)
 		return
@@ -99,7 +100,13 @@ func (s *Server) getTargetAgent(w http.ResponseWriter, r *http.Request) (string,
 		return "", false
 	}
 
-	_, err := s.DB.GetAgent(r.Context(), mustUUID(agentID))
+	var uid pgtype.UUID
+	if err := uid.Scan(agentID); err != nil {
+		http.Error(w, "invalid agent ID", http.StatusBadRequest)
+		return "", false
+	}
+
+	_, err := s.DB.GetAgent(r.Context(), uid)
 	if err != nil {
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return "", false

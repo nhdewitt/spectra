@@ -69,8 +69,9 @@ type MockDB struct {
 	recentMemory  []database.GetRecentMemoryRow
 	recentDiskMax []database.GetRecentDiskMaxRow
 
-	Err      error
-	QueryErr error // errors for data queries (not auth)
+	Err         error
+	QueryErr    error // errors for data queries (not auth)
+	GetAgentErr error
 }
 
 type mockUser struct {
@@ -327,6 +328,9 @@ func (m *MockDB) GetOverview(_ context.Context) ([]database.GetOverviewRow, erro
 func (m *MockDB) GetAgent(_ context.Context, _ pgtype.UUID) (database.GetAgentRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.GetAgentErr != nil {
+		return database.GetAgentRow{}, m.GetAgentErr
+	}
 	return database.GetAgentRow{}, nil
 }
 

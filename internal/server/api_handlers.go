@@ -211,7 +211,7 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.Store.Remove(agentID)
+	s.CmdQueue.Remove(agentID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

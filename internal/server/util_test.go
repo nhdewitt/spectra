@@ -167,19 +167,17 @@ func TestGenerateSecret_DifferentLengths(t *testing.T) {
 }
 
 func TestGetTargetAgent_Success(t *testing.T) {
-	s := New(Config{Port: 8080}, NewMockDB())
-	registerTestAgent(s.Store, "agent-1")
+	s, agentID, _, _ := newTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/?agent=agent-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test?agent="+agentID, nil)
 	rec := httptest.NewRecorder()
 
-	agentID, ok := s.getTargetAgent(rec, req)
-
+	id, ok := s.getTargetAgent(rec, req)
 	if !ok {
-		t.Error("expected ok to be true")
+		t.Errorf("expected ok to be true")
 	}
-	if agentID != "agent-1" {
-		t.Errorf("agentID = %s, want agent-1", agentID)
+	if id != agentID {
+		t.Errorf("agentID = %s, want %s", id, agentID)
 	}
 }
 
@@ -199,14 +197,31 @@ func TestGetTargetAgent_Missing(t *testing.T) {
 	}
 }
 
-func TestGetTargetAgent_NotRegistered(t *testing.T) {
-	s := New(Config{Port: 8080}, NewMockDB())
+func TestGetTargetAgent_InvalidUUID(t *testing.T) {
+	s, _, _, _ := newTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/?agent=nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test?agent=nonexistent", nil)
 	rec := httptest.NewRecorder()
 
 	_, ok := s.getTargetAgent(rec, req)
+	if ok {
+		t.Error("expected ok to be false")
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
 
+func TestGetTargetAgent_NotFound(t *testing.T) {
+	s, _, _, mock := newTestServer()
+
+	// Make GetAgent return an error for unknown agents
+	mock.GetAgentErr = errFake
+
+	req := httptest.NewRequest(http.MethodGet, "/test?agent=00000000-0000-0000-0000-000000000000", nil)
+	rec := httptest.NewRecorder()
+
+	_, ok := s.getTargetAgent(rec, req)
 	if ok {
 		t.Error("expected ok to be false")
 	}
@@ -262,17 +277,24 @@ func TestRespondJSON_Struct(t *testing.T) {
 }
 
 func TestQueueHelper_Success(t *testing.T) {
-	s := New(Config{Port: 8080}, NewMockDB())
-	registerTestAgent(s.Store, "agent-1")
+	s, agentID, _, _ := newTestServer()
 
 	rec := httptest.NewRecorder()
-	s.queueHelper(rec, "agent-1", protocol.CmdFetchLogs, []byte(`{}`), "Queued!")
+	s.queueHelper(rec, agentID, protocol.CmdFetchLogs, []byte(`{}`), "Queued!")
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want 202", rec.Code)
 	}
-	if rec.Body.String() != "Queued!\n" {
-		t.Errorf("body = %q, want 'Queued!\\n'", rec.Body.String())
+
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if resp["command_id"] == "" {
+		t.Error("command_id should not be empty")
+	}
+	if resp["message"] != "Queued!" {
+		t.Errorf("message = %s, want Queued!", resp["message"])
 	}
 }
 
@@ -282,17 +304,16 @@ func TestQueueHelper_UnregisteredAgent(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.queueHelper(rec, "unknown-agent", protocol.CmdFetchLogs, []byte(`{}`), "Queued!")
 
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Errorf("status = %d, want 503", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want 202", rec.Code)
 	}
 }
 
 func TestQueueHelper_QueueFull(t *testing.T) {
 	s := New(Config{Port: 8080}, NewMockDB())
-	registerTestAgent(s.Store, "agent-1")
 
 	for range 10 {
-		s.Store.QueueCommand("agent-1", protocol.Command{ID: "cmd"})
+		s.CmdQueue.Send("agent-1", protocol.Command{ID: "cmd"})
 	}
 
 	rec := httptest.NewRecorder()
@@ -442,7 +463,6 @@ func BenchmarkFormatBytes(b *testing.B) {
 
 func BenchmarkQueueHelper(b *testing.B) {
 	s := New(Config{Port: 8080}, NewMockDB())
-	registerTestAgent(s.Store, "agent-1")
 
 	payload := []byte(`{"min_level":"ERROR"}`)
 
@@ -451,7 +471,7 @@ func BenchmarkQueueHelper(b *testing.B) {
 	for b.Loop() {
 		b.StopTimer()
 		for {
-			cmd, _ := s.Store.WaitForCommand(context.TODO(), "agent-1", 0)
+			cmd, _ := s.CmdQueue.Wait(context.TODO(), "agent-1", 0)
 			if cmd.ID == "" {
 				break
 			}

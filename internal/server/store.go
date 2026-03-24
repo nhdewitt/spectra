@@ -9,82 +9,35 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-// AgentStore manages pending commands for agents.
-type AgentStore struct {
-	mu            sync.Mutex
-	agents        map[string]*AgentRecord
-	commandQueues map[string]chan protocol.Command
+// CommandQueue manages pending command channels for agents.
+// Channels are created lazily on first use (Send or Wait).
+type CommandQueue struct {
+	mu     sync.Mutex
+	queues map[string]chan protocol.Command
 }
 
-type AgentRecord struct {
-	ID           string
-	Secret       string
-	Info         protocol.HostInfo
-	RegisteredAt time.Time
-	LastSeen     time.Time
-}
-
-func NewAgentStore() *AgentStore {
-	return &AgentStore{
-		agents:        make(map[string]*AgentRecord),
-		commandQueues: make(map[string]chan protocol.Command),
+func NewCommandQueue() *CommandQueue {
+	return &CommandQueue{
+		queues: make(map[string]chan protocol.Command),
 	}
 }
 
-// Register creates the command queue for an agent.
-func (s *AgentStore) Register(agentID, secret string, info protocol.HostInfo) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// getOrCreate returns the command channel for an agent, creating it if needed.
+func (q *CommandQueue) getOrCreate(agentID string) chan protocol.Command {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 
-	now := time.Now()
-
-	if rec, exists := s.agents[agentID]; exists {
-		// Re-registration: update info, keep queue
-		rec.Info = info
-		rec.LastSeen = now
-		return
-	}
-
-	s.agents[agentID] = &AgentRecord{
-		ID:           agentID,
-		Secret:       secret,
-		Info:         info,
-		RegisteredAt: now,
-		LastSeen:     now,
-	}
-	s.commandQueues[agentID] = make(chan protocol.Command, 10)
-}
-
-// Unregister removes an agent's command queue.
-func (s *AgentStore) Unregister(agentID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if ch, exists := s.commandQueues[agentID]; exists {
-		close(ch)
-		delete(s.commandQueues, agentID)
-	}
-	delete(s.agents, agentID)
-}
-
-// getQueue returns the channel and true if the agent exists.
-func (s *AgentStore) getQueue(hostname string) (chan protocol.Command, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	ch, ok := s.commandQueues[hostname]
-	return ch, ok
-}
-
-// QueueCommand sends a command to a registered agent.
-func (s *AgentStore) QueueCommand(agentID string, cmd protocol.Command) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	ch, ok := s.commandQueues[agentID]
+	ch, ok := q.queues[agentID]
 	if !ok {
 		ch = make(chan protocol.Command, 10)
-		s.commandQueues[agentID] = ch
+		q.queues[agentID] = ch
 	}
+	return ch
+}
+
+// Send queues a command for an agent.
+func (q *CommandQueue) Send(agentID string, cmd protocol.Command) error {
+	ch := q.getOrCreate(agentID)
 
 	select {
 	case ch <- cmd:
@@ -94,11 +47,9 @@ func (s *AgentStore) QueueCommand(agentID string, cmd protocol.Command) error {
 	}
 }
 
-func (s *AgentStore) WaitForCommand(ctx context.Context, hostname string, timeout time.Duration) (protocol.Command, error) {
-	ch, ok := s.getQueue(hostname)
-	if !ok {
-		return protocol.Command{}, fmt.Errorf("agent %q not registered", hostname)
-	}
+// Wait blocks until a command is available or the timeout/context expires.
+func (q *CommandQueue) Wait(ctx context.Context, agentID string, timeout time.Duration) (protocol.Command, error) {
+	ch := q.getOrCreate(agentID)
 
 	select {
 	case cmd := <-ch:
@@ -110,36 +61,13 @@ func (s *AgentStore) WaitForCommand(ctx context.Context, hostname string, timeou
 	}
 }
 
-func (s *AgentStore) Exists(agentID string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, ok := s.commandQueues[agentID]
-	return ok
-}
+// Remove cleans up the command channel for a deleted agent.
+func (q *CommandQueue) Remove(agentID string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 
-func (s *AgentStore) Authenticate(agentID, secret string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	rec, ok := s.agents[agentID]
-	if !ok {
-		return false
+	if ch, ok := q.queues[agentID]; ok {
+		close(ch)
+		delete(q.queues, agentID)
 	}
-
-	return rec.Secret == secret
-}
-
-func (s *AgentStore) TouchLastSeen(agentID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if rec, ok := s.agents[agentID]; ok {
-		rec.LastSeen = time.Now()
-	}
-}
-
-func (s *AgentStore) Remove(agentID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.agents, agentID)
 }

@@ -19,8 +19,8 @@ func TestNew(t *testing.T) {
 	if s.Config.Port != 8080 {
 		t.Errorf("port: got %d, want 8080", s.Config.Port)
 	}
-	if s.Store == nil {
-		t.Error("store should not be nil")
+	if s.CmdQueue == nil {
+		t.Error("CmdQueue should not be nil")
 	}
 	if s.Tokens == nil {
 		t.Error("tokens should not be nil")
@@ -218,7 +218,7 @@ func BenchmarkHandleAgentCommand_WithCommand(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		s.Store.QueueCommand(agentID, protocol.Command{
+		s.CmdQueue.Send(agentID, protocol.Command{
 			ID:   "cmd-123",
 			Type: protocol.CmdFetchLogs,
 		})

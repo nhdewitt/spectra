@@ -15,7 +15,7 @@ type Config struct {
 
 type Server struct {
 	Config       Config
-	Store        *AgentStore
+	CmdQueue     *CommandQueue
 	Tokens       *TokenStore
 	DB           DB
 	Router       *http.ServeMux
@@ -35,7 +35,7 @@ func New(cfg Config, db DB) *Server {
 
 	s := &Server{
 		Config:       cfg,
-		Store:        NewAgentStore(),
+		CmdQueue:     NewCommandQueue(),
 		Tokens:       NewTokenStore(),
 		DB:           db,
 		Router:       http.NewServeMux(),
