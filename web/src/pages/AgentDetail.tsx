@@ -11,8 +11,9 @@ import { ServicesTab } from "../components/ServicesTab";
 import { ApplicationsTab } from "../components/ApplicationsTab";
 import { UpdatesTab } from "../components/UpdatesTab";
 import { ContainersTab } from "../components/ContainersTab";
+import { DiagnosticsPanel } from "../components/DiagnosticsPanel";
 
-const TABS = ["metrics", "processes", "services", "containers", "apps", "updates"] as const;
+const TABS = ["metrics", "processes", "services", "containers", "apps", "updates", "diagnostics"] as const;
 
 export function AgentDetail({
     agent,
@@ -196,6 +197,7 @@ export function AgentDetail({
                 {activeTab === "containers" && <ContainersTab agentId={agent.id} rangeSel={rangeSel} />}
                 {activeTab === "apps" && <ApplicationsTab agentId={agent.id} />}
                 {activeTab === "updates" && <UpdatesTab agentId={agent.id} />}
+                {activeTab === "diagnostics" && <DiagnosticsPanel agentId={agent.id} />}
             </div>
         </div>
     );

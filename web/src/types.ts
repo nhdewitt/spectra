@@ -266,3 +266,24 @@ export interface ProvisionResponse {
     config: AgentConfig;
     install: InstallInstructions;
 }
+
+// Diagnostics
+
+export interface CommandResponse {
+    command_id: string;
+    message: string;
+}
+
+export interface CommandEntry {
+    id: string;
+    type: string;
+    agent_id: string;
+    queued_at: string;
+    done: boolean;
+    result?: {
+        id: string;
+        type: string;
+        payload: unknown;
+        error?: string;
+    };
+}

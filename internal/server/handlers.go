@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -140,13 +139,32 @@ func (s *Server) handleCommandResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("\n>>> RESULT RECEIVED FROM %s (CMD: %s) <<<\n", agentID, res.ID)
+	log.Printf("Command result received from %s (cmd: %s, type: %s)", agentID, res.ID, res.Type)
+
+	s.Commands.Complete(res.ID, res)
 
 	if res.Error != "" {
-		fmt.Printf(" [ERROR] Agent failed to execute command: %s\n", res.Error)
-		w.WriteHeader(http.StatusOK)
+		log.Printf("Command %s failed: %s", res.ID, res.Error)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleGetCommandResult returns the status/result of a queued command.
+//
+// GET /api/v1/admin/commands/{id}
+func (s *Server) handleGetCommandResult(w http.ResponseWriter, r *http.Request) {
+	cmdID := r.PathValue("id")
+	if cmdID == "" {
+		http.Error(w, "command ID required", http.StatusBadRequest)
 		return
 	}
 
-	s.logCommandResult(res)
+	entry, ok := s.Commands.Get(cmdID)
+	if !ok {
+		http.Error(w, "command not found", http.StatusNotFound)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, entry)
 }

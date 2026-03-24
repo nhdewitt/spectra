@@ -10,6 +10,18 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
+var ignoredPaths = map[string]struct{}{
+	"/proc":                    {},
+	"/sys":                     {},
+	"/dev":                     {},
+	"/run":                     {},
+	"/snap":                    {},
+	"/mnt/pve":                 {},
+	"/var/snap":                {},
+	"/var/lib/docker/overlay2": {},
+	"/var/lib/lxcfs":           {},
+}
+
 // RunDiskUsageTop scans root and returns the top N immediate subdirectories
 // + the top N files anywhere under root.
 func RunDiskUsageTop(ctx context.Context, root string, topDirsN, topFilesN int) (*protocol.DiskUsageTopReport, error) {
@@ -19,6 +31,8 @@ func RunDiskUsageTop(ctx context.Context, root string, topDirsN, topFilesN int) 
 	dirsHeap := make(topNHeap, 0, topDirsN)
 	heap.Init(&filesHeap)
 	heap.Init(&dirsHeap)
+	// Dedup at inode level
+	seen := make(map[[2]uint64]struct{}) // device + inode
 
 	var scannedFiles, scannedDirs, errorCount uint64
 
@@ -30,6 +44,10 @@ func RunDiskUsageTop(ctx context.Context, root string, topDirsN, topFilesN int) 
 		case <-ctx.Done():
 			return 0, 0, ctx.Err()
 		default:
+		}
+
+		if _, skip := ignoredPaths[path]; skip {
+			return 0, 0, nil
 		}
 
 		entries, err := os.ReadDir(path)
@@ -61,6 +79,12 @@ func RunDiskUsageTop(ctx context.Context, root string, topDirsN, topFilesN int) 
 				dirFileCount += c
 			} else {
 				// File
+				if key, ok := fileKey(info); ok {
+					if _, dup := seen[key]; dup {
+						continue
+					}
+					seen[key] = struct{}{}
+				}
 				size := uint64(info.Size())
 				dirSize += size
 				dirFileCount++

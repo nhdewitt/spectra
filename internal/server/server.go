@@ -23,6 +23,7 @@ type Server struct {
 	Limiters     *tieredLimiters
 	Releases     *releaseManifest
 	httpServer   *http.Server
+	Commands     *commandResultStore
 
 	done chan struct{}
 }
@@ -41,6 +42,7 @@ func New(cfg Config, db DB) *Server {
 		LoginTracker: newLoginTracker(),
 		Limiters:     newTieredLimiters(),
 		Releases:     newReleaseManifest(cfg.ReleasesDir),
+		Commands:     newCommandResultStore(10 * time.Minute),
 		done:         make(chan struct{}),
 	}
 	s.routes()
@@ -89,6 +91,7 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/applications", s.requireUserAuth(s.rateLimitAuthed(s.handleGetApplications)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/updates", s.requireUserAuth(s.rateLimitAuthed(s.handleGetUpdates)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/system/latest", s.requireUserAuth(s.rateLimitAuthed(s.handleGetLatestSystem)))
+	s.Router.HandleFunc("GET /api/v1/admin/commands/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetCommandResult)))
 
 	// Provision (user auth, authed rate limit)
 	s.Router.HandleFunc("GET /api/v1/admin/platforms", s.requireUserAuth(s.rateLimitAuthed(s.handleListPlatforms)))
@@ -114,5 +117,6 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	close(s.done)
 	s.Limiters.Stop()
+	s.Commands.Stop()
 	return s.httpServer.Shutdown(ctx)
 }

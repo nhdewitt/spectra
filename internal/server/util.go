@@ -61,9 +61,14 @@ func (s *Server) queueHelper(w http.ResponseWriter, agentID string, cmdType prot
 	err := s.Store.QueueCommand(agentID, cmd)
 	if err != nil {
 		http.Error(w, "Queue full or agent not found", http.StatusServiceUnavailable)
-	} else {
-		fmt.Fprintln(w, successMsg)
+		return
 	}
+
+	s.Commands.Track(cmd.ID, cmdType, agentID)
+	respondJSON(w, http.StatusAccepted, map[string]string{
+		"command_id": cmd.ID,
+		"message":    successMsg,
+	})
 }
 
 func formatBytes(b uint64) string {
@@ -93,9 +98,12 @@ func (s *Server) getTargetAgent(w http.ResponseWriter, r *http.Request) (string,
 		http.Error(w, "agent ID required", http.StatusBadRequest)
 		return "", false
 	}
-	if !s.Store.Exists(agentID) {
-		http.Error(w, "agent not registered", http.StatusNotFound)
+
+	_, err := s.DB.GetAgent(r.Context(), mustUUID(agentID))
+	if err != nil {
+		http.Error(w, "agent not found", http.StatusNotFound)
 		return "", false
 	}
+
 	return agentID, true
 }

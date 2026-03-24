@@ -20,6 +20,8 @@ import type {
     ProcessSort,
     PlatformInfo,
     ProvisionResponse,
+    CommandResponse,
+    CommandEntry,
 } from "./types";
 
 declare global {
@@ -147,4 +149,20 @@ export const api = {
         }),
     generateToken: () =>
         apiFetch<{ token: string }>("/admin/tokens", { method: "POST" }),
+
+    // Diagnostics
+    triggerLogs: (agentId: string) =>
+        apiFetch<CommandResponse>(`/admin/logs?agent=${agentId}`, {
+            method: "POST",
+        }),
+    triggerDisk: (agentId: string, path: string, topN: number) =>
+        apiFetch<CommandResponse>(`/admin/disk?agent=${agentId}&top_n=${topN}${path ? `&path=${encodeURIComponent(path)}` : ""}`, {
+            method: "POST",
+        }),
+    triggerNetwork: (agentId: string, action: string, target?: string) =>
+        apiFetch<CommandResponse>(`/admin/network?agent=${agentId}&action=${action}${target ? `&target=${encodeURIComponent(target)}` : ""}`, {
+            method: "POST",
+        }),
+    commandResult: (cmdId: string) =>
+        apiFetch<CommandEntry>(`/admin/commands/${cmdId}`),
 };

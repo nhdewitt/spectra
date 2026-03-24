@@ -76,17 +76,21 @@ func (s *AgentStore) getQueue(hostname string) (chan protocol.Command, bool) {
 }
 
 // QueueCommand sends a command to a registered agent.
-func (s *AgentStore) QueueCommand(hostname string, cmd protocol.Command) error {
-	ch, ok := s.getQueue(hostname)
+func (s *AgentStore) QueueCommand(agentID string, cmd protocol.Command) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ch, ok := s.commandQueues[agentID]
 	if !ok {
-		return fmt.Errorf("agent %q not registered", hostname)
+		ch = make(chan protocol.Command, 10)
+		s.commandQueues[agentID] = ch
 	}
 
 	select {
 	case ch <- cmd:
 		return nil
 	default:
-		return fmt.Errorf("command queue full for %q", hostname)
+		return fmt.Errorf("command queue full for %q", agentID)
 	}
 }
 
