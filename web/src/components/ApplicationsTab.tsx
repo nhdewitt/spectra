@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { usePagination, Pagination } from "../hooks/usePagination";
-import { LoadingText, tableHeaderStyle, tableCellStyle, tableMutedCellStyle } from "./ui";
+import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "./ui";
 import { themeVars } from "../theme";
 import type { Application } from "../types";
 
@@ -84,7 +84,7 @@ export function ApplicationsTab({ agentId }: ApplicationsTabProps) {
                 )}
             </div>
 
-            {loading && !data && <LoadingText />}
+            {loading && !data && <LoadingSpinner />}
             {error && (
                 <div style={{ color: themeVars.danger, fontFamily: themeVars.font, fontSize: 12 }}>
                     {error}

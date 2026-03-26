@@ -13,7 +13,7 @@ import {
     ReferenceLine,
 } from "recharts";
 import { themeVars, getTheme, getThemeName } from "../theme";
-import { LoadingText } from "./ui";
+import { LoadingSpinner } from "./ui";
 import { RangeSelection } from "../types";
 
 type MetricRow = {
@@ -247,7 +247,7 @@ export function MetricChart<T extends { time: string} >({
             </div>
 
             {/* Series */}
-            {loading && <LoadingText />}
+            {loading && <LoadingSpinner />}
             {!loading && error && (
                 <div
                     style={{

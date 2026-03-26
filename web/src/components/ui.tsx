@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { themeVars } from "../theme";
+import { SpectraLogo } from "./SpectraLogo";
 
 // StatBlock
 
@@ -124,6 +125,14 @@ export function LoadingText() {
             }}
         >
             Loading{".".repeat(dots)}
+        </div>
+    );
+}
+
+export function LoadingSpinner() {
+    return (
+        <div style={{ display: "flex", justifyContent: "center", padding: 24 }}>
+            <SpectraLogo size={40} animate />
         </div>
     );
 }

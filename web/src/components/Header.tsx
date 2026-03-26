@@ -2,6 +2,7 @@ import { useState } from "react";
 import { themeVars, themes, getThemeName, applyTheme } from "../theme";
 import type { ThemeName } from "../theme";
 import type { User, Page } from "../types";
+import { SpectraLogo } from "./SpectraLogo";
 
 interface HeaderProps {
     user: User;
@@ -47,7 +48,8 @@ export function Header({ user, onLogout, onNavigate, currentPage }: HeaderProps)
                 fontFamily: themeVars.font,
             }}
         >
-            <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <SpectraLogo size={28} />
                 <span
                     style={{
                         fontSize: 15,

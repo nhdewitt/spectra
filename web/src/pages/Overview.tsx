@@ -9,7 +9,7 @@ import {
   StatBlock,
   DetailRow,
   ViewToggle,
-  LoadingText,
+  LoadingSpinner,
 } from "../components";
 import type { ViewMode } from "../components";
 import type { OverviewAgent } from "../types";
@@ -391,7 +391,7 @@ export function Overview({
       ? sortAgentsBySeverity(agents)
       : sortAgentsByStatus(agents);
 
-  if (loading) return <LoadingText />;
+  if (loading) return <LoadingSpinner />;
 
   if (error) {
     return (

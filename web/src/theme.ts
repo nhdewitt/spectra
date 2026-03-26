@@ -14,6 +14,8 @@ export interface Theme {
     ok: string;
     font: string;
     fontSans: string;
+    logoTop: string;
+    logoBot: string;
 }
 
 // --- Themes ---
@@ -34,6 +36,8 @@ const midnight: Theme = {
     ok: "#22c55e",
     font: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
     fontSans: "'IBM Plex Sans', -apple-system, -sans-serif",
+    logoTop: "#3b82f6",
+    logoBot: "#1e3a5f",
 };
 
 const terminal: Theme = {
@@ -52,6 +56,8 @@ const terminal: Theme = {
     ok: "#00ff00",
     font: "'VT323', 'Courier New', monospace",
     fontSans: "'VT323', 'Courier New', monospace",
+    logoTop: "#00cc00",
+    logoBot: "#005500",
 };
 
 const classic: Theme = {
@@ -70,6 +76,8 @@ const classic: Theme = {
     ok: "#008000",
     font: "'Consolas', 'Courier New', monospace",
     fontSans: "'Segoe UI', 'Tahoma', sans-serif",
+    logoTop: "#000080",
+    logoBot: "#000050",
 };
 
 const nord: Theme = {
@@ -88,6 +96,8 @@ const nord: Theme = {
     ok: "#a3be8c",
     font: "'JetBrains Mono', 'Fira Code', monospace",
     fontSans: "'Inter', -apple-system, sans-serif",
+    logoTop: "#88c0d0",
+    logoBot: "#4a6a78",
 };
 
 const solarized: Theme = {
@@ -106,6 +116,8 @@ const solarized: Theme = {
   ok: "#859900",
   font: "'JetBrains Mono', 'Fira Code', monospace",
   fontSans: "'IBM Plex Sans', -apple-system, sans-serif",
+  logoTop: "#268bd2",
+  logoBot: "#0d3a5c",
 };
 
 const light: Theme = {
@@ -124,6 +136,8 @@ const light: Theme = {
     ok: "#16a34a",
     font: "'JetBrains Mono', 'Fira Code', monospace",
     fontSans: "'Inter', sans-serif",
+    logoTop: "#2563eb",
+    logoBot: "#1a3f8a",
 };
 
 export const themes = {

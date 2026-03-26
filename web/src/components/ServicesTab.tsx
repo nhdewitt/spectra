@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { usePolling } from "../hooks/usePolling";
 import { usePagination, Pagination } from "../hooks/usePagination";
-import { LoadingText, tableHeaderStyle, tableCellStyle, tableMutedCellStyle } from "./ui";
+import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "./ui";
 import { themeVars } from "../theme";
 import type { Service } from "../types";
 
@@ -122,7 +122,7 @@ export function ServicesTab({ agentId }: ServicesTabProps) {
                 />
             </div>
 
-            {loading && !data && <LoadingText />}
+            {loading && !data && <LoadingSpinner />}
             {error && (
                 <div style={{ color: themeVars.danger, fontFamily: themeVars.font, fontSize: 12 }}>
                     {error}

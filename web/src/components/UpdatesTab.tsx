@@ -3,11 +3,11 @@ import { api } from "../api";
 import { usePolling } from "../hooks/usePolling";
 import { usePagination, Pagination } from "../hooks/usePagination";
 import {
-    LoadingText,
     StatBlock,
     tableHeaderStyle,
     tableCellStyle,
-    tableMutedCellStyle
+    tableMutedCellStyle,
+    LoadingSpinner
 } from "./ui";
 import { themeVars } from "../theme";
 import type { Updates } from "../types";
@@ -42,7 +42,7 @@ export function UpdatesTab({ agentId }: UpdatesTabProps) {
         return () => { cancelled = true; };
     }, [agentId]);
 
-    if (loading && !data) return <LoadingText />
+    if (loading && !data) return <LoadingSpinner />
 
     if (error) {
         return (

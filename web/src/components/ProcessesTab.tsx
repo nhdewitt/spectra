@@ -4,11 +4,11 @@ import { formatBytes } from "../utils";
 import { usePolling } from "../hooks/usePolling";
 import { usePagination, Pagination } from "../hooks/usePagination";
 import {
-    LoadingText,
     MetricSelector,
     tableHeaderStyle,
     tableCellStyle,
-    tableMutedCellStyle
+    tableMutedCellStyle,
+    LoadingSpinner
 } from "./ui";
 import { themeVars } from "../theme";
 import type { Process, ProcessSort } from "../types";
@@ -91,7 +91,7 @@ export function ProcessesTab({ agentId }: ProcessesTabProps) {
                 />
             </div>
 
-            {loading && !data && <LoadingText />}
+            {loading && !data && <LoadingSpinner />}
             {error && (
                 <div style={{ color: themeVars.danger, fontFamily: themeVars.font, fontSize: 12 }}>
                     {error}

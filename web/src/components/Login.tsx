@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { api, HttpError } from "../api";
 import { themeVars } from "../theme";
 import type { User } from "../types";
+import { SpectraLogo } from "./SpectraLogo";
 
 const labelStyle: React.CSSProperties = {
     display: "block",
@@ -123,6 +124,7 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
                     zIndex: 1,
                 }}
             >
+                <SpectraLogo size={40} />
                 <div
                     style={{
                         fontFamily: themeVars.font,

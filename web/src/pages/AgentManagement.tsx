@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "../api";
 import { statusColor, formatUptime, formatBytes } from "../utils";
 import {
-    LoadingText,
     StatBlock,
     tableHeaderStyle,
     tableCellStyle,
     tableMutedCellStyle,
+    LoadingSpinner,
 } from "../components/ui";
 import { usePagination, Pagination } from "../hooks/usePagination";
 import { themeVars } from "../theme";
@@ -423,7 +423,7 @@ function AgentConfigPanel({
         [agent.id]
     );
 
-    if (loading) return <LoadingText />
+    if (loading) return <LoadingSpinner />
 
     return (
         <div
@@ -608,7 +608,7 @@ export function AgentManagement() {
         [loadAgents]
     );
 
-    if (loading) return <LoadingText />;
+    if (loading) return <LoadingSpinner />;
 
     if (error) {
         return (

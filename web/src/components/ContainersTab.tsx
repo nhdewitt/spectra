@@ -4,10 +4,10 @@ import { formatBytes } from "../utils";
 import { useMetric } from "../hooks/useMetric";
 import { usePolling } from "../hooks/usePolling";
 import {
-    LoadingText,
     tableHeaderStyle,
     tableCellStyle,
     tableMutedCellStyle,
+    LoadingSpinner,
 } from "./ui";
 import { MetricChart, type SeriesDef } from "./MetricChart";
 import { themeVars } from "../theme";
@@ -225,7 +225,7 @@ export function ContainersTab({ agentId, rangeSel }: ContainersTabProps) {
 
     const selected = snapshots.find((s) => s.container_id === selectedId);
 
-    if (loading && !rawData) return <LoadingText />
+    if (loading && !rawData) return <LoadingSpinner />
 
     if (error) {
         return (

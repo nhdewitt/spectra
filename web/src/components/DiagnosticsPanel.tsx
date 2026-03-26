@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { api } from "../api";
 import { formatBytes } from "../utils";
-import { LoadingText, tableHeaderStyle, tableCellStyle, tableMutedCellStyle } from "./ui";
+import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "./ui";
 import { themeVars } from "../theme";
 import type { CommandResponse, CommandEntry } from "../types";
 
@@ -821,13 +821,13 @@ function CommandResultDisplay({ entry, tool, onClose }: { entry: CommandEntry; t
                         padding: "32px 48px",
                     }}
                 >
-                    <LoadingText />
+                    <LoadingSpinner />
                 </div>
             </div>
         );
     }
 
-    if (!entry.done) return <LoadingText />;
+    if (!entry.done) return <LoadingSpinner />;
     if (entry.result?.error) {
         return (
             <div style={{ color: themeVars.danger, fontFamily: themeVars.font, fontSize: 12 }}>
@@ -1115,7 +1115,7 @@ export function DiagnosticsPanel({ agentId }: DiagnosticsPanelProps) {
                             onClose={() => setActiveCmd(null)}
                         />
                     ) : (
-                        <LoadingText />
+                        <LoadingSpinner />
                     )}
                 </div>
             )}

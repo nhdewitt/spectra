@@ -5,6 +5,6 @@ export {
     StatBlock,
     DetailRow,
     ViewToggle,
-    LoadingText,
+    LoadingSpinner,
 } from "./ui";
 export type { ViewMode } from "./ui";
