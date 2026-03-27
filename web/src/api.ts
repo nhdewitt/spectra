@@ -149,6 +149,10 @@ export const api = {
         }),
     generateToken: () =>
         apiFetch<{ token: string }>("/admin/tokens", { method: "POST" }),
+    upgradeInstructions: (id: string) =>
+        apiFetch<{ type: string; steps: string }>(`/agents/${id}/upgrade-instructions`),
+    uninstallInstructions: (id: string) =>
+        apiFetch<{ type: string; steps: string }>(`/agents/${id}/uninstall-instructions`),
 
     // Diagnostics
     triggerLogs: (agentId: string) =>

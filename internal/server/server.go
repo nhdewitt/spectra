@@ -98,6 +98,10 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("POST /api/v1/admin/provision", s.requireUserAuth(s.rateLimitAuthed(s.handleProvision)))
 	s.Router.HandleFunc("POST /api/v1/admin/provision/config", s.requireUserAuth(s.rateLimitAuthed(s.handleDownloadConfig)))
 	s.Router.HandleFunc("GET /api/v1/admin/releases/{filename}", s.requireUserAuth(s.rateLimitAuthed(s.handleDownloadRelease)))
+
+	// Upgrade/uninstall instructions
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/upgrade-instructions", s.requireUserAuth(s.rateLimitAuthed(s.handleUpgradeInstructions)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/uninstall-instructions", s.requireUserAuth(s.rateLimitAuthed(s.handleUninstallInstructions)))
 }
 
 func (s *Server) Start() error {

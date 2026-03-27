@@ -50,8 +50,9 @@ function downloadBlob(content: string, filename: string, type: string) {
 }
 
 function configPath(platform: string): string {
-    if (platform.startsWith("spectra-agent-freebsd")) return "/usr/local/etc/spectra/";
-    if (platform.startsWith("spectra-agent-windows")) return "C:\\spectra\\";
+    if (platform.startsWith("spectra-agent-darwin")) return "/usr/local/etc/spectra";
+    if (platform.startsWith("spectra-agent-freebsd")) return "/usr/local/etc/spectra";
+    if (platform.startsWith("spectra-agent-windows")) return "C:\\Spectra\\";
     return "/etc/spectra";
 }
 

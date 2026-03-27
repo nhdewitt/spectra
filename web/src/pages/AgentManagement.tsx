@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "../api";
-import { statusColor, formatUptime, formatBytes } from "../utils";
+import { statusColor, formatUptime } from "../utils";
 import {
     StatBlock,
     tableHeaderStyle,
     tableCellStyle,
     tableMutedCellStyle,
     LoadingSpinner,
+    InstructionBlock,
 } from "../components/ui";
 import { usePagination, Pagination } from "../hooks/usePagination";
 import { themeVars } from "../theme";
@@ -18,165 +19,23 @@ interface AgentConfig {
     labels?: Record<string, string>;
 }
 
-async function fetchAgentConfig(agentId: string): Promise<AgentConfig> {
-    const res = await fetch(`/api/v1/agents/${agentId}/config`, {
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-    });
-    if (!res.ok) return {};
-    return res.json();
-}
-
-async function setAgentConfig(
-    agentId: string,
-    key: string,
-    value: unknown
-): Promise<void> {
-    await fetch(`/api/v1/agents/${agentId}/config`, {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value }),
-    });
-}
-
-async function deleteAgentConfig(
-    agentId: string,
-    key: string
-): Promise<void> {
-    await fetch(`/api/v1/agents/${agentId}/config?key=${encodeURIComponent(key)}`, {
-        method: "DELETE",
-        credentials: "include",
-    });
-}
-
-function ListEditor({
-    label,
-    items,
-    onAdd,
-    onRemove,
-    placeholder,
-}: {
-    label: string;
-    items: string[];
-    onAdd: (item: string) => void;
-    onRemove: (item: string) => void;
-    placeholder: string;
-}) {
-    const [input, setInput] = useState("");
-
-    const handleAdd = () => {
-        const trimmed = input.trim();
-        if (trimmed && !items.includes(trimmed)) {
-            onAdd(trimmed);
-            setInput("");
-        }
-    };
-
-    return (
-        <div style={{ marginBottom: 16 }}>
-            <div
-                style={{
-                    fontSize: 11,
-                    fontFamily: themeVars.font,
-                    color: themeVars.textDim,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    marginBottom: 6,
-                }}
-            >
-                {label}
-            </div>
-
-            {/* Input */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-                    placeholder={placeholder}
-                    style={{
-                        flex: 1,
-                        padding: "4px 8px",
-                        fontSize: 12,
-                        fontFamily: themeVars.font,
-                        color: themeVars.text,
-                        background: themeVars.surface,
-                        border: `1px solid ${themeVars.border}`,
-                    }}
-                />
-                <button
-                    onClick={handleAdd}
-                    style={{
-                        padding: "4px 12px",
-                        fontSize: 11,
-                        fontFamily: themeVars.font,
-                        color: themeVars.text,
-                        background: themeVars.accentDim,
-                        border: `1px solid ${themeVars.accent}`,
-                        cursor: "pointer",
-                    }}
-                >
-                    Add
-                </button>
-            </div>
-
-            {/* Items */}
-            {items.length === 0 && (
-                <div
-                    style={{
-                        fontSize: 11,
-                        fontFamily: themeVars.font,
-                        color: themeVars.textDim,
-                    }}
-                >
-                    None configured.
-                </div>
-            )}
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {items.map((item) => (
-                    <span
-                        key={item}
-                        style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                            padding: "2px 8px",
-                            fontSize: 11,
-                            fontFamily: themeVars.font,
-                            color: themeVars.text,
-                            background: themeVars.surfaceHover,
-                            border: `1px solid ${themeVars.border}`,
-                        }}
-                    >
-                        {item}
-                        <button
-                            onClick={() => onRemove(item)}
-                            style={{
-                                background: "none",
-                                border: "none",
-                                color: themeVars.danger,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                padding: 0,
-                                lineHeight: 1,
-                            }}
-                        >
-                            ×
-                        </button>
-                    </span>
-                ))}
-            </div>
-        </div>
-    );
-}
+const btnStyle: React.CSSProperties = {
+    padding: "6px 14px",
+    fontSize: 11,
+    fontFamily: themeVars.font,
+    color: themeVars.text,
+    background: themeVars.accentDim,
+    border: `1px solid ${themeVars.accent}`,
+    cursor: "pointer",
+    textTransform: "uppercase",
+    letterSpacing: "0.03em",
+};
 
 function IgnoreChecklist({
     label,
     available,
     ignored,
-    onToggle
+    onToggle,
 }: {
     label: string;
     available: string[];
@@ -292,7 +151,6 @@ function LabelEditor({
                     type="text"
                     value={valueInput}
                     onChange={(e) => setValueInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAdd()}
                     placeholder="Value"
                     style={{
                         flex: 1,
@@ -304,30 +162,13 @@ function LabelEditor({
                         border: `1px solid ${themeVars.border}`,
                     }}
                 />
-                <button
-                    onClick={handleAdd}
-                    style={{
-                        padding: "4px 12px",
-                        fontSize: 11,
-                        fontFamily: themeVars.font,
-                        color: themeVars.text,
-                        background: themeVars.accentDim,
-                        border: `1px solid ${themeVars.accent}`,
-                        cursor: "pointer",
-                    }}
-                >
+                <button onClick={handleAdd} style={btnStyle}>
                     Add
                 </button>
             </div>
 
             {entries.length === 0 && (
-                <div
-                    style={{
-                        fontSize: 11,
-                        fontFamily: themeVars.font,
-                        color: themeVars.textDim,
-                    }}
-                >
+                <div style={{ fontSize: 11, fontFamily: themeVars.font, color: themeVars.textDim }}>
                     No labels set.
                 </div>
             )}
@@ -383,6 +224,8 @@ function AgentConfigPanel({
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [availableFs, setAvailableFs] = useState<string[]>([]);
     const [availableIfaces, setAvailableIfaces] = useState<string[]>([]);
+    const [upgradeSteps, setUpgradeSteps] = useState<string | null>(null);
+    const [uninstallSteps, setUninstallSteps] = useState<string | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -423,18 +266,28 @@ function AgentConfigPanel({
         [agent.id]
     );
 
+    const handleUpgrade = async () => {
+        try {
+            const res = await api.upgradeInstructions(agent.id);
+            setUpgradeSteps(res.steps);
+        } catch {
+            setUpgradeSteps("Failed to load upgrade instructions.");
+        }
+    };
+
+    const handleShowUninstall = async () => {
+        try {
+            const res = await api.uninstallInstructions(agent.id);
+            setUninstallSteps(res.steps);
+        } catch {
+            setUninstallSteps("Failed to load uninstall instructions.");
+        }
+    };
+
     if (loading) return <LoadingSpinner />
 
     return (
-        <div
-            style={{
-                padding: "16px 20px",
-                background: themeVars.surface,
-                border: `1px solid ${themeVars.border}`,
-                marginTop: 8,
-            }}
-        >
-            {/* Agent info summary */}
+        <div>
             <div style={{ display: "flex", gap: 24, marginBottom: 20, flexWrap: "wrap" }}>
                 <StatBlock label="OS" value={agent.os ?? null} />
                 <StatBlock label="Platform" value={agent.platform ?? null} />
@@ -444,7 +297,6 @@ function AgentConfigPanel({
                 <StatBlock label="IP" value={agent.ip_address ?? null} />
             </div>
 
-            {/* Config editors */}
             <IgnoreChecklist
                 label="Filesystems"
                 available={availableFs}
@@ -471,39 +323,36 @@ function AgentConfigPanel({
                 }}
             />
 
-            <LabelEditor
-                labels={config.labels ?? {}}
-                onSet={(k, v) =>
-                    saveLabels({ ...(config.labels ?? {}), [k]: v })
-                }
-                onRemove={(k) => {
-                    const next = { ...(config.labels ?? {}) };
-                    delete next[k];
-                    saveLabels(next);
+            {/* Actions */}
+            <div
+                style={{
+                    marginTop: 20,
+                    borderTop: `1px solid ${themeVars.border}`,
+                    paddingTop: 16,
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    alignItems: "center",
                 }}
-            />
+            >
+                <button onClick={handleUpgrade} style={btnStyle}>
+                    Upgrade instructions
+                </button>
 
-            {/* Delete agent */}
-            <div style={{ marginTop: 20, borderTop: `1px solid ${themeVars.border}`, paddingTop: 16 }}>
                 {!confirmDelete ? (
                     <button
-                        onClick={() => setConfirmDelete(true)}
+                        onClick={handleShowUninstall}
                         style={{
-                            padding: "6px 14px",
-                            fontSize: 11,
-                            fontFamily: themeVars.font,
+                            ...btnStyle,
                             color: themeVars.danger,
                             background: "transparent",
-                            border: `1px solid ${themeVars.danger}`,
-                            cursor: "pointer",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.03em",
+                            borderColor: themeVars.danger,
                         }}
                     >
-                        Delete Agent
+                        Delete agent
                     </button>
                 ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <>
                         <span
                             style={{
                                 fontSize: 12,
@@ -516,36 +365,83 @@ function AgentConfigPanel({
                         <button
                             onClick={onDelete}
                             style={{
-                                padding: "6px 14px",
-                                fontSize: 11,
-                                fontFamily: themeVars.font,
+                                ...btnStyle,
                                 color: "#fff",
                                 background: themeVars.danger,
-                                border: "none",
-                                cursor: "pointer",
-                                textTransform: "uppercase",
+                                borderColor: themeVars.danger,
                             }}
                         >
-                            Confirm Delete
+                            Confirm delete
                         </button>
                         <button
                             onClick={() => setConfirmDelete(false)}
                             style={{
-                                padding: "6px 14px",
-                                fontSize: 11,
-                                fontFamily: themeVars.font,
+                                ...btnStyle,
                                 color: themeVars.textMuted,
                                 background: "transparent",
-                                border: `1px solid ${themeVars.border}`,
-                                cursor: "pointer",
-                                textTransform: "uppercase",
+                                borderColor: themeVars.border,
                             }}
                         >
                             Cancel
                         </button>
-                    </div>
+                    </>
                 )}
             </div>
+
+            {/* Upgrade modal */}
+            {upgradeSteps && (
+                <InstructionBlock
+                    title={`Upgrade ${agent.hostname}`}
+                    steps={upgradeSteps}
+                    onClose={() => setUpgradeSteps(null)}
+                />
+            )}
+
+            {/* Uninstall modal - shows before delete confirmation */}
+            {uninstallSteps && !confirmDelete && (
+                <InstructionBlock
+                    title={`Uninstall from ${agent.hostname}`}
+                    steps={uninstallSteps}
+                    onClose={() => setUninstallSteps(null)}
+                    footer={
+                        <div
+                            style={{
+                                padding: "12px 16px",
+                                borderTop: `1px solid ${themeVars.border}`,
+                                display: "flex",
+                                justifyContent: "flex-end",
+                                gap: 8,
+                            }}
+                        >
+                            <button
+                                onClick={() => setUninstallSteps(null)}
+                                style={{
+                                    ...btnStyle,
+                                    color: themeVars.textMuted,
+                                    background: "transparent",
+                                    borderColor: themeVars.border,
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setUninstallSteps(null);
+                                    setConfirmDelete(true);
+                                }}
+                                style={{
+                                    ...btnStyle,
+                                    color: "#fff",
+                                    background: themeVars.danger,
+                                    borderColor: themeVars.danger,
+                                }}
+                            >
+                                I've uninstalled, delete the agent
+                            </button>
+                        </div>
+                    }
+                />
+            )}
         </div>
     );
 }
