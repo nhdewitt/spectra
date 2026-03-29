@@ -93,8 +93,54 @@ function LogResults({
 
     if (entries.length === 0) {
         return (
-            <div style={{ color: themeVars.textDim, fontFamily: themeVars.font, fontSize: 12 }}>
-                No log entries found.
+            <div
+                style={{
+                    position: "fixed",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: "rgba(0, 0, 0, 0.6)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 100,
+                }}
+                onClick={(e) => {
+                    if (e.target === e.currentTarget) onClose();
+                }}
+            >
+                <div
+                    style={{
+                        background: themeVars.bg,
+                        border: `1px solid ${themeVars.border}`,
+                        padding: "32px 48px",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 12,
+                    }}
+                >
+                    <div style={{ color: themeVars.textDim, fontFamily: themeVars.font, fontSize: 13 }}>
+                        No log entries found at this severity level.
+                    </div>
+                    <button
+                        onClick={onClose}
+                        style={{
+                            padding: "6px 14px",
+                            fontSize: 11,
+                            fontFamily: themeVars.font,
+                            color: themeVars.text,
+                            background: themeVars.accentDim,
+                            border: `1px solid ${themeVars.accent}`,
+                            cursor: "pointer",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.03em",
+                        }}
+                    >
+                        Close
+                    </button>
+                </div>
             </div>
         );
     }
@@ -837,6 +883,11 @@ function CommandResultDisplay({ entry, tool, onClose }: { entry: CommandEntry; t
     }
 
     const payload = entry.result?.payload;
+
+    if (entry.type === "FETCH_LOGS") {
+        return <LogResults entries={(payload as LogEntry[]) ?? []} onClose={onClose} />
+    }
+
     if (!payload) {
         return (
             <div style={{ color: themeVars.textDim, fontFamily: themeVars.font, fontSize: 12 }}>
@@ -846,8 +897,6 @@ function CommandResultDisplay({ entry, tool, onClose }: { entry: CommandEntry; t
     }
 
     switch (entry.type) {
-        case "FETCH_LOGS":
-            return <LogResults entries={payload as LogEntry[]} onClose={onClose} />;
         case "DISK_USAGE":
             return <DiskResults report={payload as DiskReport} />;
         case "NETWORK_DIAG":
@@ -878,6 +927,9 @@ export function DiagnosticsPanel({ agentId }: DiagnosticsPanelProps) {
     const [tracerouteTarget, setTracerouteTarget] = useState("");
     const [diskPath, setDiskPath] = useState("");
     const [diskTopN, setDiskTopN] = useState(20);
+    const [logLevel, setLogLevel] = useState("WARNING");
+
+    const LOG_LEVELS = ["DEBUG", "INFO", "NOTICE", "WARNING", "ERROR", "CRITICAL", "ALERT", "EMERGENCY"];
 
     const { entry, error: pollError } = useCommandPoller(activeCmd);
 
@@ -939,15 +991,38 @@ export function DiagnosticsPanel({ agentId }: DiagnosticsPanelProps) {
                 }}
             >
                 {/* Logs */}
-                <button
-                    onClick={() =>
-                        runCommand(() => api.triggerLogs(agentId), "logs")
-                    }
-                    disabled={isRunning}
-                    style={isRunning ? btnDisabled : btnStyle}
-                >
-                    Fetch Logs
-                </button>
+                <div style={{ display: "flex", gap: 0, alignItems: "center" }}>
+                    <button
+                        onClick={() =>
+                            runCommand(() => api.triggerLogs(agentId, logLevel), "logs")
+                        }
+                        disabled={isRunning}
+                        style={{
+                            ...(isRunning ? btnDisabled : btnStyle),
+                            borderRight: "none",
+                        }}
+                    >
+                        Fetch Logs
+                    </button>
+                    <select
+                        value={logLevel}
+                        onChange={(e) => setLogLevel(e.target.value)}
+                        disabled={isRunning}
+                        style={{
+                            ...inputStyle,
+                            fontSize: 11,
+                            padding: "5px 4px",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.03em",
+                            borderColor: themeVars.accent,
+                            opacity: isRunning ? 0.5 : 1,
+                        }}
+                    >
+                        {LOG_LEVELS.map((l) => (
+                            <option key={l} value={l}>{l}</option>
+                        ))}
+                    </select>
+                </div>
 
                 {/* Netstat */}
                 <button

@@ -16,7 +16,12 @@ func (s *Server) handleAdminTriggerLogs(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	req := protocol.LogRequest{MinLevel: protocol.LevelError}
+	level := protocol.LogLevel(r.URL.Query().Get("level"))
+	if !isValidLogLevel(level) {
+		level = protocol.LevelWarning
+	}
+
+	req := protocol.LogRequest{MinLevel: level}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -24,6 +29,15 @@ func (s *Server) handleAdminTriggerLogs(w http.ResponseWriter, r *http.Request) 
 	}
 
 	s.queueHelper(w, agentID, protocol.CmdFetchLogs, payload, "Queued FetchLogs")
+}
+
+func isValidLogLevel(l protocol.LogLevel) bool {
+	switch l {
+	case protocol.LevelDebug, protocol.LevelInfo, protocol.LevelNotice, protocol.LevelWarning,
+		protocol.LevelError, protocol.LevelCritical, protocol.LevelAlert, protocol.LevelEmergency:
+		return true
+	}
+	return false
 }
 
 func (s *Server) handleAdminTriggerDisk(w http.ResponseWriter, r *http.Request) {

@@ -155,8 +155,8 @@ export const api = {
         apiFetch<{ type: string; steps: string }>(`/agents/${id}/uninstall-instructions`),
 
     // Diagnostics
-    triggerLogs: (agentId: string) =>
-        apiFetch<CommandResponse>(`/admin/logs?agent=${agentId}`, {
+    triggerLogs: (agentId: string, level: string = "WARNING") =>
+        apiFetch<CommandResponse>(`/admin/logs?agent=${agentId}&level=${level}`, {
             method: "POST",
         }),
     triggerDisk: (agentId: string, path: string, topN: number) =>

@@ -56,6 +56,10 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 		}
 	}
 
+	if results == nil {
+		results = []protocol.LogEntry{}
+	}
+
 	if len(results) > MaxLogs {
 		results = results[len(results)-MaxLogs:]
 	}
