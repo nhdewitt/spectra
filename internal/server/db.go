@@ -81,6 +81,7 @@ type DB interface {
 	GetContainerBucketed(ctx context.Context, arg database.GetContainerBucketedParams) ([]database.GetContainerBucketedRow, error)
 	GetWifiBucketed(ctx context.Context, arg database.GetWifiBucketedParams) ([]database.GetWifiBucketedRow, error)
 	GetPiBucketed(ctx context.Context, arg database.GetPiBucketedParams) ([]database.GetPiBucketedRow, error)
+	GetFleetHeatmap(ctx context.Context, arg database.GetFleetHeatmapParams) ([]database.GetFleetHeatmapRow, error)
 
 	// Read API - current state
 	GetProcessesByCPU(ctx context.Context, args database.GetProcessesByCPUParams) ([]database.CurrentProcess, error)

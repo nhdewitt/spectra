@@ -22,6 +22,7 @@ import type {
     ProvisionResponse,
     CommandResponse,
     CommandEntry,
+    FleetHeatmapAgent,
 } from "./types";
 
 declare global {
@@ -169,4 +170,8 @@ export const api = {
         }),
     commandResult: (cmdId: string) =>
         apiFetch<CommandEntry>(`/admin/commands/${cmdId}`),
+
+    // Heatmap
+    fleetHeatmap: (start: string, end: string) =>
+        apiFetch<FleetHeatmapAgent[]>(`/overview/heatmap?start=${start}&end=${end}`),
 };

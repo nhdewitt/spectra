@@ -92,6 +92,7 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/updates", s.requireUserAuth(s.rateLimitAuthed(s.handleGetUpdates)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/system/latest", s.requireUserAuth(s.rateLimitAuthed(s.handleGetLatestSystem)))
 	s.Router.HandleFunc("GET /api/v1/admin/commands/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetCommandResult)))
+	s.Router.HandleFunc("GET /api/v1/overview/heatmap", s.requireUserAuth(s.rateLimitAuthed(s.handleFleetHeatmap)))
 
 	// Provision (user auth, authed rate limit)
 	s.Router.HandleFunc("GET /api/v1/admin/platforms", s.requireUserAuth(s.rateLimitAuthed(s.handleListPlatforms)))

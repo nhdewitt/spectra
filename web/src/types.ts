@@ -287,3 +287,17 @@ export interface CommandEntry {
         error?: string;
     };
 }
+
+// Heatmap
+
+export interface HeatmapCell {
+    bucket: string;
+    value: number;
+}
+
+export interface FleetHeatmapAgent {
+    agent_id: string;
+    cpu: HeatmapCell[];
+    mem: HeatmapCell[];
+    disk: HeatmapCell[];
+}

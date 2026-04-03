@@ -692,3 +692,9 @@ func (m *MockDB) DeleteAllAgentConfig(_ context.Context, _ pgtype.UUID) error {
 	defer m.mu.Unlock()
 	return m.Err
 }
+
+func (m *MockDB) GetFleetHeatmap(_ context.Context, _ database.GetFleetHeatmapParams) ([]database.GetFleetHeatmapRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetFleetHeatmapRow{}, m.Err
+}

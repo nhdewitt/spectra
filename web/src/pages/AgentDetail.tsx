@@ -12,6 +12,7 @@ import { ApplicationsTab } from "../components/ApplicationsTab";
 import { UpdatesTab } from "../components/UpdatesTab";
 import { ContainersTab } from "../components/ContainersTab";
 import { DiagnosticsPanel } from "../components/DiagnosticsPanel";
+import { OSIcon } from "../icons";
 
 const TABS = ["metrics", "processes", "services", "containers", "apps", "updates", "diagnostics"] as const;
 
@@ -81,6 +82,7 @@ export function AgentDetail({
                             fontSize: 18,
                             fontWeight: 600,
                             color: themeVars.text,
+                            alignItems: "center",
                         }}
                     >
                         {agent.hostname}
