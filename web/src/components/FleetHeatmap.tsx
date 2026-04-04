@@ -137,10 +137,11 @@ export function FleetHeatmap({ agents }: FleetHeatmapProps) {
     const [transitionDir, setTransitionDir] = useState<"left" | "right">("left");
     const [lens, setLens] = useState<LensState | null>(null);
     const [page, setPage] = useState(0);
+    const [refreshTick, setRefreshTick] = useState(0);
     const prevDataRef = useRef<FleetHeatmapAgent[]>([]);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    const { start, end } = useMemo(() => getWindowBounds(offset), [offset]);
+    const { start, end } = useMemo(() => getWindowBounds(offset), [offset, refreshTick]);
     const isLatest = offset === 0;
 
     const oldestAllowed = useMemo(() => {
@@ -179,21 +180,10 @@ export function FleetHeatmap({ agents }: FleetHeatmapProps) {
         return () => { cancelled = true };
     }, [start.getTime(), end.getTime()]);
 
-    // Auto-refresh current window
+    // Auto-refresh current window - bump tick every 60s when viewing current window
     useEffect(() => {
         if (offset !== 0) return;
-        const interval = setInterval(async () => {
-            try {
-                const { start: s, end: e } = getWindowBounds(0);
-                const result = await api.fleetHeatmap(
-                    s.toISOString(),
-                    e.toISOString()
-                );
-                setData(result);
-            } catch {
-                // Ignore refresh errors
-            }
-        }, 60_000);
+        const interval = setInterval(() => setRefreshTick((t) => t + 1), 60_000);
         return () => clearInterval(interval);
     }, [offset]);
 
@@ -508,6 +498,9 @@ export function FleetHeatmap({ agents }: FleetHeatmapProps) {
                                         left: 6,
                                         top: "50%",
                                         transform: "translateY(-50%)",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 3,
                                         fontSize: 9,
                                         fontFamily: themeVars.font,
                                         color: "rgba(255,255,255,0.85)",
@@ -519,8 +512,8 @@ export function FleetHeatmap({ agents }: FleetHeatmapProps) {
                                         zIndex: 1,
                                     }}
                                 >
-                                    {row.hostname}
                                     <OSIcon os={row.os} platform={row.platform} size={10} />
+                                    {row.hostname}
                                 </div>
  
                                 {/* Cells */}
