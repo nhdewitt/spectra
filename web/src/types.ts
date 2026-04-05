@@ -301,3 +301,10 @@ export interface FleetHeatmapAgent {
     mem: HeatmapCell[];
     disk: HeatmapCell[];
 }
+
+// Fleet Sparklines
+
+export interface ChartPoint {
+    t: string;
+    v: number;
+}

@@ -11,6 +11,135 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getFleetSparkCPU = `-- name: GetFleetSparkCPU :many
+SELECT
+    time_bucket(($1)::text::interval, c.time)::timestamptz AS bucket,
+    c.agent_id,
+    AVG(c.usage)::float8 AS usage
+FROM metrics_cpu c
+WHERE c.time >= $2 AND c.time <= $3
+GROUP BY 1, 2
+ORDER BY 2, 1 ASC
+`
+
+type GetFleetSparkCPUParams struct {
+	BucketInterval string             `json:"bucket_interval"`
+	StartTime      pgtype.Timestamptz `json:"start_time"`
+	EndTime        pgtype.Timestamptz `json:"end_time"`
+}
+
+type GetFleetSparkCPURow struct {
+	Bucket  pgtype.Timestamptz `json:"bucket"`
+	AgentID pgtype.UUID        `json:"agent_id"`
+	Usage   float64            `json:"usage"`
+}
+
+func (q *Queries) GetFleetSparkCPU(ctx context.Context, arg GetFleetSparkCPUParams) ([]GetFleetSparkCPURow, error) {
+	rows, err := q.db.Query(ctx, getFleetSparkCPU, arg.BucketInterval, arg.StartTime, arg.EndTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetFleetSparkCPURow{}
+	for rows.Next() {
+		var i GetFleetSparkCPURow
+		if err := rows.Scan(&i.Bucket, &i.AgentID, &i.Usage); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getFleetSparkDisk = `-- name: GetFleetSparkDisk :many
+SELECT
+    time_bucket(($1)::text::interval, d.time)::timestamptz AS bucket,
+    d.agent_id,
+    MAX(d.used_percent)::float8 AS max_percent
+FROM metrics_disk d
+WHERE d.time >= $2 AND d.time <= $3
+GROUP BY 1, 2
+ORDER BY 2, 1 ASC
+`
+
+type GetFleetSparkDiskParams struct {
+	BucketInterval string             `json:"bucket_interval"`
+	StartTime      pgtype.Timestamptz `json:"start_time"`
+	EndTime        pgtype.Timestamptz `json:"end_time"`
+}
+
+type GetFleetSparkDiskRow struct {
+	Bucket     pgtype.Timestamptz `json:"bucket"`
+	AgentID    pgtype.UUID        `json:"agent_id"`
+	MaxPercent float64            `json:"max_percent"`
+}
+
+func (q *Queries) GetFleetSparkDisk(ctx context.Context, arg GetFleetSparkDiskParams) ([]GetFleetSparkDiskRow, error) {
+	rows, err := q.db.Query(ctx, getFleetSparkDisk, arg.BucketInterval, arg.StartTime, arg.EndTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetFleetSparkDiskRow{}
+	for rows.Next() {
+		var i GetFleetSparkDiskRow
+		if err := rows.Scan(&i.Bucket, &i.AgentID, &i.MaxPercent); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getFleetSparkMemory = `-- name: GetFleetSparkMemory :many
+SELECT
+    time_bucket(($1)::text::interval, m.time)::timestamptz AS bucket,
+    m.agent_id,
+    AVG(m.ram_percent)::float8 AS ram_percent
+FROM metrics_memory m
+WHERE m.time >= $2 AND m.time <= $3
+GROUP BY 1, 2
+ORDER BY 2, 1 ASC
+`
+
+type GetFleetSparkMemoryParams struct {
+	BucketInterval string             `json:"bucket_interval"`
+	StartTime      pgtype.Timestamptz `json:"start_time"`
+	EndTime        pgtype.Timestamptz `json:"end_time"`
+}
+
+type GetFleetSparkMemoryRow struct {
+	Bucket     pgtype.Timestamptz `json:"bucket"`
+	AgentID    pgtype.UUID        `json:"agent_id"`
+	RamPercent float64            `json:"ram_percent"`
+}
+
+func (q *Queries) GetFleetSparkMemory(ctx context.Context, arg GetFleetSparkMemoryParams) ([]GetFleetSparkMemoryRow, error) {
+	rows, err := q.db.Query(ctx, getFleetSparkMemory, arg.BucketInterval, arg.StartTime, arg.EndTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetFleetSparkMemoryRow{}
+	for rows.Next() {
+		var i GetFleetSparkMemoryRow
+		if err := rows.Scan(&i.Bucket, &i.AgentID, &i.RamPercent); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getRecentCPU = `-- name: GetRecentCPU :many
 SELECT agent_id, usage
 FROM (

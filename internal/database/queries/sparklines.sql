@@ -57,3 +57,33 @@ SELECT agent_id, max_percent
 FROM ranked
 WHERE rn <= 30
 ORDER BY agent_id, bucket ASC;
+
+-- name: GetFleetSparkCPU :many
+SELECT
+    time_bucket((@bucket_interval)::text::interval, c.time)::timestamptz AS bucket,
+    c.agent_id,
+    AVG(c.usage)::float8 AS usage
+FROM metrics_cpu c
+WHERE c.time >= @start_time AND c.time <= @end_time
+GROUP BY 1, 2
+ORDER BY 2, 1 ASC;
+
+-- name: GetFleetSparkMemory :many
+SELECT
+    time_bucket((@bucket_interval)::text::interval, m.time)::timestamptz AS bucket,
+    m.agent_id,
+    AVG(m.ram_percent)::float8 AS ram_percent
+FROM metrics_memory m
+WHERE m.time >= @start_time AND m.time <= @end_time
+GROUP BY 1, 2
+ORDER BY 2, 1 ASC;
+
+-- name: GetFleetSparkDisk :many
+SELECT
+    time_bucket((@bucket_interval)::text::interval, d.time)::timestamptz AS bucket,
+    d.agent_id,
+    MAX(d.used_percent)::float8 AS max_percent
+FROM metrics_disk d
+WHERE d.time >= @start_time AND d.time <= @end_time
+GROUP BY 1, 2
+ORDER BY 2, 1 ASC;

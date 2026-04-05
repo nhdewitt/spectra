@@ -698,3 +698,21 @@ func (m *MockDB) GetFleetHeatmap(_ context.Context, _ database.GetFleetHeatmapPa
 	defer m.mu.Unlock()
 	return []database.GetFleetHeatmapRow{}, m.Err
 }
+
+func (m *MockDB) GetFleetSparkCPU(_ context.Context, _ database.GetFleetSparkCPUParams) ([]database.GetFleetSparkCPURow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetFleetSparkCPURow{}, m.Err
+}
+
+func (m *MockDB) GetFleetSparkMemory(_ context.Context, _ database.GetFleetSparkMemoryParams) ([]database.GetFleetSparkMemoryRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetFleetSparkMemoryRow{}, m.Err
+}
+
+func (m *MockDB) GetFleetSparkDisk(_ context.Context, _ database.GetFleetSparkDiskParams) ([]database.GetFleetSparkDiskRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []database.GetFleetSparkDiskRow{}, m.Err
+}

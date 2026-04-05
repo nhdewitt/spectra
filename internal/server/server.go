@@ -70,6 +70,7 @@ func (s *Server) routes() {
 	// Dashboard (user auth, authed rate limit)
 	s.Router.HandleFunc("GET /api/v1/overview", s.requireUserAuth(s.rateLimitAuthed(s.handleOverview)))
 	s.Router.HandleFunc("GET /api/v1/overview/sparklines", s.requireUserAuth(s.rateLimitAuthed(s.handleGetSparklines)))
+	s.Router.HandleFunc("GET /api/v1/overview/fleet-chart", s.requireUserAuth(s.rateLimitAuthed(s.handleFleetChart)))
 	s.Router.HandleFunc("GET /api/v1/agents", s.requireUserAuth(s.rateLimitAuthed(s.handleListAgents)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAgent)))
 	s.Router.HandleFunc("DELETE /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAgent)))

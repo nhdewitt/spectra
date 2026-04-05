@@ -95,6 +95,9 @@ type DB interface {
 	GetRecentCPU(ctx context.Context) ([]database.GetRecentCPURow, error)
 	GetRecentMemory(ctx context.Context) ([]database.GetRecentMemoryRow, error)
 	GetRecentDiskMax(ctx context.Context) ([]database.GetRecentDiskMaxRow, error)
+	GetFleetSparkCPU(ctx context.Context, args database.GetFleetSparkCPUParams) ([]database.GetFleetSparkCPURow, error)
+	GetFleetSparkMemory(ctx context.Context, args database.GetFleetSparkMemoryParams) ([]database.GetFleetSparkMemoryRow, error)
+	GetFleetSparkDisk(ctx context.Context, args database.GetFleetSparkDiskParams) ([]database.GetFleetSparkDiskRow, error)
 
 	// SHA-256 migration
 	GetAgentSecretSHA256(ctx context.Context, id pgtype.UUID) ([]byte, error)
