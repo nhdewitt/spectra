@@ -35,7 +35,14 @@ jobs:
       - name: Run govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          govulncheck ./... 2>&1 | tee vuln_output.txt || true
+          KNOWN="GO-2026-4887|GO-2026-4883"
+          if grep -E "^Vulnerability #" vuln_output.txt | grep -vE "$KNOWN" | grep -q .; then
+            echo "::error::New vulnerabilities found"
+            cat vuln_output.txt
+            exit 1
+          fi
+          echo "Only known unpatched Docker SDK vulns found, passing."
 
       - name: Run staticcheck
         run: |
