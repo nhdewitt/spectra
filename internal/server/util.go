@@ -2,6 +2,7 @@ package server
 
 import (
 	"compress/gzip"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -113,4 +114,18 @@ func (s *Server) getTargetAgent(w http.ResponseWriter, r *http.Request) (string,
 	}
 
 	return agentID, true
+}
+
+// fleetQuery runs a sql query and groups the results into a map by agent ID.
+func fleetQuery[P any, R any](ctx context.Context, queryFn func(context.Context, P) ([]R, error), params P, extract func(R) (string, FleetChartPoint)) (map[string][]FleetChartPoint, error) {
+	rows, err := queryFn(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string][]FleetChartPoint)
+	for _, row := range rows {
+		id, pt := extract(row)
+		result[id] = append(result[id], pt)
+	}
+	return result, nil
 }

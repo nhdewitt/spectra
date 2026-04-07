@@ -10,7 +10,6 @@ import {
   DetailRow,
   ViewToggle,
   LoadingSpinner,
-  FleetHeatmap,
 } from "../components";
 import type { ViewMode } from "../components";
 import type { OverviewAgent } from "../types";
@@ -440,8 +439,6 @@ export function Overview({
           <ViewToggle mode={viewMode} onChange={onViewModeChange} />
         </div>
       </div>
-
-      {agents.length > 0 && <FleetHeatmap agents={agents} />}
 
       {/* Tile grid */}
       {viewMode === "tiles" && (

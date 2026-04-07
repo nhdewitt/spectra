@@ -37,8 +37,9 @@ func main() {
 	queries := database.New(pool)
 
 	srvCfg := server.Config{
-		Port:        cfg.ListenPort,
-		ReleasesDir: "releases",
+		Port:           cfg.ListenPort,
+		ReleasesDir:    "releases",
+		MaxConnections: 1024,
 	}
 
 	srv := server.New(srvCfg, queries)
@@ -59,7 +60,7 @@ func main() {
 		return
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {

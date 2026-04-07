@@ -3,14 +3,18 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
+
+	"golang.org/x/net/netutil"
 )
 
 type Config struct {
 	Port           int
 	CommandTimeout time.Duration
 	ReleasesDir    string // path to pre-built agent binaries
+	MaxConnections uint
 }
 
 type Server struct {
@@ -70,7 +74,7 @@ func (s *Server) routes() {
 	// Dashboard (user auth, authed rate limit)
 	s.Router.HandleFunc("GET /api/v1/overview", s.requireUserAuth(s.rateLimitAuthed(s.handleOverview)))
 	s.Router.HandleFunc("GET /api/v1/overview/sparklines", s.requireUserAuth(s.rateLimitAuthed(s.handleGetSparklines)))
-	s.Router.HandleFunc("GET /api/v1/overview/fleet-chart", s.requireUserAuth(s.rateLimitAuthed(s.handleFleetChart)))
+	s.Router.HandleFunc("GET /api/v1/overview/fleet/chart", s.requireUserAuth(s.rateLimitAuthed(s.handleFleetChart)))
 	s.Router.HandleFunc("GET /api/v1/agents", s.requireUserAuth(s.rateLimitAuthed(s.handleListAgents)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAgent)))
 	s.Router.HandleFunc("DELETE /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAgent)))
@@ -109,15 +113,22 @@ func (s *Server) routes() {
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.Config.Port)
 	s.httpServer = &http.Server{
-		Addr:         addr,
-		Handler:      s.Router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 40 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:              addr,
+		Handler:           s.Router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      40 * time.Second,
+		IdleTimeout:       30 * time.Second,
 	}
 
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", addr, err)
+	}
+	ln = netutil.LimitListener(ln, int(s.Config.MaxConnections))
+
 	fmt.Printf("Spectra Server listening on %s...\n", addr)
-	return s.httpServer.ListenAndServe()
+	return s.httpServer.Serve(ln)
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {

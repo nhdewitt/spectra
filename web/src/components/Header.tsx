@@ -16,6 +16,7 @@ export function Header({ user, onLogout, onNavigate, currentPage }: HeaderProps)
 
     const navItems: { key: Page; label: string }[] = [
         { key: "overview", label: "Overview" },
+        { key: "fleet", label: "Fleet" },
         { key: "agents", label: "Agents" },
     ];
     if (user.role === "admin") {
