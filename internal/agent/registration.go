@@ -47,7 +47,14 @@ func (a *Agent) Register(ctx context.Context) error {
 		}
 
 		if attempt < a.RetryConfig.MaxAttempts-1 {
-			time.Sleep(a.RetryConfig.Delay(attempt))
+			delay := a.RetryConfig.Delay(attempt)
+			a.Logger.Warn("registration attempt failed, retrying",
+				"attempt", attempt+1,
+				"max_attempts", a.RetryConfig.MaxAttempts,
+				"retry_in", delay.String(),
+				"error", reqErr,
+			)
+			time.Sleep(delay)
 		}
 	}
 

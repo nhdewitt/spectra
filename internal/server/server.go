@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/nhdewitt/spectra/internal/logging"
 	"golang.org/x/net/netutil"
 )
 
@@ -15,6 +16,8 @@ type Config struct {
 	CommandTimeout time.Duration
 	ReleasesDir    string // path to pre-built agent binaries
 	MaxConnections uint
+	LogFile        string // path to JSON log file
+	LogLevel       string // "debug", "info", "warn", "error"
 }
 
 type Server struct {
@@ -23,6 +26,7 @@ type Server struct {
 	Tokens       *TokenStore
 	DB           DB
 	Router       *http.ServeMux
+	Logger       *logging.Logger
 	LoginTracker *loginTracker
 	Limiters     *tieredLimiters
 	Releases     *releaseManifest
@@ -37,12 +41,23 @@ func New(cfg Config, db DB) *Server {
 		cfg.CommandTimeout = 30 * time.Second
 	}
 
+	logCfg := logging.DefaultServerConfig()
+	if cfg.LogFile != "" {
+		logCfg.FilePath = cfg.LogFile
+	}
+	if cfg.LogLevel != "" {
+		logCfg.ConsoleLevel = logging.ParseLevel(cfg.LogLevel)
+	}
+
+	logger := logging.New(logCfg)
+
 	s := &Server{
 		Config:       cfg,
 		CmdQueue:     NewCommandQueue(),
 		Tokens:       NewTokenStore(),
 		DB:           db,
 		Router:       http.NewServeMux(),
+		Logger:       logger,
 		LoginTracker: newLoginTracker(),
 		Limiters:     newTieredLimiters(),
 		Releases:     newReleaseManifest(cfg.ReleasesDir),
@@ -114,7 +129,7 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.Config.Port)
 	s.httpServer = &http.Server{
 		Addr:              addr,
-		Handler:           s.Router,
+		Handler:           s.requestLogger(s.Router),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      40 * time.Second,
@@ -127,13 +142,16 @@ func (s *Server) Start() error {
 	}
 	ln = netutil.LimitListener(ln, int(s.Config.MaxConnections))
 
-	fmt.Printf("Spectra Server listening on %s...\n", addr)
+	s.Logger.Info("server started", "addr", addr)
 	return s.httpServer.Serve(ln)
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.Logger.Info("server shutting down")
 	close(s.done)
 	s.Limiters.Stop()
 	s.Commands.Stop()
-	return s.httpServer.Shutdown(ctx)
+	err := s.httpServer.Shutdown(ctx)
+	s.Logger.Close() // flush
+	return err
 }

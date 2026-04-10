@@ -16,7 +16,7 @@ import (
 // runCommandLoop long-polls the server for tasks
 func (a *Agent) runCommandLoop(ctx context.Context) {
 	url := fmt.Sprintf("%s%s", a.Config.BaseURL, a.Config.CommandPath)
-	fmt.Println("Starting Command & Control loop at", url)
+	a.Logger.Info("command loop started", "url", url)
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -34,7 +34,7 @@ func (a *Agent) runCommandLoop(ctx context.Context) {
 func (a *Agent) pollOnce(ctx context.Context, url string) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		fmt.Printf("Error creating request: %v\n", err)
+		a.Logger.Error("failed to create command request", "error", err)
 		return
 	}
 	a.setHeaders(req)
@@ -42,7 +42,7 @@ func (a *Agent) pollOnce(ctx context.Context, url string) {
 
 	resp, err := a.Client.Do(req)
 	if err != nil {
-		fmt.Printf("C2 connection failed: %v\n", err)
+		a.Logger.Debug("command poll failed", "error", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -56,7 +56,7 @@ func (a *Agent) pollOnce(ctx context.Context, url string) {
 }
 
 func (a *Agent) handleCommand(ctx context.Context, cmd protocol.Command) {
-	fmt.Printf("Received Command: %s (%s)\n", cmd.Type, cmd.ID)
+	a.Logger.Info("command received", "type", cmd.Type, "id", cmd.ID)
 
 	var resultData any
 	var err error
@@ -114,7 +114,7 @@ func (a *Agent) handleCommand(ctx context.Context, cmd protocol.Command) {
 	}
 
 	if uploadErr := a.uploadCommandResult(ctx, cmd, resultData, err); uploadErr != nil {
-		fmt.Printf("Failed to upload result for %s: %v\n", cmd.ID, uploadErr)
+		a.Logger.Error("failed to upload command result", "command_id", cmd.ID, "error", uploadErr)
 	}
 }
 
@@ -182,7 +182,7 @@ func (a *Agent) uploadCommandResult(ctx context.Context, cmd protocol.Command, d
 		return fmt.Errorf("server rejected result (%s): %s", resp.Status, string(body))
 	}
 
-	fmt.Printf("Uploaded result for %s (%s compressed)\n", cmd.ID, formatBytes(compressedSize))
+	a.Logger.Debug("command result uploaded", "command_id", cmd.ID, "compressed_bytes", compressedSize)
 	return nil
 }
 

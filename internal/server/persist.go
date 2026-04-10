@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -54,7 +53,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			CpuUsage:       pgFloat8(m.Usage),
 			LoadNormalized: pgFloat8(normalized),
 		}); cacheErr != nil {
-			log.Printf("Error updating current_metrics (cpu): %v", cacheErr)
+			s.Logger.Warn("error updating current_metrics", "metric", "cpu", "error", cacheErr)
 		}
 
 	case *protocol.MemoryMetric:
@@ -75,7 +74,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			RamPercent:  pgFloat8(m.UsedPct),
 			SwapPercent: pgFloat8(m.SwapPct),
 		}); cacheErr != nil {
-			log.Printf("Error updating current_metrics (memory): %v", cacheErr)
+			s.Logger.Warn("error updating current_metrics", "metric", "memory", "error", cacheErr)
 		}
 
 	case *protocol.DiskMetric:
@@ -96,7 +95,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		})
 
 		if cacheErr := s.DB.UpsertCurrentDiskMax(ctx, uid); cacheErr != nil {
-			log.Printf("Error updating current_metrics (disk): %v", cacheErr)
+			s.Logger.Warn("error updating current_metrics", "metric", "disk", "error", cacheErr)
 		}
 
 	case *protocol.DiskIOMetric:
@@ -132,7 +131,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		})
 
 		if cacheErr := s.DB.UpsertCurrentNetwork(ctx, uid); cacheErr != nil {
-			log.Printf("Error updating current_metrics (network): %v", cacheErr)
+			s.Logger.Warn("error updating current_metrics", "metric", "network", "error", cacheErr)
 		}
 
 	case *protocol.TemperatureMetric:
@@ -149,7 +148,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		})
 
 		if cacheErr := s.DB.UpsertCurrentTemperature(ctx, uid); cacheErr != nil {
-			log.Printf("Error updating current_metrics (temperature): %v", cacheErr)
+			s.Logger.Warn("error updating current_metrics", "metric", "temperature", "error", cacheErr)
 		}
 
 	case *protocol.SystemMetric:
@@ -167,7 +166,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			Uptime:       pgInt8(int64(m.Uptime)),
 			ProcessCount: pgInt4(int32(m.Processes)),
 		}); cacheErr != nil {
-			log.Printf("Error updating current_metrics (system): %v", cacheErr)
+			s.Logger.Warn("error updating current_metrics", "metric", "system", "error", cacheErr)
 		}
 
 	case *protocol.WiFiMetric:
@@ -220,7 +219,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 				Status:     pgText(string(p.Status)),
 				Threads:    pgInt4(int32(p.ThreadsTotal)),
 			}); upsertErr != nil {
-				log.Printf("Error upserting process %d: %v", p.Pid, upsertErr)
+				s.Logger.Warn("error upserting process", "pid", p.Pid, "error", upsertErr)
 			}
 		}
 		// Remove processes that weren't in this batch
@@ -237,7 +236,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 				Status:    pgText(svc.Status),
 				SubStatus: pgText(svc.SubStatus),
 			}); upsertErr != nil {
-				log.Printf("Error upserting service %s: %v", svc.Name, upsertErr)
+				s.Logger.Warn("error upserting service", "service", svc.Name, "error", upsertErr)
 			}
 		}
 		return
@@ -249,7 +248,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 				Name:    app.Name,
 				Version: pgText(app.Version),
 			}); upsertErr != nil {
-				log.Printf("Error upserting application %s: %v", app.Name, upsertErr)
+				s.Logger.Warn("error upserting application", "name", app.Name, "error", upsertErr)
 			}
 		}
 		return
@@ -312,7 +311,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			AgentID:        uid,
 			RebootRequired: m.RebootRequired,
 		}); cacheErr != nil {
-			log.Printf("Error updating current_metrics (update): %v", cacheErr)
+			s.Logger.Warn("error updating current_metrics", "metric", "updates", "error", cacheErr)
 		}
 
 	default:
@@ -321,7 +320,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 	}
 
 	if err != nil {
-		log.Printf("Error persisting %s metric: %v", metric.MetricType(), err)
+		s.Logger.Error("failed to persist metric", "metric", metric.MetricType(), "agent_id", agentID, "error", err)
 	}
 }
 

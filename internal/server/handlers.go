@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"log"
 	"net/http"
 	"time"
 
@@ -46,6 +45,7 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !s.Tokens.Validate(req.Token) {
+		s.Logger.Warn("invalid registration token", "hostname", req.Info.Hostname, "ip", clientIP(r))
 		http.Error(w, "invalid or expired registration token", http.StatusUnauthorized)
 		return
 	}
@@ -71,11 +71,18 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 			RamTotal:     pgInt8(int64(req.Info.RAMTotal)),
 			IpAddress:    pgText(clientIP(r)),
 		}); err != nil {
-			log.Printf("Error persisting agent registration: %v", err)
+			s.Logger.Error("database query error", "error", err, "handler", "handleAgentRegister")
+			http.Error(w, "registration failed", http.StatusInternalServerError)
+			return
 		}
 	}
 
-	log.Printf("Registered agent %s (%s, %d cores, %s)", req.Info.Hostname, agentID, req.Info.CPUCores, req.Info.Platform)
+	s.Logger.Info("registered agent",
+		"hostname", req.Info.Hostname,
+		"agent_id", agentID,
+		"cpu_cores", req.Info.CPUCores,
+		"platform", req.Info.Platform,
+	)
 
 	respondJSON(w, http.StatusCreated, protocol.RegisterResponse{
 		AgentID: agentID,
@@ -97,6 +104,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			ID:        mustUUID(agentID),
 			IpAddress: pgText(clientIP(r)),
 		}); err != nil {
+			s.Logger.Error("database query error", "error", err, "handler", "handleMetrics")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -137,12 +145,11 @@ func (s *Server) handleCommandResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Command result received from %s (cmd: %s, type: %s)", agentID, res.ID, res.Type)
-
+	s.Logger.Info("command result received", "agent_id", agentID, "command", res.ID, "type", res.Type)
 	s.Commands.Complete(res.ID, res)
 
 	if res.Error != "" {
-		log.Printf("Command %s failed: %s", res.ID, res.Error)
+		s.Logger.Warn("command failed", "command", res.ID, "error", res.Error)
 	}
 
 	w.WriteHeader(http.StatusOK)

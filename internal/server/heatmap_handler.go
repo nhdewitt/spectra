@@ -32,7 +32,7 @@ func (s *Server) handleFleetHeatmap(w http.ResponseWriter, r *http.Request) {
 		EndTime:   endTime,
 	})
 	if err != nil {
-		http.Error(w, "query failed", http.StatusInternalServerError)
+		s.dbError(w, err, "handleFleetHeatmap")
 		return
 	}
 

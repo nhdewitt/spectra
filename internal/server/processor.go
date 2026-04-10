@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
@@ -13,7 +12,7 @@ import (
 func (s *Server) processMetric(agentID string, env RawEnvelope) {
 	metric, err := s.unmarshalMetric(env.Type, env.Data)
 	if err != nil {
-		log.Printf("Error processing metric from %s: %v", env.Hostname, err)
+		s.Logger.Warn("error processing metric", "hostname", env.Hostname, "error", err)
 		return
 	}
 

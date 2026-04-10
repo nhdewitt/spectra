@@ -6,13 +6,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/collector/disk"
+	"github.com/nhdewitt/spectra/internal/logging"
 	"github.com/nhdewitt/spectra/internal/platform"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
@@ -29,11 +29,14 @@ type Config struct {
 	AgentID           string // set after registration or loaded from config
 	Secret            string // set after registration or loaded from config
 	ConfigPath        string
+	LogFile           string
+	LogLevel          string
 }
 
 // Agent is the main application controller
 type Agent struct {
 	Config     Config
+	Logger     *logging.Logger
 	Client     *http.Client
 	DriveCache *disk.DriveCache
 
@@ -99,15 +102,26 @@ func New(cfg Config) *Agent {
 		cfg.IdentityPath = identityPath()
 	}
 
+	logCfg := logging.DefaultAgentConfig()
+	if cfg.LogFile != "" {
+		logCfg.FilePath = cfg.LogFile
+	}
+	if cfg.LogLevel != "" {
+		logCfg.ConsoleLevel = logging.ParseLevel(cfg.LogLevel)
+	}
+
+	logger := logging.New(logCfg)
+
 	id, err := loadIdentity(cfg.IdentityPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("warning: failed to load identity: %v", err)
+			logger.Warn("failed to load identity", "error", err)
 		}
 	}
 
 	return &Agent{
 		Config:     cfg,
+		Logger:     logger,
 		Client:     client,
 		DriveCache: disk.NewDriveCache(),
 		metricsCh:  make(chan protocol.Envelope, 500),
@@ -132,13 +146,16 @@ func (a *Agent) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
 
-	log.Printf("Spectra Agent starting on %s...\n", a.Config.Hostname)
-	log.Printf("Server: %s\n", a.Config.BaseURL)
+	a.Logger.Info("agent starting",
+		"hostname", a.Config.Hostname,
+		"server", a.Config.BaseURL,
+	)
 
 	if a.Identity.ID == "" {
 		if err := a.Register(ctx); err != nil {
 			return fmt.Errorf("registration failed: %w", err)
 		}
+		a.Logger.Info("agent registered", "agent_id", a.Identity.ID)
 	}
 
 	// Mount Manager (Windows disk mapping)
@@ -158,6 +175,13 @@ func (a *Agent) Start() error {
 		a.runCommandLoop(ctx)
 	}()
 
+	// Start Config Poller
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		a.runConfigPoller(ctx)
+	}()
+
 	// Align to minute boundary
 	if err := waitForNextMinute(ctx); err != nil {
 		return fmt.Errorf("clock alignment cancelled: %w", err)
@@ -173,10 +197,11 @@ func (a *Agent) Start() error {
 
 // Shutdown gracefully stops all background tasks
 func (a *Agent) Shutdown() {
-	log.Println("Agent shutting down...")
+	a.Logger.Info("agent shutting down")
 	a.cancel()
 	a.wg.Wait()
-	log.Println("Agent stopped.")
+	a.Logger.Info("agent stopped")
+	a.Logger.Close()
 }
 
 // setHeaders sets common headers for an http.Request

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -62,16 +61,16 @@ func (a *Agent) uploadBatch(ctx context.Context, batch []protocol.Envelope) {
 			// Re-cache everything
 			a.cache.Add(cached)
 			a.cache.Add(batch)
-			log.Printf("Server unreachable, cached %d metrics (%d total)", len(batch), a.cache.Len())
+			a.Logger.Warn("server unreachable", "cached_metrics", len(batch), "total_cache_size", a.cache.Len())
 			return
 		}
-		log.Printf("Sent %d cached metrics", len(cached))
+		a.Logger.Debug("sent cached metrics", "count", len(cached))
 	}
 
 	// Send current batch
 	if err := a.postCompressed(ctx, url, batch); err != nil {
 		a.cache.Add(batch)
-		log.Printf("Error sending batch of %d metrics, cached (%d total): %v", len(batch), a.cache.Len(), err)
+		a.Logger.Warn("error sending batch of metrics", "error", err)
 	}
 }
 

@@ -39,6 +39,7 @@ func (s *Server) handleGetSparklines(w http.ResponseWriter, r *http.Request) {
 	// CPU
 	cpuRows, err := s.DB.GetRecentCPU(ctx)
 	if err != nil {
+		s.Logger.Error("database query error", "error", err, "handler", "handleGetSparklines", "metric", "cpu")
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
@@ -51,6 +52,7 @@ func (s *Server) handleGetSparklines(w http.ResponseWriter, r *http.Request) {
 	// Memory
 	memRows, err := s.DB.GetRecentMemory(ctx)
 	if err != nil {
+		s.Logger.Error("database query error", "error", err, "handler", "handleGetSparklines", "metric", "mem")
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
@@ -63,6 +65,7 @@ func (s *Server) handleGetSparklines(w http.ResponseWriter, r *http.Request) {
 	// Disk
 	diskRows, err := s.DB.GetRecentDiskMax(ctx)
 	if err != nil {
+		s.Logger.Error("database query error", "error", err, "handler", "handleGetSparklines", "metric", "disk")
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}

@@ -54,9 +54,9 @@ func main() {
 
 	select {
 	case sig := <-quit:
-		log.Printf("Received %v, shutting down...", sig)
+		srv.Logger.Info("received signal, shutting down", "signal", sig.String())
 	case err := <-errCh:
-		log.Printf("Server error: %v", err)
+		srv.Logger.Error("server error", "error", err)
 		return
 	}
 
@@ -64,7 +64,8 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Shutdown error: %v", err)
+		srv.Logger.Error("server exited", "error", err)
+		os.Exit(1)
 	}
-	log.Println("Server stopped cleanly")
+	srv.Logger.Info("server stopped cleanly")
 }

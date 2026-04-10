@@ -3,7 +3,6 @@ package server
 import (
 	"crypto/sha256"
 	"crypto/subtle"
-	"log"
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -45,12 +44,13 @@ func (s *Server) requireAgentAuth(next http.HandlerFunc) http.HandlerFunc {
 					ID:           id,
 					SecretSha256: sum[:],
 				}); err != nil {
-					log.Printf("Failed upgrading agent %s to SHA-256: %v", agentID, err)
+					s.Logger.Error("failed upgrading agent to SHA-256", "agent_id", agentID, "error", err)
 				}
 			}
 		}
 
 		if !authOK {
+			s.Logger.Warn("agent auth failed", "agent_id", agentID, "ip", clientIP(r))
 			http.Error(w, "invalid agent credentials", http.StatusUnauthorized)
 			return
 		}
@@ -59,7 +59,7 @@ func (s *Server) requireAgentAuth(next http.HandlerFunc) http.HandlerFunc {
 			ID:        id,
 			IpAddress: pgText(clientIP(r)),
 		}); err != nil {
-			log.Printf("Failed to update agent %s last_seen: %v", agentID, err)
+			s.Logger.Warn("failed to update agent last_seen", "agent_id", agentID, "error", err)
 		}
 		next(w, r)
 	}

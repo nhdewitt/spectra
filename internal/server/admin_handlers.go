@@ -24,6 +24,7 @@ func (s *Server) handleAdminTriggerLogs(w http.ResponseWriter, r *http.Request) 
 	req := protocol.LogRequest{MinLevel: level}
 	payload, err := json.Marshal(req)
 	if err != nil {
+		s.Logger.Error("json marshaling failed", "error", err, "handler", "handleAdminTriggerLogs")
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -57,6 +58,7 @@ func (s *Server) handleAdminTriggerDisk(w http.ResponseWriter, r *http.Request) 
 	req := protocol.DiskUsageRequest{Path: path, TopN: topN}
 	payload, err := json.Marshal(req)
 	if err != nil {
+		s.Logger.Error("json marshaling failed", "error", err, "handler", "handleAdminTriggerDisk")
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -81,6 +83,7 @@ func (s *Server) handleAdminTriggerNetwork(w http.ResponseWriter, r *http.Reques
 	req := protocol.NetworkRequest{Action: action, Target: target}
 	payload, err := json.Marshal(req)
 	if err != nil {
+		s.Logger.Error("json marshaling failed", "error", err, "handler", "handleAdminTriggerNetwork")
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -90,6 +93,7 @@ func (s *Server) handleAdminTriggerNetwork(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleGenerateToken(w http.ResponseWriter, r *http.Request) {
 	token := s.Tokens.Generate(24 * time.Hour)
+	s.Logger.Info("registration token generated", "expires_in", "24h")
 
 	respondJSON(w, http.StatusCreated, map[string]string{
 		"token": token,

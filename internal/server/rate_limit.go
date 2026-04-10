@@ -128,6 +128,7 @@ func (s *Server) rateLimit(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := clientIP(r)
 		if !s.Limiters.anon.allow(ip) {
+			s.Logger.Warn("rate limit exceeded", "tier", "anonymous", "ip", clientIP(r))
 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
@@ -141,10 +142,14 @@ func (s *Server) rateLimit(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) rateLimitAuthed(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := clientIP(r)
-		if u, ok := userFromContext(r.Context()); ok {
+		u, ok := userFromContext(r.Context())
+		username := ""
+		if ok {
+			username = u.Username
 			key = "user:" + u.Username
 		}
 		if !s.Limiters.authed.allow(key) {
+			s.Logger.Warn("rate limit exceeded", "tier", "authed", "ip", clientIP(r), "username", username)
 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
@@ -156,11 +161,13 @@ func (s *Server) rateLimitAuthed(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) rateLimitAgent(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := clientIP(r)
-		if agentID := r.Header.Get("X-Agent-ID"); agentID != "" {
+		agentID := r.Header.Get("X-Agent-ID")
+		if agentID != "" {
 			key = "agent:" + agentID
 		}
 		if !s.Limiters.agent.allow(key) {
 			w.Header().Set("Retry-After", "5")
+			s.Logger.Warn("rate limit exceeded", "tier", "agent", "ip", clientIP(r), "agent_id", agentID)
 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}

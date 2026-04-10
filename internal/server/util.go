@@ -62,11 +62,13 @@ func (s *Server) queueHelper(w http.ResponseWriter, agentID string, cmdType prot
 
 	err := s.CmdQueue.Send(agentID, cmd)
 	if err != nil {
+		s.Logger.Error("queue full or agent not found", "error", err, "handler", "queueHelper")
 		http.Error(w, "Queue full or agent not found", http.StatusServiceUnavailable)
 		return
 	}
 
 	s.Commands.Track(cmd.ID, cmdType, agentID)
+	s.Logger.Info("command queued", "agent_id", agentID, "command", cmdType)
 	respondJSON(w, http.StatusAccepted, map[string]string{
 		"command_id": cmd.ID,
 		"message":    successMsg,
@@ -97,18 +99,21 @@ func generateSecret(n int) (string, error) {
 func (s *Server) getTargetAgent(w http.ResponseWriter, r *http.Request) (string, bool) {
 	agentID := r.URL.Query().Get("agent")
 	if agentID == "" {
+		s.Logger.Warn("no agent ID provided", "handler", "getTargetAgent")
 		http.Error(w, "agent ID required", http.StatusBadRequest)
 		return "", false
 	}
 
 	var uid pgtype.UUID
 	if err := uid.Scan(agentID); err != nil {
+		s.Logger.Warn("invalid agent ID", "agent_id", agentID, "handler", "getTargetAgent")
 		http.Error(w, "invalid agent ID", http.StatusBadRequest)
 		return "", false
 	}
 
 	_, err := s.DB.GetAgent(r.Context(), uid)
 	if err != nil {
+		s.Logger.Warn("agent not found", "agent_id", agentID, "handler", "getTargetAgent")
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return "", false
 	}
@@ -128,4 +133,9 @@ func fleetQuery[P any, R any](ctx context.Context, queryFn func(context.Context,
 		result[id] = append(result[id], pt)
 	}
 	return result, nil
+}
+
+func (s *Server) dbError(w http.ResponseWriter, err error, handler string) {
+	s.Logger.Error("database query failed", "error", err, "handler", handler)
+	http.Error(w, "database error", http.StatusInternalServerError)
 }

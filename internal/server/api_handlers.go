@@ -113,7 +113,7 @@ func parseAgentID(r *http.Request) (string, error) {
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.DB.GetOverview(r.Context())
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetOverview")
 		return
 	}
 
@@ -191,7 +191,7 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 
 	agent, err := s.DB.GetAgent(r.Context(), mustUUID(agentID))
 	if err != nil {
-		http.Error(w, "agent not found", http.StatusNotFound)
+		s.dbError(w, err, "handleGetAgent")
 		return
 	}
 
@@ -207,7 +207,7 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.DB.DeleteAgent(r.Context(), mustUUID(agentID)); err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleDeleteAgent")
 		return
 	}
 
@@ -237,7 +237,7 @@ func (s *Server) handleGetCPU(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetCPU")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -265,7 +265,7 @@ func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetMemory")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -293,7 +293,7 @@ func (s *Server) handleGetDisk(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetDisk")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -321,7 +321,7 @@ func (s *Server) handleGetDiskIO(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetDiskIO")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -349,7 +349,7 @@ func (s *Server) handleGetNetwork(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetNetwork")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -377,7 +377,7 @@ func (s *Server) handleGetTemperature(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetTemperature")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -405,7 +405,7 @@ func (s *Server) handleGetSystem(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetSystem")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -433,7 +433,7 @@ func (s *Server) handleGetContainers(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetContainers")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -461,7 +461,7 @@ func (s *Server) handleGetWifi(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetWifi")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -489,7 +489,7 @@ func (s *Server) handleGetPi(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetPi")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -512,6 +512,7 @@ func (s *Server) handleGetProcesses(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if limit < 1 || limit > 100 {
+			s.Logger.Warn("invalid limit", "limit", limit, "handler", "handleGetProcesses")
 			http.Error(w, "limit must be between 1 and 100", http.StatusBadRequest)
 			return
 		}
@@ -535,7 +536,7 @@ func (s *Server) handleGetProcesses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetProcesses")
 		return
 	}
 
@@ -552,7 +553,7 @@ func (s *Server) handleGetServices(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.DB.GetServices(r.Context(), mustUUID(agentID))
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetServices")
 		return
 	}
 
@@ -569,7 +570,7 @@ func (s *Server) handleGetApplications(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.DB.GetApplications(r.Context(), mustUUID(agentID))
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetApplications")
 		return
 	}
 
@@ -586,7 +587,7 @@ func (s *Server) handleGetUpdates(w http.ResponseWriter, r *http.Request) {
 
 	row, err := s.DB.GetUpdates(r.Context(), mustUUID(agentID))
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetUpdates")
 		return
 	}
 
@@ -597,7 +598,7 @@ func (s *Server) handleGetUpdates(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.DB.ListAgents(r.Context())
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleListAgents")
 		return
 	}
 
@@ -612,7 +613,7 @@ func (s *Server) handleGetLatestSystem(w http.ResponseWriter, r *http.Request) {
 	}
 	row, err := s.DB.GetLatestSystem(r.Context(), mustUUID(agentID))
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		s.dbError(w, err, "handleGetLatestSystem")
 		return
 	}
 

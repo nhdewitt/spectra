@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/collector"
@@ -69,7 +68,7 @@ func (a *Agent) startCollectors(ctx context.Context) {
 	go a.runNightly(ctx, 2, 0, func() {
 		apps, err := inventory.GetInstalledApps(ctx)
 		if err != nil {
-			log.Printf("nightly apps failed: %v", err)
+			a.Logger.Warn("nightly apps collection failed", "error", err)
 			return
 		}
 		a.metricsCh <- protocol.Envelope{
@@ -83,7 +82,7 @@ func (a *Agent) startCollectors(ctx context.Context) {
 	go a.runNightly(ctx, 2, 5, func() {
 		metrics, err := inventory.GetUpdates(ctx)
 		if err != nil {
-			log.Printf("nightly updates failed: %v", err)
+			a.Logger.Warn("nightly updates collection failed", "error", err)
 			return
 		}
 		for _, m := range metrics {

@@ -19,6 +19,7 @@ func (s *Server) handleGetAgentConfig(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.DB.GetAgentConfig(r.Context(), mustUUID(agentID))
 	if err != nil {
+		s.Logger.Error("database query failed", "error", err, "handler", "handleGetAgentConfig")
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
@@ -71,10 +72,12 @@ func (s *Server) handleSetAgentConfig(w http.ResponseWriter, r *http.Request) {
 		ConfigKey:   req.Key,
 		ConfigValue: req.Value,
 	}); err != nil {
+		s.Logger.Error("database query failed", "error", err, "handler", "handleSetAgentConfig")
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
 
+	s.Logger.Info("agent config updated", "agent_id", agentID, "key", req.Key)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -98,10 +101,12 @@ func (s *Server) handleDeleteAgentConfig(w http.ResponseWriter, r *http.Request)
 		AgentID:   mustUUID(agentID),
 		ConfigKey: key,
 	}); err != nil {
+		s.Logger.Error("database query failed", "error", err, "handler", "handleDeleteAgentConfig")
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
 
+	s.Logger.Info("agent config deleted", "agent_id", agentID, "key", key)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -110,6 +115,7 @@ var validConfigKeys = map[string]struct{}{
 	"ignored_filesystems": {},
 	"ignored_interfaces":  {},
 	"labels":              {},
+	"log_level":           {},
 }
 
 func isValidConfigKey(key string) bool {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -72,9 +71,14 @@ func (s *Server) requireUserAuth(next http.HandlerFunc) http.HandlerFunc {
 		// Verify IP
 		if session.IpAddress != clientIP(r) {
 			if err := s.DB.DeleteSession(r.Context(), cookie.Value); err != nil {
-				log.Printf("failed to delete session %s: %v", cookie.Value, err)
+				s.Logger.Error("failed to delete session", "error", err)
 			}
 			clearSessionCookie(w)
+			s.Logger.Warn("session invalidated: IP mismatch",
+				"username", session.Username,
+				"session_ip", session.IpAddress,
+				"request_ip", clientIP(r),
+			)
 			http.Error(w, "session invalidated", http.StatusUnauthorized)
 			return
 		}
@@ -95,6 +99,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 
 	if err := s.LoginTracker.check(ip); err != nil {
+		s.Logger.Warn("login locked out", "ip", ip)
 		http.Error(w, err.Error(), http.StatusTooManyRequests)
 		return
 	}
@@ -124,11 +129,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
 		s.LoginTracker.recordFailure(ip)
+		s.Logger.Warn("login failed", "username", req.Username, "ip", ip)
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
 	s.LoginTracker.recordSuccess(ip)
+	s.Logger.Info("login successful", "username", user.Username, "ip", ip)
 
 	// Session token
 	tokenBytes := make([]byte, sessionTokenBytes)
@@ -176,7 +183,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.DB.DeleteSession(r.Context(), cookie.Value); err != nil {
-		log.Printf("Failed to delete session %s during logout: %v", cookie.Value, err)
+		s.Logger.Error("failed to delete session on logout", "error", err)
 	}
 	clearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)

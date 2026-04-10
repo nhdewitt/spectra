@@ -73,6 +73,7 @@ func (s *Server) handleFleetChart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
+		s.Logger.Error("database query error", "error", err, "handler", "handleFleetChart")
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}

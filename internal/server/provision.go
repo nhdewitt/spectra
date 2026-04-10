@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -47,6 +46,7 @@ func (s *Server) handleListPlatforms(w http.ResponseWriter, r *http.Request) {
 
 	available := s.Releases.availablePlatforms()
 	if available == nil {
+		s.Logger.Warn("no agent builds available")
 		available = []platformInfo{}
 	}
 	respondJSON(w, http.StatusOK, available)
@@ -95,6 +95,7 @@ func (s *Server) handleProvision(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate one-time token
+	s.Logger.Info("one-time token provisioned", "ip", clientIP(r))
 	token := s.Tokens.Generate(24 * time.Hour)
 
 	// Build server URL from request
@@ -152,6 +153,7 @@ func (s *Server) handleDownloadRelease(w http.ResponseWriter, r *http.Request) {
 	f, size, err := s.Releases.verifyAndOpen(filename)
 	if err != nil {
 		if strings.Contains(err.Error(), "integrity check failed") {
+			s.Logger.Error("binary integrity check failed", "filename", filename, "error", err)
 			http.Error(w, "binary integrity check failed", http.StatusInternalServerError)
 			return
 		}
@@ -187,6 +189,6 @@ func (s *Server) handleDownloadConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="spectra-agent.json"`)
 
 	if _, err := w.Write(data); err != nil {
-		log.Printf("Failed to write config response: %v", err)
+		s.Logger.Warn("failed to write config response", "error", err)
 	}
 }
