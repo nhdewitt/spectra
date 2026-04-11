@@ -17,6 +17,7 @@ interface AgentConfig {
     ignored_filesystems?: string[];
     ignored_interfaces?: string[];
     labels?: Record<string, string>;
+    log_level?: string;
 }
 
 const btnStyle: React.CSSProperties = {
@@ -295,6 +296,7 @@ function AgentConfigPanel({
                 <StatBlock label="Cores" value={agent.cpu_cores ? String(agent.cpu_cores) : null} />
                 <StatBlock label="Uptime" value={formatUptime(agent.uptime)} />
                 <StatBlock label="IP" value={agent.ip_address ?? null} />
+                <StatBlock label="Version" value={agent.version || "—"} />
             </div>
 
             <IgnoreChecklist
@@ -322,6 +324,43 @@ function AgentConfigPanel({
                     saveList("ignored_interfaces", next);
                 }}
             />
+
+            <div style={{ marginBottom: 16 }}>
+                <div
+                    style={{
+                        fontSize: 11,
+                        fontFamily: themeVars.font,
+                        color: themeVars.textDim,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                        marginBottom: 6,
+                    }}
+                >
+                    Log Level
+                </div>
+                <select
+                    value={config.log_level ?? "info"}
+                    onChange={async (e) => {
+                        const level = e.target.value;
+                        setConfig((prev) => ({ ...prev, log_level: level }));
+                        await api.setAgentConfig(agent.id, "log_level", level);
+                    }}
+                    style={{
+                        padding: "4px 8px",
+                        fontSize: 12,
+                        fontFamily: themeVars.font,
+                        color: themeVars.text,
+                        background: themeVars.surface,
+                        border: `1px solid ${themeVars.border}`,
+                        cursor: "pointer",
+                    }}
+                >
+                    <option value="debug">Debug</option>
+                    <option value="info">Info</option>
+                    <option value="warn">Warn</option>
+                    <option value="error">Error</option>
+                </select>
+            </div>
 
             {/* Actions */}
             <div
@@ -575,6 +614,7 @@ export function AgentManagement() {
                             <th style={tableHeaderStyle}>OS</th>
                             <th style={tableHeaderStyle}>Platform</th>
                             <th style={tableHeaderStyle}>Arch</th>
+                            <td style={tableHeaderStyle}>Version</td>
                             <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Cores</th>
                             <th style={tableHeaderStyle}>Last Seen</th>
                         </tr>
@@ -613,6 +653,7 @@ export function AgentManagement() {
                                 <td style={tableMutedCellStyle}>{a.os}</td>
                                 <td style={tableMutedCellStyle}>{a.platform}</td>
                                 <td style={tableMutedCellStyle}>{a.arch}</td>
+                                <td style={tableMutedCellStyle}>{a.version || "—"}</td>
                                 <td style={{ ...tableMutedCellStyle, textAlign: "right" }}>
                                     {a.cpu_cores}
                                 </td>

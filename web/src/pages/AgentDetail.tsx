@@ -12,7 +12,6 @@ import { ApplicationsTab } from "../components/ApplicationsTab";
 import { UpdatesTab } from "../components/UpdatesTab";
 import { ContainersTab } from "../components/ContainersTab";
 import { DiagnosticsPanel } from "../components/DiagnosticsPanel";
-import { OSIcon } from "../icons";
 
 const TABS = ["metrics", "processes", "services", "containers", "apps", "updates", "diagnostics"] as const;
 
@@ -34,11 +33,6 @@ export function AgentDetail({
         30_000
     );
     const lastSeen = liveAgent?.last_seen ?? agent.last_seen;
-
-    const rangeLabel =
-        rangeSel.type === "quick"
-            ? rangeSel.range
-            : `${new Date(rangeSel.start).toLocaleString()} — ${new Date(rangeSel.end).toLocaleString()}`;
     
     const isTimeSeriesTab = activeTab === "metrics" || activeTab === "containers";
 
@@ -98,6 +92,7 @@ export function AgentDetail({
                         {agent.os} · {agent.platform} · {agent.arch} · {agent.cpu_cores}{" "}
                         {agent.cpu_cores === 1 ? "core" : "cores"}
                         {liveAgent?.ip_address && ` · ${liveAgent.ip_address}`}
+                        {agent.version && ` · ${agent.version}`}
                     </div>
                 </div>
             </div>

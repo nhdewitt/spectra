@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/logging"
+	"github.com/nhdewitt/spectra/internal/version"
 	"golang.org/x/net/netutil"
 )
 
@@ -123,6 +124,8 @@ func (s *Server) routes() {
 	// Upgrade/uninstall instructions
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/upgrade-instructions", s.requireUserAuth(s.rateLimitAuthed(s.handleUpgradeInstructions)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/uninstall-instructions", s.requireUserAuth(s.rateLimitAuthed(s.handleUninstallInstructions)))
+
+	s.Router.HandleFunc("GET /api/v1/version", s.rateLimit(s.handleVersion))
 }
 
 func (s *Server) Start() error {
@@ -142,7 +145,7 @@ func (s *Server) Start() error {
 	}
 	ln = netutil.LimitListener(ln, int(s.Config.MaxConnections))
 
-	s.Logger.Info("server started", "addr", addr)
+	s.Logger.Info("server started", "addr", addr, "version", version.Full())
 	return s.httpServer.Serve(ln)
 }
 

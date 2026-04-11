@@ -142,8 +142,8 @@ func (q *Queries) ListAgents(ctx context.Context) ([]ListAgentsRow, error) {
 }
 
 const registerAgent = `-- name: RegisterAgent :exec
-INSERT INTO agents (id, secret_hash, secret_sha256, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total, ip_address)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+INSERT INTO agents (id, secret_hash, secret_sha256, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total, ip_address, version)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 `
 
 type RegisterAgentParams struct {
@@ -158,6 +158,7 @@ type RegisterAgentParams struct {
 	CpuCores     pgtype.Int4 `json:"cpu_cores"`
 	RamTotal     pgtype.Int8 `json:"ram_total"`
 	IpAddress    pgtype.Text `json:"ip_address"`
+	Version      string      `json:"version"`
 }
 
 func (q *Queries) RegisterAgent(ctx context.Context, arg RegisterAgentParams) error {
@@ -173,6 +174,7 @@ func (q *Queries) RegisterAgent(ctx context.Context, arg RegisterAgentParams) er
 		arg.CpuCores,
 		arg.RamTotal,
 		arg.IpAddress,
+		arg.Version,
 	)
 	return err
 }

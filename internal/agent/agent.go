@@ -15,6 +15,7 @@ import (
 	"github.com/nhdewitt/spectra/internal/logging"
 	"github.com/nhdewitt/spectra/internal/platform"
 	"github.com/nhdewitt/spectra/internal/protocol"
+	"github.com/nhdewitt/spectra/internal/version"
 )
 
 // Config holds the runtime configuration
@@ -133,7 +134,8 @@ func New(cfg Config) *Agent {
 		commonHeaders: map[string]string{
 			"Content-Type":     "application/json",
 			"Content-Encoding": "gzip",
-			"User-Agent":       "Spectra-Agent/1.0",
+			"User-Agent":       version.UserAgent("Agent"),
+			"X-Agent-Version":  version.Version,
 		},
 		RetryConfig: DefaultRetryConfig(),
 		Platform:    platform.Detect(),
@@ -149,6 +151,7 @@ func (a *Agent) Start() error {
 	a.Logger.Info("agent starting",
 		"hostname", a.Config.Hostname,
 		"server", a.Config.BaseURL,
+		"version", version.Full(),
 	)
 
 	if a.Identity.ID == "" {

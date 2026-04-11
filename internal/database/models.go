@@ -22,6 +22,7 @@ type Agent struct {
 	LastSeen     pgtype.Timestamptz `json:"last_seen"`
 	SecretSha256 []byte             `json:"secret_sha256"`
 	IpAddress    pgtype.Text        `json:"ip_address"`
+	Version      string             `json:"version"`
 }
 
 type AgentConfig struct {

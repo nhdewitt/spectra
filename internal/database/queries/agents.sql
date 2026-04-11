@@ -1,6 +1,6 @@
 -- name: RegisterAgent :exec
-INSERT INTO agents (id, secret_hash, secret_sha256, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total, ip_address)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+INSERT INTO agents (id, secret_hash, secret_sha256, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total, ip_address, version)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
 
 -- name: GetAgent :one
 SELECT id, secret_hash, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total, registered_at, last_seen, ip_address

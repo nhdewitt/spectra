@@ -27,6 +27,9 @@ func (s *Server) requestLogger(next http.Handler) http.Handler {
 		level := slog.LevelDebug
 
 		isAgentPoll := strings.HasPrefix(r.URL.Path, "/api/v1/agent/")
+		if isAgentPoll && sw.status < 400 {
+			return
+		}
 
 		if !isAgentPoll && duration > 500*time.Millisecond {
 			level = slog.LevelInfo

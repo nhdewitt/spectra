@@ -8,8 +8,6 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-const AgentVersion = "0.1.0"
-
 func CollectHostInfo() protocol.HostInfo {
 	platform, platVer := getPlatformInfo()
 
@@ -23,7 +21,6 @@ func CollectHostInfo() protocol.HostInfo {
 		CPUModel: getCPUModel(),
 		CPUCores: runtime.NumCPU(),
 		RAMTotal: getRAMTotal(),
-		AgentVer: AgentVersion,
 		BootTime: getBootTime(),
 		IPs:      getIPs(),
 	}

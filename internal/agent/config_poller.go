@@ -25,7 +25,7 @@ func (a *Agent) runConfigPoller(ctx context.Context) {
 }
 
 func (a *Agent) fetchAndApplyConfig(ctx context.Context) {
-	url := fmt.Sprintf("%s/api/vv1/agents/%s/config", a.Config.BaseURL, a.Identity.ID)
+	url := fmt.Sprintf("%s/api/v1/agents/%s/config", a.Config.BaseURL, a.Identity.ID)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

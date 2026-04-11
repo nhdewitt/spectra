@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nhdewitt/spectra/internal/database"
 	"github.com/nhdewitt/spectra/internal/protocol"
+	"github.com/nhdewitt/spectra/internal/version"
 )
 
 // RawEnvelope is used for unmarshalling metrics
@@ -70,6 +71,7 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 			CpuCores:     pgInt4(int32(req.Info.CPUCores)),
 			RamTotal:     pgInt8(int64(req.Info.RAMTotal)),
 			IpAddress:    pgText(clientIP(r)),
+			Version:      req.Info.AgentVer,
 		}); err != nil {
 			s.Logger.Error("database query error", "error", err, "handler", "handleAgentRegister")
 			http.Error(w, "registration failed", http.StatusInternalServerError)
@@ -107,6 +109,15 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			s.Logger.Error("database query error", "error", err, "handler", "handleMetrics")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+	}
+
+	if agentVersion := r.Header.Get("X-Agent-Version"); agentVersion != "" {
+		if err := s.DB.UpdateAgentVersion(r.Context(), database.UpdateAgentVersionParams{
+			ID:      mustUUID(agentID),
+			Version: agentVersion,
+		}); err != nil {
+			s.Logger.Warn("failed to update agent version", "agent_id", agentID, "error", err)
 		}
 	}
 
@@ -172,4 +183,15 @@ func (s *Server) handleGetCommandResult(w http.ResponseWriter, r *http.Request) 
 	}
 
 	respondJSON(w, http.StatusOK, entry)
+}
+
+// handleVersion returns the version of the binary build.
+//
+// GET /api/v1/version
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]string{
+		"version": version.Version,
+		"commit":  version.Commit,
+		"date":    version.Date,
+	})
 }

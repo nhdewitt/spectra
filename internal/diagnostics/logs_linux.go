@@ -5,10 +5,12 @@ package diagnostics
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -59,6 +61,10 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 	if results == nil {
 		results = []protocol.LogEntry{}
 	}
+
+	slices.SortFunc(results, func(a, b protocol.LogEntry) int {
+		return cmp.Compare(a.Timestamp, b.Timestamp)
+	})
 
 	if len(results) > MaxLogs {
 		results = results[len(results)-MaxLogs:]

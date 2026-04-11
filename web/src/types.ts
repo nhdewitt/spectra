@@ -31,6 +31,7 @@ export interface OverviewAgent {
     arch: string;
     cpu_cores: number;
     last_seen: string | null;
+    version: string;
     cpu_usage: number | null;
     load_normalized: number | null;
     ram_percent: number | null;

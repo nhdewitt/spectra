@@ -16,6 +16,7 @@ type DB interface {
 	TouchLastSeen(ctx context.Context, id pgtype.UUID) error
 	AgentExists(ctx context.Context, id pgtype.UUID) (bool, error)
 	ListAgents(ctx context.Context) ([]database.ListAgentsRow, error)
+	UpdateAgentVersion(ctx context.Context, arg database.UpdateAgentVersionParams) error
 
 	// Auth
 	CreateUser(ctx context.Context, arg database.CreateUserParams) error

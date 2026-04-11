@@ -716,3 +716,9 @@ func (m *MockDB) GetFleetSparkDisk(_ context.Context, _ database.GetFleetSparkDi
 	defer m.mu.Unlock()
 	return []database.GetFleetSparkDiskRow{}, m.Err
 }
+
+func (m *MockDB) UpdateAgentVersion(_ context.Context, _ database.UpdateAgentVersionParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}

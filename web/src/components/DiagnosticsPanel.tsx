@@ -969,6 +969,8 @@ export function DiagnosticsPanel({ agentId }: DiagnosticsPanelProps) {
         cursor: "pointer",
         textTransform: "uppercase",
         letterSpacing: "0.03em",
+        width: 110,
+        textAlign: "center",
     };
 
     const btnDisabled: React.CSSProperties = {
@@ -977,58 +979,46 @@ export function DiagnosticsPanel({ agentId }: DiagnosticsPanelProps) {
         cursor: "default",
     };
 
+    const rowStyle: React.CSSProperties = {
+        display: "flex",
+        gap: 8,
+        alignItems: "center",
+        marginBottom: 8,
+        justifyContent: "flex-start",
+    };
+
     const isRunning = sending || (activeCmd !== null && !entry?.done);
 
     return (
         <div>
-            {/* Tool buttons */}
-            <div
-                style={{
-                    display: "flex",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    marginBottom: 16,
-                }}
-            >
-                {/* Logs */}
-                <div style={{ display: "flex", gap: 0, alignItems: "center" }}>
-                    <button
-                        onClick={() =>
-                            runCommand(() => api.triggerLogs(agentId, logLevel), "logs")
-                        }
-                        disabled={isRunning}
-                        style={{
-                            ...(isRunning ? btnDisabled : btnStyle),
-                            borderRight: "none",
-                        }}
-                    >
-                        Fetch Logs
-                    </button>
-                    <select
-                        value={logLevel}
-                        onChange={(e) => setLogLevel(e.target.value)}
-                        disabled={isRunning}
-                        style={{
-                            ...inputStyle,
-                            fontSize: 11,
-                            padding: "5px 4px",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.03em",
-                            borderColor: themeVars.accent,
-                            opacity: isRunning ? 0.5 : 1,
-                        }}
-                    >
-                        {LOG_LEVELS.map((l) => (
-                            <option key={l} value={l}>{l}</option>
-                        ))}
-                    </select>
-                </div>
-
-                {/* Netstat */}
+            {/* Logs */}
+            <div style={rowStyle}>
+                <select
+                    value={logLevel}
+                    onChange={(e) => setLogLevel(e.target.value)}
+                    disabled={isRunning}
+                    style={{
+                        ...inputStyle, width: 250, fontSize: 11, padding: "5px 8px",
+                        textTransform: "uppercase", letterSpacing: "0.03em",
+                        opacity: isRunning ? 0.5 : 1,
+                    }}
+                >
+                    {LOG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
                 <button
-                    onClick={() =>
-                        runCommand(() => api.triggerNetwork(agentId, "netstat"), "netstat")
-                    }
+                    onClick={() => runCommand(() => api.triggerLogs(agentId, logLevel), "logs")}
+                    disabled={isRunning}
+                    style={isRunning ? btnDisabled : btnStyle}
+                >
+                    Fetch Logs
+                </button>
+            </div>
+
+            {/* Netstat */}
+            <div style={rowStyle}>
+                <div style={{ width: 250 }} />
+                <button
+                    onClick={() => runCommand(() => api.triggerNetwork(agentId, "netstat"), "netstat")}
                     disabled={isRunning}
                     style={isRunning ? btnDisabled : btnStyle}
                 >
@@ -1037,107 +1027,48 @@ export function DiagnosticsPanel({ agentId }: DiagnosticsPanelProps) {
             </div>
 
             {/* Ping */}
-            <div
-                style={{
-                    display: "flex",
-                    gap: 8,
-                    alignItems: "center",
-                    marginBottom: 8,
-                }}
-            >
-                <input
-                    type="text"
-                    value={pingTarget}
-                    onChange={(e) => setPingTarget(e.target.value)}
+            <div style={rowStyle}>
+                <input type="text" value={pingTarget} onChange={(e) => setPingTarget(e.target.value)}
                     placeholder="Ping target (IP or hostname)"
-                    onKeyDown={(e) =>
-                        e.key === "Enter" &&
-                        pingTarget.trim() &&
-                        runCommand(() => api.triggerNetwork(agentId, "ping", pingTarget.trim()), "ping")
-                    }
-                    style={{ ...inputStyle, flex: "0 1 250px" }}
-                />
+                    onKeyDown={(e) => e.key === "Enter" && pingTarget.trim() &&
+                        runCommand(() => api.triggerNetwork(agentId, "ping", pingTarget.trim()), "ping")}
+                    style={{ ...inputStyle, width: 250 }} />
                 <button
-                    onClick={() =>
-                        runCommand(() => api.triggerNetwork(agentId, "ping", pingTarget.trim()), "ping")
-                    }
+                    onClick={() => runCommand(() => api.triggerNetwork(agentId, "ping", pingTarget.trim()), "ping")}
                     disabled={isRunning || !pingTarget.trim()}
-                    style={
-                        isRunning || !pingTarget.trim()
-                            ? btnDisabled
-                            : btnStyle
-                    }
+                    style={isRunning || !pingTarget.trim() ? btnDisabled : btnStyle}
                 >
                     Ping
                 </button>
             </div>
 
             {/* Traceroute */}
-            <div
-                style={{
-                    display: "flex",
-                    gap: 8,
-                    alignItems: "center",
-                    marginBottom: 8,
-                }}
-            >
-                <input
-                    type="text"
-                    value={tracerouteTarget}
-                    onChange={(e) => setTracerouteTarget(e.target.value)}
+            <div style={rowStyle}>
+                <input type="text" value={tracerouteTarget} onChange={(e) => setTracerouteTarget(e.target.value)}
                     placeholder="Traceroute target"
-                    onKeyDown={(e) =>
-                        e.key === "Enter" &&
-                        tracerouteTarget.trim() &&
-                        runCommand(() => api.triggerNetwork(agentId, "traceroute", tracerouteTarget.trim()), "traceroute")
-                    }
-                    style={{ ...inputStyle, flex: "0 1 250px" }}
-                />
+                    onKeyDown={(e) => e.key === "Enter" && tracerouteTarget.trim() &&
+                        runCommand(() => api.triggerNetwork(agentId, "traceroute", tracerouteTarget.trim()), "traceroute")}
+                    style={{ ...inputStyle, width: 250 }} />
                 <button
-                    onClick={() =>
-                        runCommand(() => api.triggerNetwork(agentId, "traceroute", tracerouteTarget.trim()), "traceroute")
-                    }
+                    onClick={() => runCommand(() => api.triggerNetwork(agentId, "traceroute", tracerouteTarget.trim()), "traceroute")}
                     disabled={isRunning || !tracerouteTarget.trim()}
-                    style={
-                        isRunning || !tracerouteTarget.trim()
-                            ? btnDisabled
-                            : btnStyle    
-                    }
+                    style={isRunning || !tracerouteTarget.trim() ? btnDisabled : btnStyle}
                 >
                     Traceroute
                 </button>
             </div>
 
-            {/* Disk usage */}
-            <div
-                style={{
-                    display: "flex",
-                    gap: 8,
-                    alignItems: "center",
-                    marginBottom: 16,
-                }}
-            >
-                <input
-                    type="text"
-                    value={diskPath}
-                    onChange={(e) => setDiskPath(e.target.value)}
-                    placeholder="Path to scan (e.g. /, /home, C:\)"
-                    style={{ ...inputStyle, flex: "0 1 250px" }}
-                />
-                <input
-                    type="number"
-                    value={diskTopN}
-                    onChange={(e) => setDiskTopN(Number(e.target.value) || 20)}
-                    min={5}
-                    max={100}
-                    style={{
-                        ...inputStyle,
-                        width: 60,
-                        MozAppearance: "textfield",
-                        WebkitAppearance: "none",
-                        appearance: "textfield",
-                    }}
-                />
+            {/* Disk */}
+            <div style={{ ...rowStyle, marginBottom: 16 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                    <input type="text" value={diskPath} onChange={(e) => setDiskPath(e.target.value)}
+                        placeholder="Path to scan"
+                        title="Path to scan (e.g. /, /home, C:\)"
+                        style={{ ...inputStyle, width: 182 }} />
+                    <input type="number" value={diskTopN} onChange={(e) => setDiskTopN(Number(e.target.value) || 20)}
+                        min={5} max={100}
+                        style={{ ...inputStyle, width: 60 }} />
+                </div>
                 <button
                     onClick={() => runCommand(() => api.triggerDisk(agentId, diskPath.trim() || "/", diskTopN), "disk")}
                     disabled={isRunning}
