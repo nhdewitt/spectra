@@ -46,8 +46,10 @@ export function Fleet() {
                 </button>
             </div>
 
-            {view === "heatmap" && <FleetHeatmap agents={agents} />}
-            {view === "chart" && <FleetChart agentNames={agentNames} />}
+            <div style={{ minHeight: 400 }}>
+                {view === "heatmap" && <FleetHeatmap agents={agents} />}
+                {view === "chart" && <FleetChart agentNames={agentNames} />}
+            </div>
         </div>
     );
 }

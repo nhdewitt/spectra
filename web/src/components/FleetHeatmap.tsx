@@ -58,7 +58,7 @@ const ROW_HEIGHT = 22;
 const ROW_GAP = 2;
 const CELL_GAP = 2;
 const CELL_RADIUS = 2;
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
 
 const LENS_ROWS = 3;
 const LENS_COLS = 5;

@@ -3,88 +3,52 @@ import { getThemeName, themeVars, type ThemeName } from "../theme";
 
 const THEME_PALETTES: Record<ThemeName, string[]> = {
   midnight: [
-    "#5b9cf5",
-    "#ef6b6b",
-    "#36cda4",
-    "#e8b832",
-    "#b07ce8",
-    "#e87e3a",
-    "#3dc8c8",
-    "#d65fa0",
-    "#8899dd",
-    "#7acc55",
-    "#c9903e",
-    "#45aaf2",
+      "#5b9cf5",
+      "#ef6b6b",
+      "#36cda4",
+      "#e8b832",
+      "#b07ce8",
+      "#e87e3a",
   ],
   terminal: [
-    "#33ff33",
-    "#ff5555",
-    "#55bbff",
-    "#ffff55",
-    "#ff55ff",
-    "#55ffdd",
-    "#ffaa33",
-    "#bb88ff",
-    "#88ff88",
-    "#ff88aa",
-    "#aaddff",
-    "#ddff55",
+      "#33ff33",
+      "#ff5555",
+      "#55bbff",
+      "#ffff55",
+      "#ff55ff",
+      "#55ffdd",
   ],
   classic: [
-    "#1a56db",
-    "#c81e1e",
-    "#138a3e",
-    "#c27803",
-    "#7e22ce",
-    "#0e7490",
-    "#b91c47",
-    "#ea6a0a",
-    "#047857",
-    "#4338ca",
-    "#a16207",
-    "#0f766e",
+      "#1a56db",
+      "#c81e1e",
+      "#138a3e",
+      "#c27803",
+      "#7e22ce",
+      "#0e7490",
   ],
   nord: [
-    "#88c0d0",
-    "#bf616a",
-    "#a3be8c",
-    "#ebcb8b",
-    "#b48ead",
-    "#d08770",
-    "#5e81ac",
-    "#8fbcbb",
-    "#81a1c1",
-    "#d8dee9",
-    "#a3855e",
-    "#7ca3a0",
+      "#88c0d0",
+      "#bf616a",
+      "#a3be8c",
+      "#ebcb8b",
+      "#b48ead",
+      "#d08770",
   ],
   solarized: [
-    "#268bd2",
-    "#dc322f",
-    "#859900",
-    "#b58900",
-    "#6c71c4",
-    "#2aa198",
-    "#d33682",
-    "#cb4b16",
-    "#1a9bcf",
-    "#778c00",
-    "#c94070",
-    "#a87000",
+      "#268bd2",
+      "#dc322f",
+      "#859900",
+      "#b58900",
+      "#6c71c4",
+      "#2aa198",
   ],
   light: [
-    "#1a56db",
-    "#c81e1e",
-    "#138a3e",
-    "#a16207",
-    "#7e22ce",
-    "#0e7490",
-    "#b91c47",
-    "#ea6a0a",
-    "#047857",
-    "#4338ca",
-    "#9a6c03",
-    "#0f766e",
+      "#1a56db",
+      "#c81e1e",
+      "#138a3e",
+      "#c27803",
+      "#7e22ce",
+      "#0e7490",
   ],
 };
 
@@ -188,6 +152,7 @@ export function FleetChart({ apiBase = "", agentNames}: FleetChartProps) {
     const [visible, setVisible] = useState<Record<string, boolean>>({});
     const [themeName, setThemeName] = useState<ThemeName>(getThemeName);
     const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+    const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
 
     const svgRef = useRef<SVGSVGElement>(null);
     const activeKey = cacheKey(metric, hours);
@@ -487,7 +452,8 @@ export function FleetChart({ apiBase = "", agentNames}: FleetChartProps) {
               const s = agentStyleMap[line.id] ?? { colorA: "#888", colorB: null, dash: "", gradientId: null };
               const d = line.pts.map((p, i) => `${i === 0 ? "M" : "L"}${toX(p.t)},${toY(p.v)}`).join(" ");
               return <path key={line.id} d={d} fill="none" stroke={s.gradientId ? `url(#${s.gradientId})` : s.colorA}
-                strokeWidth={1.2} strokeDasharray={s.dash} strokeLinejoin="round" strokeLinecap="round" />;
+                strokeWidth={hoveredAgent === line.id ? 2.4 : 1.2} strokeDasharray={s.dash} strokeLinejoin="round" strokeLinecap="round"
+                opacity={hoveredAgent === null || hoveredAgent === line.id ? 1 : 0.15} />;
             })}
  
             {tooltip && <line x1={tooltip.x} x2={tooltip.x} y1={PAD.top} y2={PAD.top + plotH}
@@ -501,45 +467,75 @@ export function FleetChart({ apiBase = "", agentNames}: FleetChartProps) {
             <div style={{
               position: "absolute", bottom: "1rem", left: `${(tooltip.x / W) * 100}%`, transform: "translateX(-50%)",
               background: themeVars.bg, border: `1px solid ${themeVars.border}`, borderRadius: 3, padding: "3px 6px",
-              fontSize: 8, fontFamily: themeVars.font, color: themeVars.text, whiteSpace: "nowrap",
+              fontSize: 14, fontFamily: themeVars.font, color: themeVars.text, whiteSpace: "nowrap",
               boxShadow: "0 2px 8px rgba(0,0,0,0.3)", zIndex: 10, pointerEvents: "none",
             }}>
-              <div style={{ fontWeight: 600, marginBottom: 1, color: themeVars.textMuted, fontSize: 7 }}>{tooltip.time}</div>
-              {tooltip.entries.slice(0, 10).map((e) => (
+              <div style={{ fontWeight: 600, marginBottom: 1, color: themeVars.textMuted, fontSize: 12 }}>{tooltip.time}</div>
+              {tooltip.entries.slice(0, 20).map((e) => (
                 <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 3, lineHeight: 1.5 }}>
                   <LineSwatch style={e.style} />
                   <span style={{ color: themeVars.textMuted }}>{displayName(e.id, agentNames)}</span>
                   <span style={{ fontWeight: 600, marginLeft: "auto", paddingLeft: 4 }}>{e.value.toFixed(1)}%</span>
                 </div>
               ))}
-              {tooltip.entries.length > 10 && (
-                <div style={{ color: themeVars.textDim, fontStyle: "italic", fontSize: 7 }}>+{tooltip.entries.length - 10} more</div>
-              )}
             </div>
           )}
         </div>
  
         {/* Legend */}
         <div style={{ width: 120, flexShrink: 0, maxHeight: H, overflowY: "auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3, fontSize: 8, fontFamily: themeVars.font }}>
-            <button onClick={() => setAll(true)} style={{ background: "none", border: "none", color: themeVars.accent, cursor: "pointer", fontSize: 8, fontFamily: themeVars.font, padding: 0 }}>All</button>
-            <button onClick={() => setAll(false)} style={{ background: "none", border: "none", color: themeVars.accent, cursor: "pointer", fontSize: 8, fontFamily: themeVars.font, padding: 0 }}>None</button>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3, fontSize: 10, fontFamily: themeVars.font }}>
+            <button onClick={() => setAll(true)} style={{ background: "none", border: "none", color: themeVars.accent, cursor: "pointer", fontSize: 12, fontFamily: themeVars.font, padding: 0 }}>All</button>
+            <button onClick={() => setAll(false)} style={{ background: "none", border: "none", color: themeVars.accent, cursor: "pointer", fontSize: 12, fontFamily: themeVars.font, padding: 0 }}>None</button>
           </div>
           {agentIds.map((id) => {
             const s = agentStyleMap[id] ?? { colorA: "#888", colorB: null, dash: "", gradientId: null };
             return (
-              <label key={id} style={{
-                display: "flex", alignItems: "center", gap: 3, fontSize: 8, fontFamily: themeVars.font,
-                cursor: "pointer", padding: "1px 0",
-                color: visible[id] ? themeVars.text : themeVars.textDim, opacity: visible[id] ? 1 : 0.4,
-              }}>
-                <input type="checkbox" checked={!!visible[id]} onChange={() => toggleAgent(id)}
-                  style={{ accentColor: s.colorA, margin: 0, width: 8, height: 8 }} />
-                <LineSwatch style={s} width={10} height={4} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {displayName(id, agentNames)}
+              <div
+                key={id}
+                onMouseEnter={() => setHoveredAgent(id)}
+                onMouseLeave={() => setHoveredAgent(null)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 3, fontSize: 8, fontFamily: themeVars.font,
+                  cursor: "pointer", padding: "1px 0",
+                  color: visible[id] ? themeVars.text : themeVars.textDim, opacity: visible[id] ? 1 : 0.4,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!visible[id]}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    toggleAgent(id);
+                  }}
+                  onMouseEnter={(e) => e.stopPropagation()}
+                  onMouseLeave={(e) => e.stopPropagation()}
+                  style={{ accentColor: s.colorA, margin: 0, width: 8, height: 8 }}
+                />
+                <span
+                  onClick={() => {
+                    setVisible((prev) => {
+                      const onlyThisVisible = Object.entries(prev).every(
+                        ([k, v]) => k === id ? v : !v
+                      );
+                      if (onlyThisVisible) {
+                        const next: Record<string, boolean> = {};
+                        for (const k of Object.keys(prev)) next[k] = true;
+                        return next;
+                      }
+                      const next: Record<string, boolean> = {};
+                      for (const k of Object.keys(prev)) next[k] = k === id;
+                      return next;
+                    });
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 3, overflow: "hidden" }}
+                >
+                  <LineSwatch style={s} width={20} height={4} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {displayName(id, agentNames)}
+                  </span>
                 </span>
-              </label>
+              </div>
             );
           })}
           {agentIds.length === 0 && !loading && (
