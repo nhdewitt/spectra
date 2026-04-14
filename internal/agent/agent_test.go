@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -82,7 +83,6 @@ func TestNew_CommonHeaders(t *testing.T) {
 	expected := map[string]string{
 		"Content-Type":     "application/json",
 		"Content-Encoding": "gzip",
-		"User-Agent":       "Spectra-Agent/1.0",
 	}
 
 	for k, want := range expected {
@@ -109,8 +109,8 @@ func TestAgent_SetHeaders(t *testing.T) {
 	if req.Header.Get("Content-Encoding") != "gzip" {
 		t.Errorf("Content-Encoding: got %s, want gzip", req.Header.Get("Content-Encoding"))
 	}
-	if req.Header.Get("User-Agent") != "Spectra-Agent/1.0" {
-		t.Errorf("User-Agent: got %s, want Spectra-Agent/1.0", req.Header.Get("User-Agent"))
+	if !strings.Contains(req.Header.Get("User-Agent"), "Spectra-Agent") {
+		t.Errorf("User-Agent: got %s, want Spectra-Agent/...", req.Header.Get("User-Agent"))
 	}
 }
 

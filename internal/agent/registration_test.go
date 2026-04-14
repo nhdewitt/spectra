@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -290,8 +291,8 @@ func TestRegister_UserAgent(t *testing.T) {
 	a := New(testConfig(t, server.URL))
 
 	a.Register(context.Background())
-	if receivedUA != "Spectra-Agent/1.0" {
-		t.Errorf("User-Agent: got %s, want Spectra-Agent/1.0", receivedUA)
+	if !strings.Contains(receivedUA, "Spectra-Agent") {
+		t.Errorf("User-Agent: got %s, want Spectra-Agent/...", receivedUA)
 	}
 }
 

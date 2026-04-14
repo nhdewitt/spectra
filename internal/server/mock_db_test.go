@@ -72,6 +72,8 @@ type MockDB struct {
 	Err         error
 	QueryErr    error // errors for data queries (not auth)
 	GetAgentErr error
+	FleetErr    error // errors for fleet queries
+	ConfigErr   error // errors for agent config queries
 }
 
 type mockUser struct {
@@ -678,43 +680,64 @@ func (m *MockDB) GetAgentConfigByKey(_ context.Context, _ database.GetAgentConfi
 func (m *MockDB) SetAgentConfig(_ context.Context, _ database.SetAgentConfigParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.Err
+	if m.ConfigErr != nil {
+		return m.ConfigErr
+	}
+	return nil
 }
 
 func (m *MockDB) DeleteAgentConfig(_ context.Context, _ database.DeleteAgentConfigParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.ConfigErr != nil {
+		return m.ConfigErr
+	}
 	return m.Err
 }
 
 func (m *MockDB) DeleteAllAgentConfig(_ context.Context, _ pgtype.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.ConfigErr != nil {
+		return m.ConfigErr
+	}
 	return m.Err
 }
 
 func (m *MockDB) GetFleetHeatmap(_ context.Context, _ database.GetFleetHeatmapParams) ([]database.GetFleetHeatmapRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return []database.GetFleetHeatmapRow{}, m.Err
+	if m.FleetErr != nil {
+		return nil, m.FleetErr
+	}
+	return []database.GetFleetHeatmapRow{}, nil
 }
 
 func (m *MockDB) GetFleetSparkCPU(_ context.Context, _ database.GetFleetSparkCPUParams) ([]database.GetFleetSparkCPURow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return []database.GetFleetSparkCPURow{}, m.Err
+	if m.FleetErr != nil {
+		return nil, m.FleetErr
+	}
+	return []database.GetFleetSparkCPURow{}, nil
 }
 
 func (m *MockDB) GetFleetSparkMemory(_ context.Context, _ database.GetFleetSparkMemoryParams) ([]database.GetFleetSparkMemoryRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return []database.GetFleetSparkMemoryRow{}, m.Err
+	if m.FleetErr != nil {
+		return nil, m.FleetErr
+	}
+	return []database.GetFleetSparkMemoryRow{}, nil
 }
 
 func (m *MockDB) GetFleetSparkDisk(_ context.Context, _ database.GetFleetSparkDiskParams) ([]database.GetFleetSparkDiskRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return []database.GetFleetSparkDiskRow{}, m.Err
+	if m.FleetErr != nil {
+		return nil, m.FleetErr
+	}
+	return []database.GetFleetSparkDiskRow{}, nil
 }
 
 func (m *MockDB) UpdateAgentVersion(_ context.Context, _ database.UpdateAgentVersionParams) error {
