@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/nhdewitt/spectra/internal/logging"
@@ -13,10 +15,11 @@ import (
 
 func newTestAgentWithLogger() *Agent {
 	a := New(Config{
-		BaseURL:     "http://localhost:8080",
-		Hostname:    "test-host",
-		MetricsPath: "/api/v1/agent/metrics",
-		CommandPath: "/api/v1/agent/command",
+		BaseURL:      "http://localhost:8080",
+		Hostname:     "test-host",
+		MetricsPath:  "/api/v1/agent/metrics",
+		CommandPath:  "/api/v1/agent/command",
+		IdentityPath: filepath.Join(os.TempDir(), "spectra-test-identity.json"),
 	})
 	a.Logger = logging.New(logging.Config{
 		ConsoleLevel: slog.LevelError, // suppress noise in tests
