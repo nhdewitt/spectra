@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -256,6 +257,37 @@ func TestHandleDeleteAgentConfig_Unauthenticated(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", w.Code)
 	}
+}
+
+func TestHandleGetAgentSelfConfig(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		s, agentID, secret, _ := newTestServer()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/config", nil)
+		setAgentAuth(req, agentID, secret)
+		rec := httptest.NewRecorder()
+
+		s.Router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status: got %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("db_error", func(t *testing.T) {
+		s, agentID, secret, mock := newTestServer()
+		mock.QueryErr = errors.New("connection refused")
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/config", nil)
+		setAgentAuth(req, agentID, secret)
+		rec := httptest.NewRecorder()
+
+		s.Router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Errorf("status: got %d, want 500", rec.Code)
+		}
+	})
 }
 
 func TestIsValidConfigKey(t *testing.T) {

@@ -69,6 +69,9 @@ type MockDB struct {
 	recentMemory  []database.GetRecentMemoryRow
 	recentDiskMax []database.GetRecentDiskMaxRow
 
+	OverviewRows []database.GetOverviewRow
+	HeatmapRows  []database.GetFleetHeatmapRow
+
 	Err         error
 	QueryErr    error // errors for data queries (not auth)
 	GetAgentErr error
@@ -324,7 +327,7 @@ func (m *MockDB) GetOverview(_ context.Context) ([]database.GetOverviewRow, erro
 	if m.QueryErr != nil {
 		return nil, m.QueryErr
 	}
-	return []database.GetOverviewRow{}, m.Err
+	return m.OverviewRows, m.Err
 }
 
 func (m *MockDB) GetAgent(_ context.Context, _ pgtype.UUID) (database.GetAgentRow, error) {
@@ -345,120 +348,180 @@ func (m *MockDB) DeleteAgent(_ context.Context, _ pgtype.UUID) error {
 func (m *MockDB) GetCPURange(_ context.Context, _ database.GetCPURangeParams) ([]database.MetricsCpu, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.MetricsCpu{}, nil
 }
 
 func (m *MockDB) GetMemoryRange(_ context.Context, _ database.GetMemoryRangeParams) ([]database.MetricsMemory, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.MetricsMemory{}, nil
 }
 
 func (m *MockDB) GetDiskRange(_ context.Context, _ database.GetDiskRangeParams) ([]database.MetricsDisk, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.MetricsDisk{}, nil
 }
 
 func (m *MockDB) GetDiskIORange(_ context.Context, _ database.GetDiskIORangeParams) ([]database.MetricsDiskIo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.MetricsDiskIo{}, nil
 }
 
 func (m *MockDB) GetNetworkRange(_ context.Context, _ database.GetNetworkRangeParams) ([]database.MetricsNetwork, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.MetricsNetwork{}, nil
 }
 
 func (m *MockDB) GetTemperatureRange(_ context.Context, _ database.GetTemperatureRangeParams) ([]database.MetricsTemperature, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.MetricsTemperature{}, nil
 }
 
 func (m *MockDB) GetSystemRange(_ context.Context, _ database.GetSystemRangeParams) ([]database.MetricsSystem, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.MetricsSystem{}, nil
 }
 
 func (m *MockDB) GetContainerRange(_ context.Context, _ database.GetContainerRangeParams) ([]database.MetricsContainer, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.MetricsContainer{}, nil
 }
 
 func (m *MockDB) GetWifiRange(_ context.Context, _ database.GetWifiRangeParams) ([]database.MetricsWifi, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.MetricsWifi{}, nil
 }
 
 func (m *MockDB) GetPiRange(_ context.Context, _ database.GetPiRangeParams) ([]database.GetPiRangeRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetPiRangeRow{}, nil
 }
 
 func (m *MockDB) GetCPUBucketed(_ context.Context, _ database.GetCPUBucketedParams) ([]database.GetCPUBucketedRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetCPUBucketedRow{}, nil
 }
 
 func (m *MockDB) GetMemoryBucketed(_ context.Context, _ database.GetMemoryBucketedParams) ([]database.GetMemoryBucketedRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetMemoryBucketedRow{}, nil
 }
 
 func (m *MockDB) GetDiskBucketed(_ context.Context, _ database.GetDiskBucketedParams) ([]database.GetDiskBucketedRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetDiskBucketedRow{}, nil
 }
 
 func (m *MockDB) GetDiskIOBucketed(_ context.Context, _ database.GetDiskIOBucketedParams) ([]database.GetDiskIOBucketedRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetDiskIOBucketedRow{}, nil
 }
 
 func (m *MockDB) GetNetworkBucketed(_ context.Context, _ database.GetNetworkBucketedParams) ([]database.GetNetworkBucketedRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetNetworkBucketedRow{}, nil
 }
 
 func (m *MockDB) GetTemperatureBucketed(_ context.Context, _ database.GetTemperatureBucketedParams) ([]database.GetTemperatureBucketedRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetTemperatureBucketedRow{}, nil
 }
 
 func (m *MockDB) GetSystemBucketed(_ context.Context, _ database.GetSystemBucketedParams) ([]database.GetSystemBucketedRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetSystemBucketedRow{}, nil
 }
 
 func (m *MockDB) GetContainerBucketed(_ context.Context, _ database.GetContainerBucketedParams) ([]database.GetContainerBucketedRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetContainerBucketedRow{}, nil
 }
 
 func (m *MockDB) GetWifiBucketed(_ context.Context, _ database.GetWifiBucketedParams) ([]database.GetWifiBucketedRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetWifiBucketedRow{}, nil
 }
 
 func (m *MockDB) GetPiBucketed(_ context.Context, _ database.GetPiBucketedParams) ([]database.GetPiBucketedRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.GetPiBucketedRow{}, nil
 }
 
@@ -477,24 +540,36 @@ func (m *MockDB) GetProcessesByMemory(_ context.Context, _ database.GetProcesses
 func (m *MockDB) GetServices(_ context.Context, _ pgtype.UUID) ([]database.CurrentService, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.CurrentService{}, nil
 }
 
 func (m *MockDB) GetApplications(_ context.Context, _ pgtype.UUID) ([]database.CurrentApplication, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.CurrentApplication{}, nil
 }
 
 func (m *MockDB) GetUpdates(_ context.Context, _ pgtype.UUID) (database.CurrentUpdate, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return database.CurrentUpdate{}, m.QueryErr
+	}
 	return database.CurrentUpdate{}, nil
 }
 
 func (m *MockDB) ListAgents(_ context.Context) ([]database.ListAgentsRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.ListAgentsRow{}, nil
 }
 
@@ -662,12 +737,18 @@ func (m *MockDB) TouchLastSeenIfStale(_ context.Context, _ database.TouchLastSee
 func (m *MockDB) GetLatestSystem(_ context.Context, _ pgtype.UUID) (database.MetricsSystem, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return database.MetricsSystem{}, m.QueryErr
+	}
 	return database.MetricsSystem{}, nil
 }
 
 func (m *MockDB) GetAgentConfig(_ context.Context, _ pgtype.UUID) ([]database.AgentConfig, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
 	return []database.AgentConfig{}, nil
 }
 
@@ -710,7 +791,7 @@ func (m *MockDB) GetFleetHeatmap(_ context.Context, _ database.GetFleetHeatmapPa
 	if m.FleetErr != nil {
 		return nil, m.FleetErr
 	}
-	return []database.GetFleetHeatmapRow{}, nil
+	return m.HeatmapRows, nil
 }
 
 func (m *MockDB) GetFleetSparkCPU(_ context.Context, _ database.GetFleetSparkCPUParams) ([]database.GetFleetSparkCPURow, error) {

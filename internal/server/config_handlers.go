@@ -122,3 +122,24 @@ func isValidConfigKey(key string) bool {
 	_, ok := validConfigKeys[key]
 	return ok
 }
+
+// handleGetAgentSelfConfig returns all config entries for the authenticated agent.
+//
+// GET /api/v1/agent/config
+func (s *Server) handleGetAgentSelfConfig(w http.ResponseWriter, r *http.Request) {
+	agentID := getAgentID(r)
+
+	rows, err := s.DB.GetAgentConfig(r.Context(), mustUUID(agentID))
+	if err != nil {
+		s.Logger.Error("database query failed", "error", err, "handler", "handleGetAgentSelfConfig")
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+
+	config := make(map[string]json.RawMessage, len(rows))
+	for _, row := range rows {
+		config[row.ConfigKey] = row.ConfigValue
+	}
+
+	respondJSON(w, http.StatusOK, config)
+}

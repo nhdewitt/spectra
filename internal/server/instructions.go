@@ -79,14 +79,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=spectra
-Group=spectra
 ExecStart=/usr/local/bin/spectra-agent -config /etc/spectra/agent.json
 Restart=always
 RestartSec=5
-WorkingDirectory=/var/lib/spectra
-StateDirectory=spectra
-NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target
@@ -96,21 +91,22 @@ WantedBy=multi-user.target
 sudo install -d /usr/local/bin
 sudo install -m 0755 %s /usr/local/bin/spectra-agent
 
-2. Create the config directory
-sudo install -d -m 0755 /etc/spectra
+2. Create the service user and group
+sudo groupadd --system spectra 2>/dev/null || true
+sudo useradd --system --no-create-home --gid spectra --shell /usr/sbin/nologin spectra 2>/dev/null || true
 
-3. Save the config
+3. Create the config directory
+sudo install -d -m 0755 -o spectra -g spectra /etc/spectra
+
+4. Save the config
 sudo tee /etc/spectra/agent.json > /dev/null <<'EOF'
 {
 	"server": "%s",
 	"token": "%s"
 }
 EOF
-sudo chmod 0644 /etc/spectra/agent.json
-
-4. Create the service user and group
-sudo groupadd --system spectra 2>/dev/null || true
-sudo useradd --system --no-create-home --gid spectra --shell /usr/sbin/nologin spectra 2>/dev/null || true
+sudo chown spectra:spectra /etc/spectra/agent.json
+sudo chmod 0600 /etc/spectra/agent.json
 
 5. Install the systemd unit
 sudo tee /etc/systemd/system/spectra-agent.service > /dev/null <<'EOF'
@@ -204,7 +200,7 @@ sudo tee /usr/local/etc/spectra/agent.json > /dev/null <<'EOF'
 	"token": "%s"
 }
 EOF
-sudo chmod 0644 /usr/local/etc/spectra/agent.json
+sudo chmod 0600 /usr/local/etc/spectra/agent.json
 
 4. Create the log directory
 sudo install -d -m 0755 /usr/local/var/log
@@ -216,8 +212,6 @@ EOF
 
 6. Load and start the daemon
 sudo launchctl bootstrap system /Library/LaunchDaemons/com.spectra.agent.plist
-sudo launchctl enable system/com.spectra.agent
-sudo launchctl kickstart -k system/com.spectra.agent
 
 7. Verify
 sudo launchctl print system/com.spectra.agent
@@ -236,8 +230,6 @@ func generateLaunchdUpgrade(p *platformInfo) upgradeInstructions {
 	steps := fmt.Sprintf(`sudo launchctl bootout system /Library/LaunchDaemons/com.spectra.agent.plist
 sudo install -m 0755 %s /usr/local/bin/spectra-agent
 sudo launchctl bootstrap system /Library/LaunchDaemons/com.spectra.agent.plist
-sudo launchctl enable system/com.spectra.agent
-sudo launchctl kickstart -k system/com.spectra.agent
 `, p.Filename)
 
 	return upgradeInstructions{
@@ -298,7 +290,7 @@ sudo tee /usr/local/etc/spectra/agent.json > /dev/null <<'EOF'
 	"token": "%s"
 }
 EOF
-sudo chmod 0644 /usr/local/etc/spectra/agent.json
+sudo chmod 0600 /usr/local/etc/spectra/agent.json
 
 4. Install the rc.d script
 sudo tee /usr/local/etc/rc.d/spectra_agent > /dev/null <<'EOF'
@@ -402,9 +394,7 @@ sc.exe query SpectraAgent
 func generateWindowsUninstall() uninstallInstructions {
 	steps := `sc.exe stop SpectraAgent
 sc.exe delete SpectraAgent
-Remove-Item 'C:\Spectra\spectra-agent.exe' -Force -ErrorAction SilentlyContinue
-Remove-Item 'C:\Spectra\agent.json' -Force -ErrorAction SilentlyContinue
-Remove-Item 'C:\Spectra' -Force -ErrorAction SilentlyContinue
+Remove-Item 'C:\Spectra' -Recurse -Force -ErrorAction SilentlyContinue
 `
 
 	return uninstallInstructions{

@@ -231,11 +231,10 @@ func TestFetchAndApplyConfig_CorrectURL(t *testing.T) {
 
 	a := newTestAgentWithLogger()
 	a.Config.BaseURL = srv.URL
-	a.Identity.ID = "abc-123-def"
 
 	a.fetchAndApplyConfig(context.Background())
 
-	expected := "/api/v1/agents/abc-123-def/config"
+	expected := "/api/v1/agent/config"
 	if capturedPath != expected {
 		t.Errorf("expected path %q, got %q", expected, capturedPath)
 	}

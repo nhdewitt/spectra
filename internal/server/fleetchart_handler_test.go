@@ -6,6 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/nhdewitt/spectra/internal/database"
 )
 
 func TestHandleFleetChart_DefaultMetric(t *testing.T) {
@@ -122,6 +126,47 @@ func TestHandleFleetHeatmap_Success(t *testing.T) {
 	var result []AgentHeatmap
 	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
 		t.Fatalf("invalid JSON response: %v", err)
+	}
+}
+
+func TestHandleFleetHeatmap_WithData(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	now := time.Now()
+	uid := pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
+
+	mock.HeatmapRows = []database.GetFleetHeatmapRow{
+		{AgentID: uid, Bucket: pgtype.Timestamptz{Time: now, Valid: true}, Metric: "cpu", Value: 45.5},
+		{AgentID: uid, Bucket: pgtype.Timestamptz{Time: now, Valid: true}, Metric: "mem", Value: 62.0},
+		{AgentID: uid, Bucket: pgtype.Timestamptz{Time: now, Valid: true}, Metric: "disk", Value: 33.0},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/overview/heatmap?range=24h", nil)
+	req = authedRequest(req)
+	w := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result []AgentHeatmap
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("invalid JSON response: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(result))
+	}
+	if len(result[0].CPU) != 1 {
+		t.Errorf("expected 1 CPU cell, got %d", len(result[0].CPU))
+	}
+	if len(result[0].Mem) != 1 {
+		t.Errorf("expected 1 Mem cell, got %d", len(result[0].Mem))
+	}
+	if len(result[0].Disk) != 1 {
+		t.Errorf("expected 1 Disk cell, got %d", len(result[0].Disk))
 	}
 }
 

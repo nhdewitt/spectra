@@ -80,6 +80,7 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("POST /api/v1/agent/metrics", s.rateLimitAgent(s.requireAgentAuth(s.handleMetrics)))
 	s.Router.HandleFunc("GET /api/v1/agent/command", s.rateLimitAgent(s.requireAgentAuth(s.handleAgentCommand)))
 	s.Router.HandleFunc("POST /api/v1/agent/command/result", s.rateLimitAgent(s.requireAgentAuth(s.handleCommandResult)))
+	s.Router.HandleFunc("GET /api/v1/agent/config", s.requireAgentAuth(s.handleGetAgentSelfConfig))
 
 	// Admin (user auth, authed rate limit)
 	s.Router.HandleFunc("POST /api/v1/admin/logs", s.requireUserAuth(s.rateLimitAuthed(s.handleAdminTriggerLogs)))

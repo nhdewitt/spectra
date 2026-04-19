@@ -1,10 +1,16 @@
 package server
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/nhdewitt/spectra/internal/database"
 )
 
 const testUUID = "550e8400-e29b-41d4-a716-446655440000"
@@ -56,6 +62,87 @@ func TestHandleOverview_DBError(t *testing.T) {
 	}
 }
 
+func TestHandleOverview_Empty(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/overview", nil))
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status: got %d, want 200", rec.Code)
+	}
+
+	var result []json.RawMessage
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty array, got %d items", len(result))
+	}
+}
+
+func TestHandleOverview_WithData(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	mock.OverviewRows = []database.GetOverviewRow{
+		{
+			Hostname:   "test-server-1",
+			ID:         pgtype.UUID{Bytes: [16]byte{1}, Valid: true},
+			Os:         pgtype.Text{String: "linux", Valid: true},
+			Arch:       pgtype.Text{String: "amd64", Valid: true},
+			Platform:   pgtype.Text{String: "ubuntu", Valid: true},
+			CpuCores:   pgtype.Int4{Int32: 8, Valid: true},
+			CpuUsage:   pgtype.Float8{Float64: 45.5, Valid: true},
+			RamPercent: pgtype.Float8{Float64: 62.0, Valid: true},
+			LastSeen:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
+			UpdatedAt:  pgtype.Timestamptz{Time: time.Now(), Valid: true},
+			Uptime:     pgtype.Int8{Int64: 86400, Valid: true},
+			Version:    "1.2.3",
+		},
+		{
+			Hostname: "test-server-2",
+		},
+	}
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/overview", nil))
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status: got %d, want 200", rec.Code)
+	}
+
+	var result []agentOverview
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 agents, got %d", len(result))
+	}
+
+	if result[0].Hostname != "test-server-1" {
+		t.Errorf("hostname: got %q, want test-server-1", result[0].Hostname)
+	}
+	if result[0].CPUUsage == nil || *result[0].CPUUsage != 45.5 {
+		t.Errorf("cpu usage: got %v, want 45.5", result[0].CPUUsage)
+	}
+	if result[0].Version != "1.2.3" {
+		t.Errorf("version: got %q, want 1.2.3", result[0].Version)
+	}
+
+	if result[1].Hostname != "test-server-2" {
+		t.Errorf("hostname: got %q, want test-server-2", result[1].Hostname)
+	}
+	if result[1].CPUUsage != nil {
+		t.Errorf("sparse agent cpu should be nil, got %v", result[1].CPUUsage)
+	}
+}
+
 // --- List Agents ---
 
 func TestHandleListAgents_Success(t *testing.T) {
@@ -69,6 +156,21 @@ func TestHandleListAgents_Success(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("status: got %d, want 200", rec.Code)
+	}
+}
+
+func TestHandleListAgents_DBError(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+	mock.QueryErr = errors.New("connection refused")
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil))
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status: got %d, want 500", rec.Code)
 	}
 }
 
@@ -293,6 +395,60 @@ func TestMetricEndpoints_AllReturn200(t *testing.T) {
 
 			if rec.Code != http.StatusOK {
 				t.Errorf("%s: status: got %d, want 200", endpoint, rec.Code)
+			}
+		})
+	}
+}
+
+// --- Metric Handlers ---
+
+func TestMetricHandlers_BucketedAndError(t *testing.T) {
+	tests := []struct {
+		name, path, errField string
+	}{
+		{"Memory", "/api/v1/agents/{id}/memory", "QueryErr"},
+		{"Disk", "/api/v1/agents/{id}/disk", "QueryErr"},
+		{"DiskIO", "/api/v1/agents/{id}/diskio", "QueryErr"},
+		{"Network", "/api/v1/agents/{id}/network", "QueryErr"},
+		{"Temperature", "/api/v1/agents/{id}/temperature", "QueryErr"},
+		{"System", "/api/v1/agents/{id}/system", "QueryErr"},
+		{"Containers", "/api/v1/agents/{id}/containers", "QueryErr"},
+		{"Wifi", "/api/v1/agents/{id}/wifi", "QueryErr"},
+		{"Pi", "/api/v1/agents/{id}/pi", "QueryErr"},
+	}
+
+	agentID := "00000000-0000-0000-0000-000000000001"
+
+	for _, tt := range tests {
+		t.Run(tt.name+"_bucketed", func(t *testing.T) {
+			s, _, _, mock := newTestServer()
+			setupTestSession(mock)
+			_ = mock
+
+			path := strings.Replace(tt.path, "{id}", agentID, 1)
+			req := authedRequest(httptest.NewRequest(http.MethodGet, path+"?range=7d", nil))
+			rec := httptest.NewRecorder()
+
+			s.Router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("status: got %d, want 200", rec.Code)
+			}
+		})
+
+		t.Run(tt.name+"_db_error", func(t *testing.T) {
+			s, _, _, mock := newTestServer()
+			setupTestSession(mock)
+			mock.QueryErr = errors.New("connection refused")
+
+			path := strings.Replace(tt.path, "{id}", agentID, 1)
+			req := authedRequest(httptest.NewRequest(http.MethodGet, path+"?range=5m", nil))
+			rec := httptest.NewRecorder()
+
+			s.Router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusInternalServerError {
+				t.Errorf("status: got %d, want 500", rec.Code)
 			}
 		})
 	}
@@ -547,6 +703,50 @@ func TestParseTimeRange_FutureEndClamped(t *testing.T) {
 
 	if diff := time.Since(end.Time); diff > 2*time.Second {
 		t.Errorf("end should be clamped to ~now, got %v in the future", -diff)
+	}
+}
+
+func TestCurrentStateHandlers(t *testing.T) {
+	agentID := "00000000-0000-0000-0000-000000000001"
+
+	endpoints := []struct {
+		name, path string
+	}{
+		{"Services", "/api/v1/agents/" + agentID + "/services"},
+		{"Applications", "/api/v1/agents/" + agentID + "/applications"},
+		{"Updates", "/api/v1/agents/" + agentID + "/updates"},
+		{"LatestSystem", "/api/v1/agents/" + agentID + "/system/latest"},
+	}
+
+	for _, ep := range endpoints {
+		t.Run(ep.name+"_bad_id", func(t *testing.T) {
+			s, _, _, mock := newTestServer()
+			setupTestSession(mock)
+
+			req := authedRequest(httptest.NewRequest(http.MethodGet, strings.Replace(ep.path, agentID, "invalid-uuid", 1), nil))
+			rec := httptest.NewRecorder()
+
+			s.Router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status: got %d, want 400", rec.Code)
+			}
+		})
+
+		t.Run(ep.name+"_db_error", func(t *testing.T) {
+			s, _, _, mock := newTestServer()
+			setupTestSession(mock)
+			mock.QueryErr = errors.New("connection refused")
+
+			req := authedRequest(httptest.NewRequest(http.MethodGet, ep.path, nil))
+			rec := httptest.NewRecorder()
+
+			s.Router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusInternalServerError {
+				t.Errorf("status: got %d, want 500", rec.Code)
+			}
+		})
 	}
 }
 

@@ -521,3 +521,29 @@ func TestRequireAgentAuth_SHA256WrongSecret(t *testing.T) {
 		t.Errorf("status: got %d, want 401", rec.Code)
 	}
 }
+
+// --- Version ---
+
+func TestHandleVersion(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	_ = mock
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/version", nil)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status: got %d, want 200", rec.Code)
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	for _, key := range []string{"version", "commit", "date"} {
+		if _, ok := body[key]; !ok {
+			t.Errorf("missing key %q in response", key)
+		}
+	}
+}
