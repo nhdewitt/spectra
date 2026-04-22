@@ -90,10 +90,6 @@ export const api = {
     overview: () => apiFetch<OverviewAgent[]>("/overview"),
     sparklines: () =>
         apiFetch<Record<string, { cpu: number[]; mem: number[], disk: number[] }>>("/overview/sparklines"),
-    fleetChart: (range: string) =>
-        apiFetch<Record<string, { cpu: ChartPoint[]; mem: ChartPoint[]; disk: ChartPoint[] }>>(
-            `/overview/fleet-chart?range=${range}`
-        ),
 
     // Agent detail
     agent: (id: string) => apiFetch<Agent>(`/agents/${id}`),

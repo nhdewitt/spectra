@@ -1,9 +1,9 @@
 {
     "compilerOptions": {
-        "target": "ES2020",
+        "target": "ES2022",
         "useDefineForClassFields": true,
         "lib": [
-            "ES2020",
+            "ES2022",
             "DOM",
             "DOM.Iterable"
         ],
@@ -19,7 +19,8 @@
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "noFallthroughCasesInSwitch": true,
-        "noUncheckedIndexedAccess": true
+        "noUncheckedIndexedAccess": true,
+        "types": ["vitest/globals"]
     },
     "include": [
         "src"
