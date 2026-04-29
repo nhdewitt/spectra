@@ -70,7 +70,7 @@ export function ProcessesTab({ agentId }: ProcessesTabProps) {
 
     const { data, loading, error } = usePolling(fetcher, 10_000);
 
-    const { paged, page, setPage, totalPages, needsPagination, total } = usePagination(data ?? [], 20);
+    const { paged, page, setPage, totalPages, total } = usePagination(data ?? [], 20);
 
     useEffect(() => { setPage(0); }, [sort, limit, setPage]);
 
