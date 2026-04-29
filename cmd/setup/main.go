@@ -17,9 +17,22 @@ import (
 
 func main() {
 	configPath := flag.String("config", setup.DefaultConfigPath, "Path to save server config")
+	fromFile := flag.String("from", "", "Path to YAML setup file for non-interactive setup")
 	flag.Parse()
 
 	ctx := context.Background()
+
+	if *fromFile != "" {
+		sf, err := setup.LoadSetupFile(*fromFile)
+		if err != nil {
+			log.Fatalf("Invalid setup file: %v", err)
+		}
+		if err := setup.RunNonInteractive(ctx, sf, *configPath); err != nil {
+			log.Fatalf("Setup failed: %v", err)
+		}
+		return
+	}
+
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println()
