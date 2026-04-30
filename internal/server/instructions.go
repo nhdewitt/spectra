@@ -361,7 +361,7 @@ Copy-Item '.\%s' 'C:\Spectra\spectra-agent.exe' -Force
 '@ | Set-Content -Path 'C:\Spectra\agent.json'
 
 5. Install the Windows service
-sc.exe create SpectraAgent binPath= "\"C:\Spectra\spectra-agent.exe\" -config \"C:\Spectra\agent.json\"" start= auto
+sc.exe create SpectraAgent binPath= "C:\Spectra\spectra-agent.exe -config C:\Spectra\agent.json" start= auto
 sc.exe description SpectraAgent "Spectra Monitoring Agent"
 
 6. Start the service

@@ -58,6 +58,13 @@ func main() {
 
 	a := agent.New(*cfg)
 
+	if isWindowsService() {
+		if err := runService(a); err != nil {
+			log.Fatalf("Service failed: %v", err)
+		}
+		return
+	}
+
 	go func() {
 		if err := a.Start(); err != nil {
 			log.Fatalf("Agent exited with error: %v", err)
