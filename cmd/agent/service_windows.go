@@ -23,7 +23,7 @@ func (s *spectraService) Execute(args []string, r <-chan svc.ChangeRequest, chan
 	}()
 
 	changes <- svc.Status{
-		State: svc.Running,
+		State:   svc.Running,
 		Accepts: svc.AcceptStop | svc.AcceptShutdown,
 	}
 

@@ -139,15 +139,15 @@ func RunNonInteractive(ctx context.Context, sf *SetupFile, configPath string) er
 		return fmt.Errorf("hashing password: %w", err)
 	}
 
-	fmt.Print("Creating admin user... ")
+	fmt.Print("Creating superadmin user... ")
 	queries := database.New(tx)
 	if err := queries.CreateUser(ctx, database.CreateUserParams{
 		Username: sf.Admin.Username,
 		Password: string(hash),
-		Role:     "admin",
+		Role:     "superadmin",
 	}); err != nil {
 		fmt.Println("FAILED")
-		return fmt.Errorf("creating admin user: %w", err)
+		return fmt.Errorf("creating superadmin user: %w", err)
 	}
 	fmt.Println("OK")
 

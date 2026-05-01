@@ -19,7 +19,6 @@ type DB interface {
 	UpdateAgentVersion(ctx context.Context, arg database.UpdateAgentVersionParams) error
 
 	// Auth
-	CreateUser(ctx context.Context, arg database.CreateUserParams) error
 	GetUserByUsername(ctx context.Context, username string) (database.GetUserByUsernameRow, error)
 	UserCount(ctx context.Context) (int64, error)
 	CreateSession(ctx context.Context, arg database.CreateSessionParams) error
@@ -111,6 +110,14 @@ type DB interface {
 	SetAgentConfig(ctx context.Context, arg database.SetAgentConfigParams) error
 	DeleteAgentConfig(ctx context.Context, arg database.DeleteAgentConfigParams) error
 	DeleteAllAgentConfig(ctx context.Context, id pgtype.UUID) error
+
+	// Users
+	ListUsers(ctx context.Context) ([]database.ListUsersRow, error)
+	CreateUser(ctx context.Context, arg database.CreateUserParams) error
+	GetUserByID(ctx context.Context, id pgtype.UUID) (database.GetUserByIDRow, error)
+	SuperAdminCount(ctx context.Context) (int64, error)
+	DeleteUser(ctx context.Context, id pgtype.UUID) error
+	UpdateUserRole(ctx context.Context, arg database.UpdateUserRoleParams) error
 }
 
 // Compile-time check that *database.Queries satisfies the DB interface.

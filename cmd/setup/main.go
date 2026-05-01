@@ -97,17 +97,17 @@ func main() {
 		fmt.Printf("OK (%d applied)\n", applied)
 	}
 
-	// Create admin
-	fmt.Print("Creating admin user... ")
+	// Create superadmin
+	fmt.Print("Creating superadmin user... ")
 	queries := database.New(tx)
 	if err := queries.CreateUser(ctx, database.CreateUserParams{
 		Username: admin.Username,
 		Password: string(hash),
-		Role:     "admin",
+		Role:     "superadmin",
 	}); err != nil {
 		fmt.Println("FAILED")
 		_ = tx.Rollback(ctx)
-		log.Fatalf("Failed to create admin user: %v", err)
+		log.Fatalf("Failed to create superadmin user: %v", err)
 	}
 	fmt.Println("OK")
 

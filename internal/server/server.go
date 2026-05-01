@@ -82,22 +82,13 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("POST /api/v1/agent/command/result", s.rateLimitAgent(s.requireAgentAuth(s.handleCommandResult)))
 	s.Router.HandleFunc("GET /api/v1/agent/config", s.requireAgentAuth(s.handleGetAgentSelfConfig))
 
-	// Admin (user auth, authed rate limit)
-	s.Router.HandleFunc("POST /api/v1/admin/logs", s.requireUserAuth(s.rateLimitAuthed(s.handleAdminTriggerLogs)))
-	s.Router.HandleFunc("POST /api/v1/admin/disk", s.requireUserAuth(s.rateLimitAuthed(s.handleAdminTriggerDisk)))
-	s.Router.HandleFunc("POST /api/v1/admin/network", s.requireUserAuth(s.rateLimitAuthed(s.handleAdminTriggerNetwork)))
-	s.Router.HandleFunc("POST /api/v1/admin/tokens", s.requireUserAuth(s.rateLimitAuthed(s.handleGenerateToken)))
-
 	// Dashboard (user auth, authed rate limit)
 	s.Router.HandleFunc("GET /api/v1/overview", s.requireUserAuth(s.rateLimitAuthed(s.handleOverview)))
 	s.Router.HandleFunc("GET /api/v1/overview/sparklines", s.requireUserAuth(s.rateLimitAuthed(s.handleGetSparklines)))
 	s.Router.HandleFunc("GET /api/v1/overview/fleet/chart", s.requireUserAuth(s.rateLimitAuthed(s.handleFleetChart)))
 	s.Router.HandleFunc("GET /api/v1/agents", s.requireUserAuth(s.rateLimitAuthed(s.handleListAgents)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAgent)))
-	s.Router.HandleFunc("DELETE /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAgent)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/config", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAgentConfig)))
-	s.Router.HandleFunc("PUT /api/v1/agents/{id}/config", s.requireUserAuth(s.rateLimitAuthed(s.handleSetAgentConfig)))
-	s.Router.HandleFunc("DELETE /api/v1/agents/{id}/config", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAgentConfig)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/cpu", s.requireUserAuth(s.rateLimitAuthed(s.handleGetCPU)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/memory", s.requireUserAuth(s.rateLimitAuthed(s.handleGetMemory)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/disk", s.requireUserAuth(s.rateLimitAuthed(s.handleGetDisk)))
@@ -118,7 +109,6 @@ func (s *Server) routes() {
 
 	// Provision (user auth, authed rate limit)
 	s.Router.HandleFunc("GET /api/v1/admin/platforms", s.requireUserAuth(s.rateLimitAuthed(s.handleListPlatforms)))
-	s.Router.HandleFunc("POST /api/v1/admin/provision", s.requireUserAuth(s.rateLimitAuthed(s.handleProvision)))
 	s.Router.HandleFunc("POST /api/v1/admin/provision/config", s.requireUserAuth(s.rateLimitAuthed(s.handleDownloadConfig)))
 	s.Router.HandleFunc("GET /api/v1/admin/releases/{filename}", s.requireUserAuth(s.rateLimitAuthed(s.handleDownloadRelease)))
 
@@ -127,6 +117,22 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/uninstall-instructions", s.requireUserAuth(s.rateLimitAuthed(s.handleUninstallInstructions)))
 
 	s.Router.HandleFunc("GET /api/v1/version", s.rateLimit(s.handleVersion))
+
+	// User management
+	s.Router.HandleFunc("GET /api/v1/admin/users", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleListUsers))))
+	s.Router.HandleFunc("POST /api/v1/admin/users", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleCreateUser))))
+	s.Router.HandleFunc("DELETE /api/v1/admin/users/{id}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleDeleteUser))))
+	s.Router.HandleFunc("PUT /api/v1/admin/users/{id}/role", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleSuperAdmin)(s.handleUpdateUserRole))))
+
+	// Operational write endpoints (admin+)
+	s.Router.HandleFunc("DELETE /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleDeleteAgent))))
+	s.Router.HandleFunc("PUT /api/v1/agents/{id}/config", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleSetAgentConfig))))
+	s.Router.HandleFunc("DELETE /api/v1/agents/{id}/config", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleDeleteAgentConfig))))
+	s.Router.HandleFunc("POST /api/v1/admin/logs", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleAdminTriggerLogs))))
+	s.Router.HandleFunc("POST /api/v1/admin/disk", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleAdminTriggerDisk))))
+	s.Router.HandleFunc("POST /api/v1/admin/network", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleAdminTriggerNetwork))))
+	s.Router.HandleFunc("POST /api/v1/admin/tokens", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleGenerateToken))))
+	s.Router.HandleFunc("POST /api/v1/admin/provision", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleProvision))))
 }
 
 func (s *Server) Start() error {

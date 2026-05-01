@@ -25,6 +25,19 @@ func setupTestSession(mock *MockDB) {
 	mock.AddSession(testSessionToken, "testadmin", "admin", testSessionIP)
 }
 
+// setupTestSessionWithRole creates a session with a specific role and known user ID.
+func setupTestSessionWithRole(mock *MockDB, token, username, role, ip string, userID pgtype.UUID) {
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+
+	mock.Sessions[token] = mockSession{
+		UserID:    userID,
+		Username:  username,
+		Role:      role,
+		IpAddress: ip,
+	}
+}
+
 // authedRequest attaches the test session cookie and matching RemoteAddr
 // to an *http.Request so it passes through requireUserAuth middleware.
 func authedRequest(req *http.Request) *http.Request {
@@ -32,6 +45,16 @@ func authedRequest(req *http.Request) *http.Request {
 	req.AddCookie(&http.Cookie{
 		Name:  sessionCookieName,
 		Value: testSessionToken,
+	})
+	return req
+}
+
+// authedRequestAs creates a request with a specific session token and IP.
+func authedRequestAs(req *http.Request, token, ip string) *http.Request {
+	req.RemoteAddr = ip + ":12345"
+	req.AddCookie(&http.Cookie{
+		Name:  sessionCookieName,
+		Value: token,
 	})
 	return req
 }
@@ -72,6 +95,12 @@ type MockDB struct {
 	OverviewRows []database.GetOverviewRow
 	HeatmapRows  []database.GetFleetHeatmapRow
 
+	UserRows            []database.ListUsersRow
+	UserByID            map[pgtype.UUID]database.GetUserByIDRow
+	SuperAdmins         int64
+	DeleteUserCount     int
+	UpdateUserRoleCount int
+
 	Err         error
 	QueryErr    error // errors for data queries (not auth)
 	GetAgentErr error
@@ -100,6 +129,7 @@ func NewMockDB() *MockDB {
 		Users:       make(map[string]mockUser),
 		Sessions:    make(map[string]mockSession),
 		AgentSHA256: make(map[string][]byte),
+		SuperAdmins: 1,
 	}
 }
 
@@ -824,5 +854,51 @@ func (m *MockDB) GetFleetSparkDisk(_ context.Context, _ database.GetFleetSparkDi
 func (m *MockDB) UpdateAgentVersion(_ context.Context, _ database.UpdateAgentVersionParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.Err
+}
+
+func (m *MockDB) ListUsers(_ context.Context) ([]database.ListUsersRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
+	return m.UserRows, nil
+}
+
+func (m *MockDB) GetUserByID(_ context.Context, id pgtype.UUID) (database.GetUserByIDRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return database.GetUserByIDRow{}, m.QueryErr
+	}
+	if m.UserByID != nil {
+		if row, ok := m.UserByID[id]; ok {
+			return row, nil
+		}
+	}
+	return database.GetUserByIDRow{}, fmt.Errorf("user not found")
+}
+
+func (m *MockDB) SuperAdminCount(_ context.Context) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return 0, m.QueryErr
+	}
+	return m.SuperAdmins, nil
+}
+
+func (m *MockDB) DeleteUser(_ context.Context, _ pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.DeleteUserCount++
+	return m.Err
+}
+
+func (m *MockDB) UpdateUserRole(_ context.Context, _ database.UpdateUserRoleParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.UpdateUserRoleCount++
 	return m.Err
 }

@@ -6,12 +6,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
@@ -138,4 +140,9 @@ func fleetQuery[P any, R any](ctx context.Context, queryFn func(context.Context,
 func (s *Server) dbError(w http.ResponseWriter, err error, handler string) {
 	s.Logger.Error("database query failed", "error", err, "handler", handler)
 	http.Error(w, "database error", http.StatusInternalServerError)
+}
+
+func isPgUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

@@ -198,6 +198,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{
+		"id":       u.ID,
 		"username": u.Username,
 		"role":     u.Role,
 	})
