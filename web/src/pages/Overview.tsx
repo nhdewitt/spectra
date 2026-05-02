@@ -79,9 +79,30 @@ function AgentCard({
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
           {agent.hostname}
+          {agent.reboot_required && (
+            <span
+              style={{
+                fontSize: 9,
+                fontFamily: themeVars.font,
+                color: themeVars.warn,
+                background: `color-mix(in srgb, ${themeVars.warn} 15%, transparent)`,
+                border: `1px solid ${themeVars.warn}`,
+                padding: "1px 5px",
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              REBOOT
+            </span>
+          )}
         </div>
         <div
           style={{
@@ -274,9 +295,30 @@ function AgentListRow({
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
           {agent.hostname}
+          {agent.reboot_required && (
+            <span
+              style={{
+                fontSize: 9,
+                fontFamily: themeVars.font,
+                color: themeVars.warn,
+                background: `color-mix(in srgb, ${themeVars.warn} 15%, transparent)`,
+                border: `1px solid ${themeVars.warn}`,
+                padding: "1px 5px",
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              REBOOT
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 10, color: themeVars.textDim, marginTop: 1 }}>
           {agent.platform} · {agent.arch}

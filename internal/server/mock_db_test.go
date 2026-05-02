@@ -100,6 +100,7 @@ type MockDB struct {
 	SuperAdmins         int64
 	DeleteUserCount     int
 	UpdateUserRoleCount int
+	OfflineAgentCount   int64
 
 	Err         error
 	QueryErr    error // errors for data queries (not auth)
@@ -901,4 +902,13 @@ func (m *MockDB) UpdateUserRole(_ context.Context, _ database.UpdateUserRolePara
 	defer m.mu.Unlock()
 	m.UpdateUserRoleCount++
 	return m.Err
+}
+
+func (m *MockDB) PurgeOfflineAgents(_ context.Context) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return 0, m.QueryErr
+	}
+	return m.OfflineAgentCount, nil
 }

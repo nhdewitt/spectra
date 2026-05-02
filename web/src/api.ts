@@ -175,4 +175,9 @@ export const api = {
     // Heatmap
     fleetHeatmap: (start: string, end: string) =>
         apiFetch<FleetHeatmapAgent[]>(`/overview/heatmap?start=${start}&end=${end}`),
+
+    purgeOfflineAgents: () =>
+        apiFetch<{ purged: number }>("/admin/agents/purge", { method: "POST" }),
+    revokeAllTokens: () =>
+        apiFetch<null>("/admin/tokens/revoke", { method: "POST" }),
 };

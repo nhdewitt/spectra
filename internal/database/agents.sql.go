@@ -141,6 +141,20 @@ func (q *Queries) ListAgents(ctx context.Context) ([]ListAgentsRow, error) {
 	return items, nil
 }
 
+const purgeOfflineAgents = `-- name: PurgeOfflineAgents :execrows
+DELETE FROM agents
+WHERE last_seen < NOW() - INTERVAL '7 days'
+    OR last_seen IS NULL
+`
+
+func (q *Queries) PurgeOfflineAgents(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeOfflineAgents)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const registerAgent = `-- name: RegisterAgent :exec
 INSERT INTO agents (id, secret_hash, secret_sha256, hostname, os, platform, arch, cpu_model, cpu_cores, ram_total, ip_address, version)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)

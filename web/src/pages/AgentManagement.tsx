@@ -485,6 +485,131 @@ function AgentConfigPanel({
     );
 }
 
+function DangerAction({
+    title,
+    description,
+    buttonLabel,
+    confirmLabel,
+    onConfirm,
+}: {
+    title: string;
+    description: string;
+    buttonLabel: string;
+    confirmLabel: string;
+    onConfirm: () => Promise<string>;
+}) {
+    const [confirming, setConfirming] = useState(false);
+    const [result, setResult] = useState<string | null>(null);
+
+    const handleConfirm = async () => {
+        try {
+            const msg = await onConfirm();
+            setResult(msg);
+            setConfirming(false);
+            setTimeout(() => setResult(null), 3000);
+        } catch {
+            setResult("Action failed.");
+            setTimeout(() => setResult(null), 3000);
+        }
+    };
+
+    return (
+        <div
+            style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+            }}
+        >
+            <div>
+                <div
+                    style={{
+                        fontSize: 13,
+                        fontFamily: themeVars.font,
+                        fontWeight: 500,
+                        color: themeVars.text,
+                    }}
+                >
+                    {title}
+                </div>
+                <div
+                    style={{
+                        fontSize: 11,
+                        fontFamily: themeVars.font,
+                        color: themeVars.textDim,
+                        marginTop: 2,
+                    }}
+                >
+                    {description}
+                </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                {result && (
+                    <span
+                        style={{
+                            fontSize: 11,
+                            fontFamily: themeVars.font,
+                            color: themeVars.ok,
+                        }}
+                    >
+                        {result}
+                    </span>
+                )}
+
+                {!confirming ? (
+                    <button
+                        onClick={() => setConfirming(true)}
+                        style={{
+                            ...btnStyle,
+                            color: themeVars.danger,
+                            background: "transparent",
+                            borderColor: themeVars.danger,
+                        }}
+                    >
+                        {buttonLabel}
+                    </button>
+                ) : (
+                    <>
+                        <span
+                            style={{
+                                fontSize: 11,
+                                fontFamily: themeVars.font,
+                                color: themeVars.danger,
+                            }}
+                        >
+                            {confirmLabel}
+                        </span>
+                        <button
+                            onClick={handleConfirm}
+                            style={{
+                                ...btnStyle,
+                                color: "#fff",
+                                background: themeVars.danger,
+                                borderColor: themeVars.danger,
+                            }}
+                        >
+                            Confirm
+                        </button>
+                        <button
+                            onClick={() => setConfirming(false)}
+                            style={{
+                                ...btnStyle,
+                                color: themeVars.textMuted,
+                                background: "transparent",
+                                borderColor: themeVars.border,
+                            }}
+                        >
+                            Cancel
+                        </button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+}
+
 export function AgentManagement() {
     const [agents, setAgents] = useState<OverviewAgent[]>([]);
     const [loading, setLoading] = useState(true);
@@ -680,6 +805,54 @@ export function AgentManagement() {
                 pageSize={20}
                 onPageChange={setPage}
             />
+
+            {/* Danger Zone */}
+            <div
+                style={{
+                    marginTop: 32,
+                    border: `1px solid ${themeVars.danger}`,
+                    padding: 20,
+                }}
+            >
+                <div
+                    style={{
+                        fontSize: 12,
+                        fontFamily: themeVars.font,
+                        fontWeight: 600,
+                        color: themeVars.danger,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                        marginBottom: 16,
+                    }}
+                >
+                    Danger Zone
+                </div>
+
+                <DangerAction
+                    title="Purge Offline Agents"
+                    description="Remove all agents that haven't been seen in more than 7 days. Cascades metric data."
+                    buttonLabel="Purge Offline"
+                    confirmLabel="This will permanently delete offline agents and all their data. Continue?"
+                    onConfirm={async () => {
+                        const res = await api.purgeOfflineAgents();
+                        loadAgents();
+                        return `${res.purged} agent${res.purged !== 1 ? "s" : ""} purged.`;
+                    }}
+                />
+
+                <div style={{ borderTop: `1px solid ${themeVars.border}`, margin: "12px 0" }} />
+
+                <DangerAction
+                    title="Revoke All Tokens"
+                    description="Invalidate all pending registration tokens immediately."
+                    buttonLabel="Revoke Tokens"
+                    confirmLabel="This will revoke all pending registration tokens. Continue?"
+                    onConfirm={async () => {
+                        await api.revokeAllTokens();
+                        return "All tokens revoked.";
+                    }}
+                />
+            </div>
 
             {/* Expanded config panel */}
             {selectedId && (

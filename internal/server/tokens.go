@@ -53,3 +53,9 @@ func (ts *TokenStore) Validate(token string) bool {
 	t.Used = true
 	return true
 }
+
+func (ts *TokenStore) RevokeAll() {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.tokens = make(map[string]*RegistrationToken)
+}

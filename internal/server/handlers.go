@@ -195,3 +195,26 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		"date":    version.Date,
 	})
 }
+
+// handlePurgeOfflineAgents removes agents not seen in 7+ days.
+//
+// POST /api/v1/admin/agents/purge
+func (s *Server) handlePurgeOfflineAgents(w http.ResponseWriter, r *http.Request) {
+	count, err := s.DB.PurgeOfflineAgents(r.Context())
+	if err != nil {
+		s.dbError(w, err, "handlePurgeOfflineAgents")
+		return
+	}
+
+	s.Logger.Info("purged offline agents", "count", count)
+	respondJSON(w, http.StatusOK, map[string]int64{"purged": count})
+}
+
+// handleRevokeAllTokens invalidates all pending registration tokens.
+//
+// POST /api/v1/admin/tokens/revoke
+func (s *Server) handleRevokeAllTokens(w http.ResponseWriter, r *http.Request) {
+	s.Tokens.RevokeAll()
+	s.Logger.Info("all registration tokens revoked")
+	w.WriteHeader(http.StatusNoContent)
+}

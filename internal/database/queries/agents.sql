@@ -42,3 +42,8 @@ UPDATE agents
 SET last_seen = NOW(), ip_address = @ip_address
 WHERE id = $1
     AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '60 seconds');
+
+-- name: PurgeOfflineAgents :execrows
+DELETE FROM agents
+WHERE last_seen < NOW() - INTERVAL '7 days'
+    OR last_seen IS NULL;
