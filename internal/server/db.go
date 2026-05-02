@@ -118,6 +118,9 @@ type DB interface {
 	SuperAdminCount(ctx context.Context) (int64, error)
 	DeleteUser(ctx context.Context, id pgtype.UUID) error
 	UpdateUserRole(ctx context.Context, arg database.UpdateUserRoleParams) error
+	GetUserConfig(ctx context.Context, id pgtype.UUID) ([]database.GetUserConfigRow, error)
+	SetUserConfig(ctx context.Context, arg database.SetUserConfigParams) error
+	DeleteUserConfig(ctx context.Context, arg database.DeleteUserConfigParams) error
 
 	PurgeOfflineAgents(ctx context.Context) (int64, error)
 }

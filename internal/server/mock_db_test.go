@@ -912,3 +912,30 @@ func (m *MockDB) PurgeOfflineAgents(_ context.Context) (int64, error) {
 	}
 	return m.OfflineAgentCount, nil
 }
+
+func (m *MockDB) GetUserConfig(_ context.Context, _ pgtype.UUID) ([]database.GetUserConfigRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
+	return nil, m.Err
+}
+
+func (m *MockDB) SetUserConfig(_ context.Context, _ database.SetUserConfigParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return m.QueryErr
+	}
+	return m.Err
+}
+
+func (m *MockDB) DeleteUserConfig(_ context.Context, _ database.DeleteUserConfigParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return m.QueryErr
+	}
+	return m.Err
+}

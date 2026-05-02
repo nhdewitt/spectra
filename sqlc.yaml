@@ -13,6 +13,7 @@ sql:
       - "internal/database/migrations/008_agent_ip.up.sql"
       - "internal/database/migrations/009_agent_config.up.sql"
       - "internal/database/migrations/010_add_agent_version.up.sql"
+      - "internal/database/migrations/011_user_config.up.sql"
     gen:
       go:
         package: "database"

@@ -133,8 +133,13 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("POST /api/v1/admin/network", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleAdminTriggerNetwork))))
 	s.Router.HandleFunc("POST /api/v1/admin/tokens", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleGenerateToken))))
 	s.Router.HandleFunc("POST /api/v1/admin/provision", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleProvision))))
-	 s.Router.HandleFunc("POST /api/v1/admin/agents/purge", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handlePurgeOfflineAgents))))
+	s.Router.HandleFunc("POST /api/v1/admin/agents/purge", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handlePurgeOfflineAgents))))
 	s.Router.HandleFunc("POST /api/v1/admin/tokens/revoke", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleRevokeAllTokens))))
+
+	// User config (any authenticated user)
+	s.Router.HandleFunc("GET /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleGetUserConfig)))
+	s.Router.HandleFunc("PUT /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleSetUserConfig)))
+	s.Router.HandleFunc("DELETE /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteUserConfig)))
 }
 
 func (s *Server) Start() error {

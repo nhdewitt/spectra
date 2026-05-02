@@ -180,4 +180,17 @@ export const api = {
         apiFetch<{ purged: number }>("/admin/agents/purge", { method: "POST" }),
     revokeAllTokens: () =>
         apiFetch<null>("/admin/tokens/revoke", { method: "POST" }),
+
+    // User config
+    userConfig: () =>
+        apiFetch<Record<string, unknown>>("/usr/config"),
+    setUserConfig: (key: string, value: unknown) =>
+        apiFetch<null>("/user/config", {
+            method: "PUT",
+            body: JSON.stringify({ key, value }),
+        }),
+    deleteUserConfig: (key: string) =>
+        apiFetch<null>(`/user/config?key=${encodeURIComponent(key)}`, {
+            method: "DELETE",
+        }),
 };
