@@ -1,6 +1,13 @@
 import { themeVars } from "./theme";
 import type { OverviewAgent } from "./types";
 
+export type AgentStatus = "online" | "warn" | "crit" | "stale" | "offline";
+
+export interface AgentStatusResult {
+    status: AgentStatus;
+    reasons: string[];
+}
+
 /**
  * Convert a byte count into a human-readable string using binary (base-1024) units.
  *
@@ -157,4 +164,41 @@ export function sortAgentsByStatus(agents: OverviewAgent[]): OverviewAgent[] {
 
         return a.id.localeCompare(b.id);
     })
+}
+
+export function agentStatus(agent: OverviewAgent): AgentStatusResult {
+    if (!agent.last_seen) return { status: "offline", reasons: ["No heartbeat received"] };
+    const ago = (Date.now() - new Date(agent.last_seen).getTime()) / 1000;
+    if (ago >= 600) return { status: "offline", reasons: [`Last seen ${Math.floor(ago / 60)}m ago`] };
+    if (ago >= 120) return { status: "stale", reasons: [`Last seen ${Math.floor(ago / 60)}m ago`] };
+
+    const cpu = agent.cpu_usage ?? 0;
+    const mem = agent.ram_percent ?? 0;
+    const disk = agent.disk_max_percent ?? 0;
+    const temp = agent.max_temp ?? 0;
+
+    const reasons: string[] = [];
+    if (cpu >= 80) reasons.push(`CPU at ${cpu.toFixed(1)}%`);
+    if (mem >= 80) reasons.push(`Memory at ${mem.toFixed(1)}%`);
+    if (disk >= 98) reasons.push(`Disk at ${disk.toFixed(1)}%`);
+    if (temp >= 70) reasons.push(`Temperature at ${temp.toFixed(0)}°C`);
+
+    if (cpu >= 95 || mem >= 95 || disk >= 99 || temp >= 85) {
+        return { status: "crit", reasons };
+    }
+    if (reasons.length > 0) {
+        return { status: "warn", reasons };
+    }
+
+    return { status: "online", reasons: [] };
+}
+
+export function agentStatusColor(status: AgentStatus): string {
+    switch (status) {
+        case "online": return themeVars.ok;
+        case "warn": return themeVars.warn;
+        case "crit": return themeVars.danger;
+        case "stale": return themeVars.warn;
+        case "offline": return themeVars.textDim;
+    }
 }
