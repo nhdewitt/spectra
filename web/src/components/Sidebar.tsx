@@ -14,6 +14,7 @@ interface SidebarProps {
     agents: OverviewAgent[];
     onlineCount: number;
     totalCount: number;
+    starredIds: string[];
 }
 
 const NAV_ICON: Record<string, string> = {
@@ -39,20 +40,10 @@ export function Sidebar({
     onSelectAgent,
     agents,
     onlineCount,
-    totalCount
+    totalCount,
+    starredIds,
 }: SidebarProps) {
-    const [starredIds, setStarredIds] = useState<string[]>([]);
     const [detailExpanded, setDetailExpanded] = useState(currentPage === "detail" || currentPage === "diagnostics");
-
-    // Load starred agents from user config
-    useEffect(() => {
-        api.userConfig()
-            .then((cfg) => {
-                const starred = cfg.starred_agents as string[] | undefined;
-                if (starred) setStarredIds(starred);
-            })
-            .catch(() => {});
-    }, []);
 
     // Expand detail section when navigating to detail or diagnostics
     useEffect(() => {
@@ -60,21 +51,6 @@ export function Sidebar({
             setDetailExpanded(true);
         }
     }, [currentPage]);
-
-    const toggleStar = useCallback(
-        async (agentId: string) => {
-            const next = starredIds.includes(agentId) ? starredIds.filter((id) => id !== agentId) : [...starredIds, agentId];
-            setStarredIds(next);
-            try {
-                if (next.length === 0) {
-                    await api.deleteUserConfig("starred_agents");
-                } else {
-                    await api.setUserConfig("starred_agents", next);
-                }
-            } catch {}
-        },
-        [starredIds]
-    );
 
     const starredAgents = agents
         .filter((a) => starredIds.includes(a.id))
