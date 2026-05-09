@@ -5,3 +5,5 @@ CREATE TABLE user_config (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, config_key)
 );
+
+GRANT ALL ON TABLE user_config TO spectra;

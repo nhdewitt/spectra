@@ -24,6 +24,7 @@ import type {
     CommandEntry,
     FleetHeatmapAgent,
     ChartPoint,
+    ManagedUser,
 } from "./types";
 
 declare global {
@@ -59,7 +60,9 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     }
 
     if (res.status === 204) return null as T;
-    return res.json() as Promise<T>;
+    const body = await res.text();
+    if (!body) return null as T;
+    return JSON.parse(body) as T;
 }
 
 function rangeQuery(sel: RangeSelection): string {
@@ -183,7 +186,7 @@ export const api = {
 
     // User config
     userConfig: () =>
-        apiFetch<Record<string, unknown>>("/usr/config"),
+        apiFetch<Record<string, unknown>>("/user/config"),
     setUserConfig: (key: string, value: unknown) =>
         apiFetch<null>("/user/config", {
             method: "PUT",
@@ -192,5 +195,21 @@ export const api = {
     deleteUserConfig: (key: string) =>
         apiFetch<null>(`/user/config?key=${encodeURIComponent(key)}`, {
             method: "DELETE",
+        }),
+
+    // User management (admin+)
+    listUsers: () =>
+        apiFetch<ManagedUser[]>("/admin/users"),
+    createUser: (username: string, password: string, role: string) =>
+        apiFetch<null>("/admin/users", {
+            method: "POST",
+            body: JSON.stringify({ username, password, role }),
+        }),
+    deleteUser: (id: string) =>
+        apiFetch<null>(`/admin/users/${id}`, { method: "DELETE" }),
+    updateUserRole: (id: string, role: string) =>
+        apiFetch<null>(`/admin/users/${id}/role`, {
+            method: "PUT",
+            body: JSON.stringify({ role }),
         }),
 };

@@ -6,6 +6,14 @@ export interface User {
     role: string;
 }
 
+export interface ManagedUser {
+    id: string;
+    username: string;
+    role: string;
+    created_at: string;
+    updated_at: string;
+}
+
 // Agents
 
 export interface Agent {

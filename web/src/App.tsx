@@ -6,9 +6,12 @@ import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./pages/Overview";
 import { AgentDetail } from "./pages/AgentDetail";
 import { AgentManagement } from "./pages/AgentManagement";
+import { Diagnostics } from "./pages/Diagnostics";
+import { UserManagement } from "./pages/UserManagement";
 import { Settings } from "./pages/Settings";
 import type { User, Page, OverviewAgent } from "./types";
 import { usePolling } from "./hooks";
+import { statusColor } from "./utils";
 
 export default function App() {
 	const [user, setUser] = useState<User | null>(null);
@@ -18,22 +21,9 @@ export default function App() {
 	const [starredIds, setStarredIds] = useState<string[]>([]);
 	const [starredLoaded, setStarredLoaded] = useState(false);
 
-	// Debounced save for starred agents
 	const starredRef = useRef(starredIds);
 	starredRef.current = starredIds;
-
-	useEffect(() => {
-		if (!user) return;
-		const timeout = setTimeout(() => {
-			const ids = starredRef.current;
-			if (ids.length === 0) {
-				api.deleteUserConfig("starred_agents").catch(() => {});
-			} else {
-				api.setUserConfig("starred_agents", ids).catch(() => {});
-			}
-		}, 500);
-		return () => clearTimeout(timeout);
-	}, [starredIds, user]);
+	const hasUserEdited = useRef(false);
 
 	const toggleStar = useCallback((agentId: string) => {
 		setStarredIds((prev) =>
@@ -45,6 +35,8 @@ export default function App() {
 
 	useEffect(() => {
 		if (!user) return;
+		setStarredIds([]);
+		setStarredLoaded(false);
 		api.userConfig()
 			.then((cfg) => {
 				const starred = cfg.starred_agents as string[] | undefined;
@@ -56,6 +48,10 @@ export default function App() {
 
 	useEffect(() => {
 		if (!user || !starredLoaded) return;
+		if (!hasUserEdited.current) {
+			hasUserEdited.current = true;
+			return;
+		}
 		const timeout = setTimeout(() => {
 			const ids = starredRef.current;
 			if (ids.length === 0) {
@@ -207,21 +203,7 @@ export default function App() {
 				)}
 
 				{page === "detail" && !selectedAgent && (
-					<div
-						style={{
-							padding: 48,
-							textAlign: "center",
-							fontFamily: themeVars.font,
-							color: themeVars.textDim,
-							fontSize: 13,
-						}}
-					>
-						Select an agent from the overview or quick access to view details.
-					</div>
-				)}
-
-				{page === "diagnostics" && selectedAgent && (
-					<div style={{ padding: 24 }}>
+					<div style={{ padding: 24}}>
 						<div
 							style={{
 								fontFamily: themeVars.font,
@@ -231,28 +213,67 @@ export default function App() {
 								marginBottom: 16,
 							}}
 						>
-							Diagnostics — {selectedAgent.hostname}
+							Agent Detail
 						</div>
-					</div>
-				)}
-
-				{page === "agents" && <AgentManagement />}
-
-				{page === "users" && (
-					<div style={{ padding: 24 }}>
 						<div
 							style={{
+								fontSize: 12,
 								fontFamily: themeVars.font,
-								fontSize: 18,
-								fontWeight: 600,
-								color: themeVars.text,
+								color: themeVars.textDim,
 								marginBottom: 16,
 							}}
 						>
-							User Management
+							Select an agent to view details.
+						</div>
+						<div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+							{agentList.map((a) => (
+								<button
+									key={a.id}
+									onClick={() => handleSelectAgent(a)}
+									style={{
+										display: "flex",
+										alignItems: "center",
+										gap: 10,
+										padding: "8px 12px",
+										fontSize: 12,
+										fontFamily: themeVars.font,
+										color: themeVars.text,
+										background: themeVars.surface,
+										border: `1px solid ${themeVars.border}`,
+										cursor: "pointer",
+										textAlign: "left",
+									}}
+								>
+									<span
+										style={{
+											width: 7,
+											height: 7,
+											borderRadius: "50%",
+											background: statusColor(a),
+											flexShrink: 0,
+										}}
+									/>
+									<span style={{ fontWeight: 500 }}>{a.hostname}</span>
+									<span style={{ color: themeVars.textDim, marginLeft: "auto", fontSize: 11 }}>
+										{a.os} · {a.platform} · {a.arch}
+									</span>
+								</button>
+							))}
 						</div>
 					</div>
 				)}
+
+				{page === "diagnostics" && selectedAgent && (
+					<Diagnostics
+						agents={agentList}
+						selectedAgent={selectedAgent}
+						onSelectAgent={handleSelectAgent}
+					/>
+				)}
+
+				{page === "agents" && <AgentManagement user={user}/>}
+
+				{page === "users" && <UserManagement user={user} />}
 
 				{page === "settings" && (
 					<Settings user={user} onLogout={handleLogout} />
