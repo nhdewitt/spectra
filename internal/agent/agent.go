@@ -55,14 +55,16 @@ type Agent struct {
 
 	commonHeaders map[string]string
 
-	RetryConfig RetryConfig
+	RetryConfig  RetryConfig
+	backoffUntil time.Time
+	backoffStep  int
 
 	Platform platform.Info
 	Identity Identity
 }
 
 type RetryConfig struct {
-	MaxAttempts  int
+	MaxAttempts  int // Only used for registration, agents will retry forever
 	InitialDelay time.Duration
 	MaxDelay     time.Duration
 	Multiplier   float64

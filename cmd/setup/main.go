@@ -71,9 +71,13 @@ func main() {
 	port := setup.PromptPort(reader)
 	fmt.Println()
 
+	externalURL := setup.PromptExternalURL(reader, port)
+	fmt.Println()
+
 	cfg := &setup.ServerConfig{
 		DatabaseURL: dbURL,
 		ListenPort:  port,
+		ExternalURL: externalURL,
 	}
 
 	// Start a transaction, allow for rollback on failure.

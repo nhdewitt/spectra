@@ -109,6 +109,14 @@ func (a *Agent) handleCommand(ctx context.Context, cmd protocol.Command) {
 			err = fmt.Errorf("invalid network request payload")
 		}
 
+	case protocol.CmdUpdateAgent:
+		var req protocol.UpdateAgentRequest
+		if json.Unmarshal(cmd.Payload, &req) == nil {
+			resultData, err = a.selfUpdate(ctx, req)
+		} else {
+			err = fmt.Errorf("invalid update request payload")
+		}
+
 	default:
 		err = fmt.Errorf("unknown command type: %s", cmd.Type)
 	}

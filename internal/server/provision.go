@@ -99,11 +99,14 @@ func (s *Server) handleProvision(w http.ResponseWriter, r *http.Request) {
 	token := s.Tokens.Generate(24 * time.Hour)
 
 	// Build server URL from request
-	scheme := "https"
-	if r.TLS == nil {
-		scheme = "http"
+	serverURL := s.Config.ExternalURL
+	if serverURL == "" {
+		scheme := "https"
+		if r.TLS == nil {
+			scheme = "http"
+		}
+		serverURL = fmt.Sprintf("%s://%s", scheme, r.Host)
 	}
-	serverURL := fmt.Sprintf("%s://%s", scheme, r.Host)
 
 	// If binary exists, build download URL
 	downloadURL := ""

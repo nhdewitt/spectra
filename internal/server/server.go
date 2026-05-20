@@ -14,6 +14,7 @@ import (
 
 type Config struct {
 	Port           int
+	ExternalURL    string
 	CommandTimeout time.Duration
 	ReleasesDir    string // path to pre-built agent binaries
 	MaxConnections uint
@@ -110,7 +111,7 @@ func (s *Server) routes() {
 	// Provision (user auth, authed rate limit)
 	s.Router.HandleFunc("GET /api/v1/admin/platforms", s.requireUserAuth(s.rateLimitAuthed(s.handleListPlatforms)))
 	s.Router.HandleFunc("POST /api/v1/admin/provision/config", s.requireUserAuth(s.rateLimitAuthed(s.handleDownloadConfig)))
-	s.Router.HandleFunc("GET /api/v1/admin/releases/{filename}", s.requireUserAuth(s.rateLimitAuthed(s.handleDownloadRelease)))
+	s.Router.HandleFunc("GET /api/v1/admin/releases/{filename}", s.tokenOrAuth(s.handleDownloadRelease))
 
 	// Upgrade/uninstall instructions
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/upgrade-instructions", s.requireUserAuth(s.rateLimitAuthed(s.handleUpgradeInstructions)))

@@ -20,6 +20,7 @@ const DefaultConfigPath = "/etc/spectra/server.json"
 type ServerConfig struct {
 	DatabaseURL string `json:"database_url"`
 	ListenPort  int    `json:"listen_port"`
+	ExternalURL string `json:"external_url,omitempty"`
 }
 
 // AdminCredentials holds the admin user info collected during setup.
@@ -242,4 +243,39 @@ func promptPasswordConfirm() (string, error) {
 
 		return pass, nil
 	}
+}
+
+// detectExternalURL finds the first non-loopback IPv4 address and
+// builds a default URL from it.
+func detectExternalURL(port int) string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return fmt.Sprintf("http://localhost:%d", port)
+	}
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil {
+				return fmt.Sprintf("http://%s:%d", ipnet.IP.String(), port)
+			}
+		}
+	}
+
+	return fmt.Sprintf("http://localhost:%d", port)
+}
+
+// PromptExternalURL collects the externally-reachable server URL.
+func PromptExternalURL(reader *bufio.Reader, port int) string {
+	fmt.Println("=== External URL ===")
+	fmt.Println("How agents and browsers reach this server.")
+
+	detected := detectExternalURL(port)
+	return prompt(reader, "External URL", detected)
 }

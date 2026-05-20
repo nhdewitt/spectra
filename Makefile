@@ -6,7 +6,7 @@
 AGENT_SRC = ./cmd/agent
 RELEASE_DIR = releases
 
-VERSION	?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION	?= $(shell git describe --tags --exact-match 2>/dev/null || echo "0.8.0-dev")
 COMMIT	?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE	?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 

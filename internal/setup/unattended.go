@@ -26,8 +26,9 @@ type SetupFile struct {
 		Password string `yaml:"password"`
 	} `yaml:"admin"`
 	Server struct {
-		Port       int    `yaml:"port"`
-		Migrations string `yaml:"migrations"`
+		Port        int    `yaml:"port"`
+		Migrations  string `yaml:"migrations"`
+		ExternalURL string `yaml:"external_url"`
 	} `yaml:"server"`
 }
 
@@ -151,9 +152,15 @@ func RunNonInteractive(ctx context.Context, sf *SetupFile, configPath string) er
 	}
 	fmt.Println("OK")
 
+	externalURL := sf.Server.ExternalURL
+	if externalURL == "" {
+		externalURL = detectExternalURL(sf.Server.Port)
+	}
+
 	cfg := &ServerConfig{
 		DatabaseURL: dbURL,
 		ListenPort:  sf.Server.Port,
+		ExternalURL: externalURL,
 	}
 
 	fmt.Print("Saving configuration... ")

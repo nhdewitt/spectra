@@ -46,6 +46,7 @@ const (
 	CmdRestartAgent CommandType = "RESTART_AGENT"
 	CmdListMounts   CommandType = "LIST_MOUNTS"
 	CmdNetworkDiag  CommandType = "NETWORK_DIAG"
+	CmdUpdateAgent  CommandType = "UPDATE_AGENT"
 )
 
 type Command struct {
@@ -191,3 +192,15 @@ const (
 	ProcWaiting  ProcStatus = "waiting"
 	ProcOther    ProcStatus = "other"
 )
+
+type UpdateAgentRequest struct {
+	Version string `json:"version"`
+	URL     string `json:"url"`
+	SHA256  string `json:"sha256"`
+}
+
+type UpdateAgentResult struct {
+	PreviousVersion string `json:"previous_version"`
+	NewVersion      string `json:"new_version"`
+	Status          string `json:"status"` // "downloading", "verified", "restarting", "failed"
+}

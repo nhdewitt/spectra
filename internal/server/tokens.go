@@ -59,3 +59,16 @@ func (ts *TokenStore) RevokeAll() {
 	defer ts.mu.Unlock()
 	ts.tokens = make(map[string]*RegistrationToken)
 }
+
+// Peek checks if a token is valid without consuming it.
+func (ts *TokenStore) Peek(token string) bool {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	t, ok := ts.tokens[token]
+	if !ok {
+		return false
+	}
+
+	return !t.Used && time.Now().Before(t.ExpiresAt)
+}

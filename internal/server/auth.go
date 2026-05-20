@@ -231,3 +231,18 @@ func clientIP(r *http.Request) string {
 	}
 	return host
 }
+
+func (s *Server) tokenOrAuth(next http.HandlerFunc) http.HandlerFunc {
+	authed := s.requireUserAuth(next)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if token := r.URL.Query().Get("token"); token != "" {
+			if s.Tokens.Peek(token) {
+				next(w, r)
+				return
+			}
+			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
+			return
+		}
+		authed(w, r)
+	}
+}

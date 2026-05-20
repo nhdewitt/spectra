@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"time"
 
@@ -61,7 +62,10 @@ func (a *Agent) uploadBatch(ctx context.Context, batch []protocol.Envelope) {
 			// Re-cache everything
 			a.cache.Add(cached)
 			a.cache.Add(batch)
-			a.Logger.Warn("server unreachable", "cached_metrics", len(batch), "total_cache_size", a.cache.Len())
+			a.applyBackoff()
+			a.Logger.Warn("server unreachable",
+				"cache_size", a.cache.Len(),
+				"retry_in", time.Until(a.backoffUntil).Round(time.Second))
 			return
 		}
 		a.Logger.Debug("sent cached metrics", "count", len(cached))
@@ -70,7 +74,30 @@ func (a *Agent) uploadBatch(ctx context.Context, batch []protocol.Envelope) {
 	// Send current batch
 	if err := a.postCompressed(ctx, url, batch); err != nil {
 		a.cache.Add(batch)
-		a.Logger.Warn("error sending batch of metrics", "error", err)
+		a.applyBackoff()
+		a.Logger.Warn("error sending metrics",
+			"error", err,
+			"cache_size", a.cache.Len(),
+			"retry_in", time.Until(a.backoffUntil).Round(time.Second))
+		return
+	}
+
+	a.resetBackoff()
+}
+
+func (a *Agent) applyBackoff() {
+	delay := a.RetryConfig.Delay(a.backoffStep)
+	a.backoffStep++
+	// +/-25% jitter to prevent all agents hammering at the same time on server recovery
+	quarter := delay / 4
+	a.backoffUntil = time.Now().Add(delay - quarter + time.Duration(rand.Int64N(int64(2*quarter))))
+}
+
+func (a *Agent) resetBackoff() {
+	if a.backoffStep > 0 {
+		a.Logger.Info("server connection restored")
+		a.backoffStep = 0
+		a.backoffUntil = time.Time{}
 	}
 }
 

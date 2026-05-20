@@ -326,7 +326,7 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                                     Or download directly on the target host:
                                 </div>
                                 <CopyBlock
-                                    value={`curl -fSL -o ${result.platform} "${window.location.origin}${result.download_url}"`}
+                                    value={`curl -fSL -o ${result.platform} "${result.config.server}/api/v1/admin/releases/${result.platform}?token=${result.token}`}
                                 />
                             </div>
                         )}

@@ -6,7 +6,7 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-const defaultMaxCacheSize = 1000
+const defaultMaxCacheSize = 10_000
 
 // metricsCache holds unsent metric envelopes for retry when the server
 // is unreachable. Uses a bounded buffer to prevent unbounded memory

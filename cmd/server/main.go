@@ -40,6 +40,7 @@ func main() {
 		Port:           cfg.ListenPort,
 		ReleasesDir:    "releases",
 		MaxConnections: 1024,
+		ExternalURL:    cfg.ExternalURL,
 	}
 
 	srv := server.New(srvCfg, queries)
