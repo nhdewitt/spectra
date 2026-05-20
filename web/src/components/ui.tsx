@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { themeVars } from "../theme";
 import { SpectraLogo } from "./SpectraLogo";
+import { copyToClipboard } from "../utils";
 
 // StatBlock
 
@@ -215,7 +216,7 @@ export function InstructionBlock({
                 return trimmed && !/^\d+\.\s/.test(trimmed);
             })
             .join("\n");
-        navigator.clipboard.writeText(commands);
+        copyToClipboard(commands);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };

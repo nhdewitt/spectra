@@ -3,6 +3,7 @@ import { api } from "../api";
 import { OSIcon } from "../icons";
 import { themeVars } from "../theme";
 import type { PlatformInfo, ProvisionResponse } from "../types";
+import { copyToClipboard } from "../utils";
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
     const [copied, setCopied] = useState(false);
@@ -10,7 +11,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
 
     const handleCopy = async () => {
         try {
-            await navigator.clipboard.writeText(text);
+            await copyToClipboard(text);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch {

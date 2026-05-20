@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { api } from "../api";
-import { formatBytes } from "../utils";
+import { copyToClipboard, formatBytes } from "../utils";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "./ui";
 import { themeVars } from "../theme";
 import type { CommandResponse, CommandEntry } from "../types";
@@ -274,7 +274,7 @@ function LogResults({
                             key={i}
                             onClick={() => {
                                 const text = `${new Date(e.timestamp * 1000).toISOString()} [${e.level}] ${e.source} ${e.message}`;
-                                navigator.clipboard.writeText(text);
+                                copyToClipboard(text);
                                 setCopiedIdx(i);
                                 setTimeout(() => setCopiedIdx(null), 1500);
                             }}

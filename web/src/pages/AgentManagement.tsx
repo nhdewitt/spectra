@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "../api";
-import { statusColor, formatUptime } from "../utils";
+import { statusColor, formatUptime, copyToClipboard } from "../utils";
 import {
     StatBlock,
     tableHeaderStyle,
@@ -59,7 +59,7 @@ function CopyBlock({ value }: { value: string }) {
             </code>
             <button
                 onClick={() => {
-                    navigator.clipboard.writeText(value);
+                    copyToClipboard(value);
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                 }}
@@ -326,7 +326,7 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                                     Or download directly on the target host:
                                 </div>
                                 <CopyBlock
-                                    value={`curl -fSL -o ${result.platform} "${result.config.server}/api/v1/admin/releases/${result.platform}?token=${result.token}`}
+                                    value={`curl -fSL -o ${result.platform} "${result.config.server}/api/v1/admin/releases/${result.platform}?token=${result.token}"`}
                                 />
                             </div>
                         )}
@@ -361,7 +361,7 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                                                 return trimmed && !/^\d+\.\s/.test(trimmed);
                                             })
                                             .join("\n");
-                                        navigator.clipboard.writeText(commands);
+                                        copyToClipboard(commands);
                                         setCopied(true);
                                         setTimeout(() => setCopied(false), 2000);
                                     }}
