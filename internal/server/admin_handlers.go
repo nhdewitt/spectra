@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nhdewitt/spectra/internal/protocol"
+	"github.com/nhdewitt/spectra/internal/version"
 )
 
 func (s *Server) handleAdminTriggerLogs(w http.ResponseWriter, r *http.Request) {
@@ -98,4 +100,101 @@ func (s *Server) handleGenerateToken(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, map[string]string{
 		"token": token,
 	})
+}
+
+func (s *Server) handlePushUpdate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AgentIDs []string `json:"agent_ids"`
+	}
+	if err := decodeJSONBody(r, &req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.AgentIDs) == 0 {
+		http.Error(w, "agent_ids required", http.StatusBadRequest)
+		return
+	}
+
+	if s.Releases == nil {
+		http.Error(w, "no releases directory configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	serverURL := s.Config.ExternalURL
+	if serverURL == "" {
+		scheme := "https"
+		if r.TLS == nil {
+			scheme = "http"
+		}
+		serverURL = fmt.Sprintf("%s://%s", scheme, r.Host)
+	}
+
+	ctx := r.Context()
+	queued, skipped, failed := 0, 0, 0
+
+	for _, id := range req.AgentIDs {
+		agent, err := s.DB.GetAgent(ctx, mustUUID(id))
+		if err != nil {
+			s.Logger.Warn("update: agent not found", "agent_id", id)
+			failed++
+			continue
+		}
+
+		filename := agentBinaryFilename(agent.Os.String, agent.Arch.String)
+		if filename == "" {
+			s.Logger.Warn("update: unknown platform", "agent_id", id, "os", agent.Os, "arch", agent.Arch)
+			skipped++
+			continue
+		}
+
+		sha256, ok := s.Releases.get(filename)
+		if !ok {
+			s.Logger.Warn("update: no binary for platform", "agent_id", id, "filename", filename)
+			skipped++
+			continue
+		}
+
+		downloadURL := fmt.Sprintf("%s/api/v1/admin/releases/%s", serverURL, filename)
+
+		payload, _ := json.Marshal(protocol.UpdateAgentRequest{
+			Version: version.Version,
+			URL:     downloadURL,
+			SHA256:  sha256,
+		})
+
+		cmd := protocol.Command{
+			ID:      uuid.NewString(),
+			Type:    protocol.CmdUpdateAgent,
+			Payload: payload,
+		}
+		if err := s.CmdQueue.Send(id, cmd); err != nil {
+			s.Logger.Warn("update: queue failed", "agent_id", id, "error", err)
+			failed++
+		} else {
+			queued++
+		}
+	}
+
+	s.Logger.Info("agent update pushed",
+		"ip", clientIP(r),
+		"queued", queued,
+		"skipped", skipped,
+		"failed", failed)
+
+	respondJSON(w, http.StatusOK, map[string]int{
+		"queued":  queued,
+		"skipped": skipped,
+		"failed":  failed,
+	})
+}
+
+func agentBinaryFilename(goos, arch string) string {
+	if goos == "" || arch == "" {
+		return ""
+	}
+	if goos == "windows" {
+		return fmt.Sprintf("spectra-agent-%s-%s.exe", goos, arch)
+	}
+	return fmt.Sprintf("spectra-agent-%s-%s", goos, arch)
 }

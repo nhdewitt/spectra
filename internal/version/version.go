@@ -9,6 +9,8 @@ var (
 
 	// Date is the UTC build timestamp.
 	Date = "unknown"
+
+	GoARM = ""
 )
 
 // Full returns a human-readable version string.

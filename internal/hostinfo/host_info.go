@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
+	"github.com/nhdewitt/spectra/internal/version"
 )
 
 func CollectHostInfo() protocol.HostInfo {
@@ -17,7 +18,7 @@ func CollectHostInfo() protocol.HostInfo {
 		Platform: platform,
 		PlatVer:  platVer,
 		Kernel:   getKernel(),
-		Arch:     runtime.GOARCH,
+		Arch:     getArch(),
 		CPUModel: getCPUModel(),
 		CPUCores: runtime.NumCPU(),
 		RAMTotal: getRAMTotal(),
@@ -47,4 +48,11 @@ func getIPs() []string {
 	}
 
 	return ips
+}
+
+func getArch() string {
+	if runtime.GOARCH == "arm" && version.GoARM != "" {
+		return "armv" + version.GoARM
+	}
+	return runtime.GOARCH
 }

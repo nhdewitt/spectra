@@ -235,6 +235,7 @@ func clientIP(r *http.Request) string {
 func (s *Server) tokenOrAuth(next http.HandlerFunc) http.HandlerFunc {
 	authed := s.requireUserAuth(next)
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Registration token
 		if token := r.URL.Query().Get("token"); token != "" {
 			if s.Tokens.Peek(token) {
 				next(w, r)
@@ -243,6 +244,12 @@ func (s *Server) tokenOrAuth(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 			return
 		}
+		// Agent auth
+		if r.Header.Get("X-Agent-ID") != "" {
+			s.requireAgentAuth(next)(w, r)
+			return
+		}
+		// User session
 		authed(w, r)
 	}
 }

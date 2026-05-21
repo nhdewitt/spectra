@@ -198,3 +198,10 @@ func (rm *releaseManifest) verifyAndOpen(filename string) (*os.File, int64, erro
 
 	return f, size, nil
 }
+
+func (rm *releaseManifest) get(filename string) (sha256 string, ok bool) {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+	sha256, ok = rm.checksums[filename]
+	return
+}

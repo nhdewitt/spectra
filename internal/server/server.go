@@ -136,6 +136,7 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("POST /api/v1/admin/provision", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleProvision))))
 	s.Router.HandleFunc("POST /api/v1/admin/agents/purge", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handlePurgeOfflineAgents))))
 	s.Router.HandleFunc("POST /api/v1/admin/tokens/revoke", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleRevokeAllTokens))))
+	s.Router.HandleFunc("POST /api/v1/admin/update", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handlePushUpdate))))
 
 	// User config (any authenticated user)
 	s.Router.HandleFunc("GET /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleGetUserConfig)))

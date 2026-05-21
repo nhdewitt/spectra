@@ -6,6 +6,10 @@
 AGENT_SRC = ./cmd/agent
 RELEASE_DIR = releases
 
+DEPLOY_HOST ?=
+DEPLOY_USER ?= root
+DEPLOY_PATH ?= /opt/spectra
+
 VERSION	?= $(shell git describe --tags --exact-match 2>/dev/null || echo "0.8.0-dev")
 COMMIT	?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE	?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -13,7 +17,8 @@ DATE	?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS = -s -w \
 	-X github.com/nhdewitt/spectra/internal/version.Version=$(VERSION) \
 	-X github.com/nhdewitt/spectra/internal/version.Commit=$(COMMIT) \
-	-X github.com/nhdewitt/spectra/internal/version.Date=$(DATE)
+	-X github.com/nhdewitt/spectra/internal/version.Date=$(DATE) \
+	-X github.com/nhdewitt/spectra/internal/version.GoARM=$$arm
 
 PLATFORMS = \
 	linux/amd64/ \
@@ -28,7 +33,21 @@ DARWIN_CGO_PLATFORMS = darwin/amd64 darwin/arm64
 .PHONY: release clean
 
 build-server:
-	go build -ldflags "$(LDFLAGS)" -o bin/spectra-server ./cmd/server
+	@mkdir -p $(RELEASE_DIR)
+	go build -ldflags "$(LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-server ./cmd/server
+
+deploy-server:
+	@test -f $(RELEASE_DIR)/spectra-server || { echo "No server binary. Run 'make build-server first.'"; exit 1; }
+	@test -n "$(DEPLOY_HOST)" || { echo "Usage: make deploy-server DEPLOY_HOST=<ip> [DEPLOY_USER=root] [DEPLOY_PATH=/opt/spectra]"; exit 1; }
+	scp $(RELEASE_DIR)/spectra-server $(DEPLOY_USER)@$(DEPLOY_HOST):$(DEPLOY_PATH)/spectra-server.new
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) '\
+		mv $(DEPLOY_PATH)/spectra-server $(DEPLOY_PATH)/spectra-server.bak && \
+		mv $(DEPLOY_PATH)/spectra-server.new $(DEPLOY_PATH)/spectra-server && \
+		chmod 755 $(DEPLOY_PATH)/spectra-server && \
+		systemctl restart spectra-server && \
+		sleep 2 && \
+		systemctl is-active spectra-server'
+	@echo "  Server deployed and running."
 
 release: clean
 	@mkdir -p $(RELEASE_DIR)
@@ -67,6 +86,15 @@ release: clean
 	@echo ""
 	@echo "  Built $$(ls $(RELEASE_DIR)/spectra-agent-* 2>/dev/null | wc -l) binaries"
 	@echo "  Checksums: $(RELEASE_DIR)/checksums.sha256"
+
+deploy-releases:
+	@test -d $(RELEASE_DIR) || { echo "No releases directory. Run 'make release' first."; exit 1; }
+	@test -n "$(DEPLOY_HOST)" || { echo "Usage: make deploy-releases DEPLOY_HOST=<ip> [DEPLOY_USER=root] [DEPLOY_PATH=/opt/spectra]"; exit 1; }
+	scp $(RELEASE_DIR)/spectra-agent-* $(RELEASE_DIR)/checksums.sha256 $(DEPLOY_USER)@$(DEPLOY_HOST):$(DEPLOY_PATH)/releases/
+	@echo "  Releases deployed."
+
+deploy: deploy-server deploy-releases
+	@echo "  Full deploy complete."
 
 clean:
 	rm -rf $(RELEASE_DIR)
