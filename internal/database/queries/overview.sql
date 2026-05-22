@@ -68,7 +68,7 @@ SET reboot_required = EXCLUDED.reboot_required,
     updated_at = NOW();
 
 -- name: GetOverview :many
-SELECT  a.id, a.hostname, a.os, a.platform, a.arch, a.cpu_cores, a.last_seen, a.ip_address, a.version,
+SELECT  a.id, a.hostname, a.os, a.platform, a.arch, a.cpu_cores, a.last_seen, a.ip_address, a.version, a.commit,
         m.cpu_usage, m.load_normalized, m.ram_percent, m.swap_percent,
         m.disk_max_percent, m.net_rx_bytes, m.net_tx_bytes, m.max_temp,
         m.uptime, m.process_count, m.reboot_required, m.updated_at

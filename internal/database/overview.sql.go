@@ -12,7 +12,7 @@ import (
 )
 
 const getOverview = `-- name: GetOverview :many
-SELECT  a.id, a.hostname, a.os, a.platform, a.arch, a.cpu_cores, a.last_seen, a.ip_address, a.version,
+SELECT  a.id, a.hostname, a.os, a.platform, a.arch, a.cpu_cores, a.last_seen, a.ip_address, a.version, a.commit,
         m.cpu_usage, m.load_normalized, m.ram_percent, m.swap_percent,
         m.disk_max_percent, m.net_rx_bytes, m.net_tx_bytes, m.max_temp,
         m.uptime, m.process_count, m.reboot_required, m.updated_at
@@ -31,6 +31,7 @@ type GetOverviewRow struct {
 	LastSeen       pgtype.Timestamptz `json:"last_seen"`
 	IpAddress      pgtype.Text        `json:"ip_address"`
 	Version        string             `json:"version"`
+	Commit         string             `json:"commit"`
 	CpuUsage       pgtype.Float8      `json:"cpu_usage"`
 	LoadNormalized pgtype.Float8      `json:"load_normalized"`
 	RamPercent     pgtype.Float8      `json:"ram_percent"`
@@ -64,6 +65,7 @@ func (q *Queries) GetOverview(ctx context.Context) ([]GetOverviewRow, error) {
 			&i.LastSeen,
 			&i.IpAddress,
 			&i.Version,
+			&i.Commit,
 			&i.CpuUsage,
 			&i.LoadNormalized,
 			&i.RamPercent,

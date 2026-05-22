@@ -212,4 +212,14 @@ export const api = {
             method: "PUT",
             body: JSON.stringify({ role }),
         }),
+
+    // Version
+    version: () => apiFetch<{ version: string; commit: string; date: string; }>("/version"),
+
+    // Agent update
+    pushUpdate: (agentIds: string[]) =>
+        apiFetch<{ queued: number; skipped: number; failed: number; }>("/admin/update", {
+            method: "POST",
+            body: JSON.stringify({ agent_ids: agentIds }),
+        }),
 };

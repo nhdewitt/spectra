@@ -23,6 +23,7 @@ type Agent struct {
 	SecretSha256 []byte             `json:"secret_sha256"`
 	IpAddress    pgtype.Text        `json:"ip_address"`
 	Version      string             `json:"version"`
+	Commit       string             `json:"commit"`
 }
 
 type AgentConfig struct {

@@ -138,6 +138,7 @@ func New(cfg Config) *Agent {
 			"Content-Encoding": "gzip",
 			"User-Agent":       version.UserAgent("Agent"),
 			"X-Agent-Version":  version.Version,
+			"X-Agent-Commit":   version.Commit,
 		},
 		RetryConfig: DefaultRetryConfig(),
 		Platform:    platform.Detect(),

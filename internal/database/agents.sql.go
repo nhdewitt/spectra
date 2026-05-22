@@ -218,7 +218,7 @@ func (q *Queries) TouchLastSeen(ctx context.Context, id pgtype.UUID) error {
 
 const touchLastSeenIfStale = `-- name: TouchLastSeenIfStale :exec
 UPDATE agents
-SET last_seen = NOW(), ip_address = $2
+SET last_seen = NOW(), ip_address = $2, version = $3, commit = $4
 WHERE id = $1
     AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '60 seconds')
 `
@@ -226,10 +226,17 @@ WHERE id = $1
 type TouchLastSeenIfStaleParams struct {
 	ID        pgtype.UUID `json:"id"`
 	IpAddress pgtype.Text `json:"ip_address"`
+	Version   string      `json:"version"`
+	Commit    string      `json:"commit"`
 }
 
 func (q *Queries) TouchLastSeenIfStale(ctx context.Context, arg TouchLastSeenIfStaleParams) error {
-	_, err := q.db.Exec(ctx, touchLastSeenIfStale, arg.ID, arg.IpAddress)
+	_, err := q.db.Exec(ctx, touchLastSeenIfStale,
+		arg.ID,
+		arg.IpAddress,
+		arg.Version,
+		arg.Commit,
+	)
 	return err
 }
 

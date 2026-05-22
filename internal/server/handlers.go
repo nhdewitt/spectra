@@ -105,19 +105,12 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		if err := s.DB.TouchLastSeenIfStale(r.Context(), database.TouchLastSeenIfStaleParams{
 			ID:        mustUUID(agentID),
 			IpAddress: pgText(clientIP(r)),
+			Version:   r.Header.Get("X-Agent-Version"),
+			Commit:    r.Header.Get("X-Agent-Commit"),
 		}); err != nil {
 			s.Logger.Error("database query error", "error", err, "handler", "handleMetrics")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
-		}
-	}
-
-	if agentVersion := r.Header.Get("X-Agent-Version"); agentVersion != "" {
-		if err := s.DB.UpdateAgentVersion(r.Context(), database.UpdateAgentVersionParams{
-			ID:      mustUUID(agentID),
-			Version: agentVersion,
-		}); err != nil {
-			s.Logger.Warn("failed to update agent version", "agent_id", agentID, "error", err)
 		}
 	}
 

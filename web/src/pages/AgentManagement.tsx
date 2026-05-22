@@ -1055,6 +1055,11 @@ export function AgentManagement({ user }: AgentManagementProps) {
     const [search, setSearch] = useState("");
     const [showProvision, setShowProvision] = useState(false);
 
+    const [serverVersion, setServerVersion] = useState<string | null>(null);
+    const [updateSelected, setUpdateSelected] = useState<Set<string>>(new Set());
+    const [updating, setUpdating] = useState(false);
+    const [updateResult, setUpdateResult] = useState<{ queued: number; skipped: number; failed: number } | null>(null);
+
     const isAdmin = user.role === "admin" || user.role === "superadmin";
 
     const loadAgents = useCallback(() => {
@@ -1072,6 +1077,14 @@ export function AgentManagement({ user }: AgentManagementProps) {
         const id = setInterval(loadAgents, 30_000);
         return () => clearInterval(id);
     }, [loadAgents]);
+
+    // Fetch server version for comparison
+    useEffect(() => {
+        if (!isAdmin) return;
+        api.version()
+            .then((v) => setServerVersion(v.version))
+            .catch(() => {}); // non-critical
+    }, [isAdmin]);
 
     useEffect(() => {
         if (!selectedId) return;
@@ -1092,6 +1105,62 @@ export function AgentManagement({ user }: AgentManagementProps) {
                 (a.platform ?? "").toLowerCase().includes(q)
         );
     }, [agents, search]);
+
+    const outdatedIds = useMemo(() => {
+        if (!serverVersion) return new Set<string>();
+        return new Set(
+            agents
+                .filter((a) => a.version && a.version !== serverVersion)
+                .map((a) => a.id)
+        );
+    }, [agents, serverVersion]);
+
+    // Clean up selections when agents or server version change
+    useEffect(() => {
+        setUpdateSelected((prev) => {
+            const next = new Set<string>();
+            for (const id of prev) {
+                if (outdatedIds.has(id)) next.add(id);
+            }
+            return next.size === prev.size ? prev : next;
+        });
+    }, [outdatedIds]);
+
+    const toggleUpdateSelect = useCallback((agentId: string) => {
+        setUpdateSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(agentId)) {
+                next.delete(agentId);
+            } else {
+                next.add(agentId);
+            }
+            return next;
+        });
+    }, []);
+
+    const selectAllOutdated = useCallback(() => {
+        setUpdateSelected((prev) => {
+            if (prev.size === outdatedIds.size) return new Set();
+            return new Set(outdatedIds);
+        });
+    }, [outdatedIds]);
+
+    const handlePushUpdate = useCallback(async () => {
+        if (updateSelected.size === 0) return;
+        setUpdating(true);
+        setUpdateResult(null);
+        try {
+            const res = await api.pushUpdate(Array.from(updateSelected));
+            setUpdateResult(res);
+            setUpdateSelected(new Set());
+            // Refresh agent list after a short delay to let agents pick up commands
+            setTimeout(loadAgents, 3000);
+        } catch {
+            setUpdateResult({ queued: 0, skipped: 0, failed: updateSelected.size });
+        } finally {
+            setUpdating(false);
+        }
+    }, [updateSelected, loadAgents]);
 
     const { paged, page, setPage, totalPages, total } = usePagination(filtered, 20);
 
@@ -1118,6 +1187,8 @@ export function AgentManagement({ user }: AgentManagementProps) {
         );
     }
 
+    const hasOutdated = outdatedIds.size > 0;
+
     return (
         <div style={{ padding: 24 }}>
             <div
@@ -1132,7 +1203,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                 Agent Management
             </div>
 
-            <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
                 <input
                     type="text"
                     value={search}
@@ -1158,6 +1229,49 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     </button>
                 )}
 
+                {isAdmin && hasOutdated && (
+                    <>
+                        <button
+                            onClick={selectAllOutdated}
+                            style={{
+                                ...btnStyle,
+                                color: themeVars.textMuted,
+                                background: "transparent",
+                                borderColor: themeVars.border,
+                            }}
+                        >
+                            {updateSelected.size === outdatedIds.size ? "Deselect All" : "Select All Outdated"}
+                        </button>
+                        <button
+                            onClick={handlePushUpdate}
+                            disabled={updateSelected.size === 0 || updating}
+                            style={{
+                                ...btnStyle,
+                                opacity: updateSelected.size === 0 || updating ? 0.4 : 1,
+                                cursor: updateSelected.size === 0 || updating ? "default" : "pointer",
+                            }}
+                        >
+                            {updating
+                                ? "Updating..."
+                                : `Update ${updateSelected.size !== 1 ? updateSelected.size : ""} Agent${updateSelected.size !== 1 ? "s" : ""}`}
+                        </button>
+                    </>
+                )}
+
+                {updateResult && (
+                    <span
+                        style={{
+                            fontSize: 11,
+                            fontFamily: themeVars.font,
+                            color: updateResult.failed > 0 ? themeVars.warn : themeVars.ok,
+                        }}
+                    >
+                        {updateResult.queued} queued
+                        {updateResult.skipped > 0 && `, ${updateResult.skipped} skipped`}
+                        {updateResult.failed > 0 && `, ${updateResult.failed} failed`}
+                    </span>
+                )}
+
                 <span
                     style={{
                         fontSize: 11,
@@ -1167,6 +1281,11 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     }}
                 >
                     {agents.length} agent{agents.length === 1 ? "" : "s"} registered
+                    {serverVersion && (
+                        <span style={{ marginLeft: 8 }}>
+                            · server {serverVersion}
+                        </span>
+                    )}
                 </span>
             </div>
 
@@ -1181,66 +1300,105 @@ export function AgentManagement({ user }: AgentManagementProps) {
                 >
                     <thead>
                         <tr>
+                            {isAdmin && hasOutdated && <th style={{ ...tableHeaderStyle, width: 32 }} />}
                             <th style={tableHeaderStyle}>Status</th>
                             <th style={tableHeaderStyle}>Hostname</th>
                             <th style={tableHeaderStyle}>OS</th>
                             <th style={tableHeaderStyle}>Platform</th>
                             <th style={tableHeaderStyle}>Arch</th>
-                            <td style={tableHeaderStyle}>Version</td>
+                            <th style={tableHeaderStyle}>Version</th>
                             <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Cores</th>
                             <th style={tableHeaderStyle}>Last Seen</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {paged.map((a, i) => (
-                            <tr
-                                key={a.id}
-                                onClick={() =>
-                                    setSelectedId(selectedId === a.id ? null : a.id)
-                                }
-                                style={{
-                                    cursor: "pointer",
-                                    background:
-                                        selectedId === a.id
-                                            ? themeVars.accentDim
-                                            : i % 2 === 0
-                                                ? "transparent"
-                                                : themeVars.surfaceHover,
-                                }}
-                            >
-                                <td style={tableCellStyle}>
-                                    <span
+                        {paged.map((a, i) => {
+                            const isOutdated = outdatedIds.has(a.id);
+                            const isChecked = updateSelected.has(a.id);
+
+                            return (
+                                <tr
+                                    key={a.id}
+                                    onClick={() =>
+                                        setSelectedId(selectedId === a.id ? null : a.id)
+                                    }
+                                    style={{
+                                        cursor: "pointer",
+                                        background:
+                                            selectedId === a.id
+                                                ? themeVars.accentDim
+                                                : i % 2 === 0
+                                                    ? "transparent"
+                                                    : themeVars.surfaceHover,
+                                    }}
+                                >
+                                    {isAdmin && hasOutdated && (
+                                        <td style={tableCellStyle}>
+                                            {isOutdated && (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    onChange={() => toggleUpdateSelect(a.id)}
+                                                    style={{ cursor: "pointer" }}
+                                                />
+                                            )}
+                                        </td>
+                                    )}
+                                    <td style={tableCellStyle}>
+                                        <span
+                                            style={{
+                                                width: 8,
+                                                height: 8,
+                                                borderRadius: "50%",
+                                                background: statusColor(a),
+                                                display: "inline-block",
+                                            }}
+                                        />
+                                    </td>
+                                    <td style={{ ...tableCellStyle, fontWeight: 500 }}>
+                                        {a.hostname}
+                                    </td>
+                                    <td style={tableMutedCellStyle}>{a.os}</td>
+                                    <td style={tableMutedCellStyle}>{a.platform}</td>
+                                    <td style={tableMutedCellStyle}>{a.arch}</td>
+                                    <td
                                         style={{
-                                            width: 8,
-                                            height: 8,
-                                            borderRadius: "50%",
-                                            background: statusColor(a),
-                                            display: "inline-block",
+                                            ...tableMutedCellStyle,
+                                            color: isOutdated ? themeVars.warn : undefined,
                                         }}
-                                    />
-                                </td>
-                                <td style={{ ...tableCellStyle, fontWeight: 500 }}>
-                                    {a.hostname}
-                                </td>
-                                <td style={tableMutedCellStyle}>{a.os}</td>
-                                <td style={tableMutedCellStyle}>{a.platform}</td>
-                                <td style={tableMutedCellStyle}>{a.arch}</td>
-                                <td style={tableMutedCellStyle}>{a.version || "—"}</td>
-                                <td style={{ ...tableMutedCellStyle, textAlign: "right" }}>
-                                    {a.cpu_cores}
-                                </td>
-                                <td style={tableMutedCellStyle}>
-                                    {a.last_seen
-                                        ? new Date(a.last_seen).toLocaleString(undefined, {
-                                            month: "short",
-                                            day: "numeric",
-                                            hour: "2-digit",
-                                            minute: "2-digit",
-                                        })
-                                        : "Never"}
-                                </td>
-                            </tr>
-                        ))}
+                                    >
+                                        {a.version || "—"}
+                                        {isOutdated && (
+                                            <span
+                                                style={{
+                                                    fontSize: 9,
+                                                    marginLeft: 6,
+                                                    color: themeVars.warn,
+                                                    textTransform: "uppercase",
+                                                    letterSpacing: "0.03em",
+                                                }}
+                                            >
+                                                outdated
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td style={{ ...tableMutedCellStyle, textAlign: "right" }}>
+                                        {a.cpu_cores}
+                                    </td>
+                                    <td style={tableMutedCellStyle}>
+                                        {a.last_seen
+                                            ? new Date(a.last_seen).toLocaleString(undefined, {
+                                                month: "short",
+                                                day: "numeric",
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                            })
+                                            : "Never"}
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

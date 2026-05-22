@@ -169,9 +169,10 @@ type HostInfo struct {
 
 	RAMTotal uint64 `json:"ram_total"`
 
-	AgentVer string   `json:"agent_version"`
-	BootTime int64    `json:"boot_time"`
-	IPs      []string `json:"ips"` // List of local interface IPs
+	AgentVer    string   `json:"agent_version"`
+	AgentCommit string   `json:"agent_commit"`
+	BootTime    int64    `json:"boot_time"`
+	IPs         []string `json:"ips"` // List of local interface IPs
 }
 
 type RegisterRequest struct {
@@ -195,6 +196,7 @@ const (
 
 type UpdateAgentRequest struct {
 	Version string `json:"version"`
+	Commit  string `json:"commit"`
 	URL     string `json:"url"`
 	SHA256  string `json:"sha256"`
 }

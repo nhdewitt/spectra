@@ -159,6 +159,7 @@ func (s *Server) handlePushUpdate(w http.ResponseWriter, r *http.Request) {
 
 		payload, _ := json.Marshal(protocol.UpdateAgentRequest{
 			Version: version.Version,
+			Commit:  version.Commit,
 			URL:     downloadURL,
 			SHA256:  sha256,
 		})

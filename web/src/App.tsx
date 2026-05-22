@@ -105,7 +105,7 @@ export default function App() {
 
 	const handleSelectAgent = useCallback((agent: OverviewAgent) => {
 		setSelectedAgent(agent);
-		setPage("detail");
+		setPage((prev) => prev === "diagnostics" ? "diagnostics" : "detail");
 	}, []);
 
 	const handleNavigate = useCallback((p: Page) => {
@@ -263,7 +263,7 @@ export default function App() {
 					</div>
 				)}
 
-				{page === "diagnostics" && selectedAgent && (
+				{page === "diagnostics" && (
 					<Diagnostics
 						agents={agentList}
 						selectedAgent={selectedAgent}
