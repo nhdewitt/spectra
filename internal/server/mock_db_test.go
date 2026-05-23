@@ -95,12 +95,13 @@ type MockDB struct {
 	OverviewRows []database.GetOverviewRow
 	HeatmapRows  []database.GetFleetHeatmapRow
 
-	UserRows            []database.ListUsersRow
-	UserByID            map[pgtype.UUID]database.GetUserByIDRow
-	SuperAdmins         int64
-	DeleteUserCount     int
-	UpdateUserRoleCount int
-	OfflineAgentCount   int64
+	UserRows              []database.ListUsersRow
+	UserRowsWithLastLogin []database.ListUsersWithLastLoginRow
+	UserByID              map[pgtype.UUID]database.GetUserByIDRow
+	SuperAdmins           int64
+	DeleteUserCount       int
+	UpdateUserRoleCount   int
+	OfflineAgentCount     int64
 
 	Err         error
 	QueryErr    error // errors for data queries (not auth)
@@ -938,4 +939,13 @@ func (m *MockDB) DeleteUserConfig(_ context.Context, _ database.DeleteUserConfig
 		return m.QueryErr
 	}
 	return m.Err
+}
+
+func (m *MockDB) ListUsersWithLastLogin(_ context.Context) ([]database.ListUsersWithLastLoginRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
+	return m.UserRowsWithLastLogin, nil
 }

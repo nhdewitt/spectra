@@ -209,6 +209,51 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	return items, nil
 }
 
+const listUsersWithLastLogin = `-- name: ListUsersWithLastLogin :many
+SELECT u.id, u.username, u.role, u.created_at, u.updated_at,
+	MAX(s.created_at)::TIMESTAMPTZ AS last_login
+FROM users u
+LEFT JOIN sessions s ON s.user_id = u.id
+GROUP BY u.id, u.username, u.role, u.created_at, u.updated_at
+ORDER BY u.created_at ASC
+`
+
+type ListUsersWithLastLoginRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	Username  string             `json:"username"`
+	Role      string             `json:"role"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	LastLogin pgtype.Timestamptz `json:"last_login"`
+}
+
+func (q *Queries) ListUsersWithLastLogin(ctx context.Context) ([]ListUsersWithLastLoginRow, error) {
+	rows, err := q.db.Query(ctx, listUsersWithLastLogin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersWithLastLoginRow{}
+	for rows.Next() {
+		var i ListUsersWithLastLoginRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Role,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastLogin,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const superAdminCount = `-- name: SuperAdminCount :one
 SELECT COUNT(*) FROM users WHERE role = 'superadmin'
 `

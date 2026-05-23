@@ -32,6 +32,7 @@ type agentOverview struct {
 	RebootRequired   bool     `json:"reboot_required"`
 	MetricsUpdatedAt *string  `json:"metrics_updated_at"`
 	Version          string   `json:"version"`
+	Commit           string   `json:"commit"`
 }
 
 var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -176,6 +177,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			a.RebootRequired = row.RebootRequired.Bool
 		}
 		a.Version = row.Version
+		a.Commit = row.Commit
 
 		result = append(result, a)
 	}

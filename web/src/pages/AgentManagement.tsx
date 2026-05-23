@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { api } from "../api";
 import { statusColor, formatUptime, copyToClipboard } from "../utils";
 import {
@@ -30,6 +30,27 @@ const btnStyle: React.CSSProperties = {
     cursor: "pointer",
     textTransform: "uppercase",
     letterSpacing: "0.03em",
+};
+
+type UpdateStatus = "queued" | "updating" | "restarting" | "updated" | "failed";
+
+const UPDATE_TIMEOUT_MS = 60_000;
+const UPDATE_POLL_MS = 3_000;
+
+const UPDATE_STATUS_LABELS: Record<UpdateStatus, string> = {
+    queued: "QUEUED",
+    updating: "UPDATING",
+    restarting: "RESTARTING",
+    updated: "UPDATED",
+    failed: "FAILED",
+};
+
+const UPDATE_STATUS_COLORS: Record<UpdateStatus, string> = {
+    queued: themeVars.accent,
+    updating: themeVars.accent,
+    restarting: themeVars.warn,
+    updated: themeVars.ok,
+    failed: themeVars.danger,
 };
 
 function CopyBlock({ value }: { value: string }) {
@@ -722,6 +743,7 @@ function AgentConfigPanel({
     return (
         <div>
             <div style={{ display: "flex", gap: 24, marginBottom: 20, flexWrap: "wrap" }}>
+                <StatBlock label="Agent ID" value={agent.id} copyable small />
                 <StatBlock label="OS" value={agent.os ?? null} />
                 <StatBlock label="Platform" value={agent.platform ?? null} />
                 <StatBlock label="Arch" value={agent.arch ?? null} />
@@ -1055,15 +1077,25 @@ export function AgentManagement({ user }: AgentManagementProps) {
     const [search, setSearch] = useState("");
     const [showProvision, setShowProvision] = useState(false);
 
-    const [serverVersion, setServerVersion] = useState<string | null>(null);
+    const [serverVersion, setServerVersion] = useState<{ version: string; commit: string; } | null>(null);
     const [updateSelected, setUpdateSelected] = useState<Set<string>>(new Set());
     const [updating, setUpdating] = useState(false);
     const [updateResult, setUpdateResult] = useState<{ queued: number; skipped: number; failed: number } | null>(null);
+    const [updateStatuses, setUpdateStatuses] = useState<Map<string, UpdateStatus>>(new Map());
+    const updateStartedAt = useRef<number>(0);
+    const previousVersions = useRef<Map<string, { version: string; commit: string }>>(new Map());
 
     const isAdmin = user.role === "admin" || user.role === "superadmin";
 
+    const hasPendingUpdates = useMemo(() => {
+        for (const status of updateStatuses.values()) {
+            if (status === "queued" || status === "updating" || status === "restarting") return true;
+        }
+        return false;
+    }, [updateStatuses]);
+
     const loadAgents = useCallback(() => {
-        api.overview()
+        return api.overview()
             .then(setAgents)
             .catch((err) =>
                 setError(err instanceof Error ? err.message : "Failed to load")
@@ -1074,17 +1106,85 @@ export function AgentManagement({ user }: AgentManagementProps) {
     useEffect(() => {
         setLoading(true);
         loadAgents();
-        const id = setInterval(loadAgents, 30_000);
+        const interval = hasPendingUpdates ? UPDATE_POLL_MS : 30_000;
+        const id = setInterval(loadAgents, interval);
         return () => clearInterval(id);
-    }, [loadAgents]);
+    }, [loadAgents, hasPendingUpdates]);
 
     // Fetch server version for comparison
     useEffect(() => {
         if (!isAdmin) return;
         api.version()
-            .then((v) => setServerVersion(v.version))
+            .then((v) => setServerVersion({ version: v.version, commit: v.commit }))
             .catch(() => {}); // non-critical
     }, [isAdmin]);
+
+    useEffect(() => {
+        if (!serverVersion || updateStatuses.size === 0) return;
+
+        const elapsed = Date.now() - updateStartedAt.current;
+
+        setUpdateStatuses((prev) => {
+            const next = new Map(prev);
+            let changed = false;
+
+            for (const [agentId, status] of prev) {
+                if (status === "updated" || status === "failed") continue;
+
+                const agent = agents.find((a) => a.id === agentId);
+                if (!agent) continue;
+
+                const isNowCurrent =
+                    agent.version === serverVersion.version &&
+                    (!serverVersion.commit || agent.commit === serverVersion.commit);
+
+                if (isNowCurrent) {
+                    next.set(agentId, "updated");
+                    changed = true;
+                    continue;
+                }
+
+                const lastSeen = agent.last_seen ? new Date(agent.last_seen).getTime() : 0;
+                const isOffline = (Date.now() - lastSeen) > 15_000;
+
+                if (status === "queued" && !isOffline) {
+                    next.set(agentId, "updating");
+                    changed = true;
+                } else if ((status === "queued" || status === "updating") && isOffline) {
+                    next.set(agentId, "restarting");
+                    changed = true;
+                }
+
+                if (elapsed > UPDATE_TIMEOUT_MS) {
+                    next.set(agentId, "failed");
+                    changed = true;
+                }
+            }
+
+            return changed ? next : prev;
+        })
+    }, [agents, serverVersion, updateStatuses]);
+
+    useEffect(() => {
+        if (updateStatuses.size === 0) return;
+
+        const hasTerminal = Array.from(updateStatuses.values()).some(
+            (s) => s === "updated" || s === "failed"
+        );
+        if (!hasTerminal) return;
+
+        const timeout = setTimeout(() => {
+            setUpdateStatuses((prev) => {
+                const next = new Map<string, UpdateStatus>();
+                for (const [id, status] of prev) {
+                    if (status !== "updated" && status !== "failed") {
+                        next.set(id, status);
+                    }
+                }
+                return next;
+            })
+        }, 10_000);
+    })
 
     useEffect(() => {
         if (!selectedId) return;
@@ -1110,7 +1210,12 @@ export function AgentManagement({ user }: AgentManagementProps) {
         if (!serverVersion) return new Set<string>();
         return new Set(
             agents
-                .filter((a) => a.version && a.version !== serverVersion)
+                .filter((a) => {
+                    if (!a.version) return true;
+                    if (a.version !== serverVersion.version) return true;
+                    if (serverVersion.commit && a.commit !== serverVersion.commit) return true;
+                    return false;
+                })
                 .map((a) => a.id)
         );
     }, [agents, serverVersion]);
@@ -1150,17 +1255,29 @@ export function AgentManagement({ user }: AgentManagementProps) {
         setUpdating(true);
         setUpdateResult(null);
         try {
-            const res = await api.pushUpdate(Array.from(updateSelected));
+            const ids = Array.from(updateSelected);
+            const res = await api.pushUpdate(ids);
             setUpdateResult(res);
+
+            const snapshots = new Map<string, { version: string; commit: string }>();
+            const statuses = new Map<string, UpdateStatus>();
+            for (const id of ids) {
+                const agent = agents.find((a) => a.id === id);
+                if (agent) {
+                    snapshots.set(id, { version: agent.version || "", commit: agent.commit || "" });
+                    statuses.set(id, "queued");
+                }
+            }
+            previousVersions.current = snapshots;
+            updateStartedAt.current = Date.now();
+            setUpdateStatuses(statuses);
             setUpdateSelected(new Set());
-            // Refresh agent list after a short delay to let agents pick up commands
-            setTimeout(loadAgents, 3000);
         } catch {
             setUpdateResult({ queued: 0, skipped: 0, failed: updateSelected.size });
         } finally {
             setUpdating(false);
         }
-    }, [updateSelected, loadAgents]);
+    }, [updateSelected, agents]);
 
     const { paged, page, setPage, totalPages, total } = usePagination(filtered, 20);
 
@@ -1233,32 +1350,37 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     <>
                         <button
                             onClick={selectAllOutdated}
+                            disabled={hasPendingUpdates}
                             style={{
                                 ...btnStyle,
                                 color: themeVars.textMuted,
                                 background: "transparent",
                                 borderColor: themeVars.border,
+                                opacity: hasPendingUpdates ? 0.4 : 1,
+                                cursor: hasPendingUpdates ? "default" : "pointer",
                             }}
                         >
                             {updateSelected.size === outdatedIds.size ? "Deselect All" : "Select All Outdated"}
                         </button>
                         <button
                             onClick={handlePushUpdate}
-                            disabled={updateSelected.size === 0 || updating}
+                            disabled={updateSelected.size === 0 || updating || hasPendingUpdates}
                             style={{
                                 ...btnStyle,
-                                opacity: updateSelected.size === 0 || updating ? 0.4 : 1,
-                                cursor: updateSelected.size === 0 || updating ? "default" : "pointer",
+                                opacity: updateSelected.size === 0 || updating || hasPendingUpdates ? 0.4 : 1,
+                                cursor: updateSelected.size === 0 || updating || hasPendingUpdates ? "default" : "pointer",
                             }}
                         >
                             {updating
                                 ? "Updating..."
-                                : `Update ${updateSelected.size !== 1 ? updateSelected.size : ""} Agent${updateSelected.size !== 1 ? "s" : ""}`}
+                                : hasPendingUpdates
+                                    ? "Updating in progress..."
+                                    : `Update ${updateSelected.size !== 1 ? updateSelected.size : ""} Agent${updateSelected.size !== 1 ? "s" : ""}`}
                         </button>
                     </>
                 )}
 
-                {updateResult && (
+                {updateResult && !hasPendingUpdates && (
                     <span
                         style={{
                             fontSize: 11,
@@ -1283,7 +1405,10 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     {agents.length} agent{agents.length === 1 ? "" : "s"} registered
                     {serverVersion && (
                         <span style={{ marginLeft: 8 }}>
-                            · server {serverVersion}
+                            · server {serverVersion.version}
+                            {serverVersion.commit && (
+                                <span style={{ color: themeVars.textDim }}> ({serverVersion.commit.slice(0, 7)})</span>
+                            )}
                         </span>
                     )}
                 </span>
@@ -1315,6 +1440,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                         {paged.map((a, i) => {
                             const isOutdated = outdatedIds.has(a.id);
                             const isChecked = updateSelected.has(a.id);
+                            const agentUpdateStatus = updateStatuses.get(a.id);
 
                             return (
                                 <tr
@@ -1334,7 +1460,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                                 >
                                     {isAdmin && hasOutdated && (
                                         <td style={tableCellStyle}>
-                                            {isOutdated && (
+                                            {isOutdated && !agentUpdateStatus && (
                                                 <input
                                                     type="checkbox"
                                                     checked={isChecked}
@@ -1365,11 +1491,27 @@ export function AgentManagement({ user }: AgentManagementProps) {
                                     <td
                                         style={{
                                             ...tableMutedCellStyle,
-                                            color: isOutdated ? themeVars.warn : undefined,
+                                            color: agentUpdateStatus
+                                                ? UPDATE_STATUS_COLORS[agentUpdateStatus]
+                                                : isOutdated
+                                                    ? themeVars.warn
+                                                    : themeVars.ok,
                                         }}
                                     >
                                         {a.version || "—"}
-                                        {isOutdated && (
+                                        {agentUpdateStatus ? (
+                                            <span
+                                                style={{
+                                                    fontSize: 9,
+                                                    marginLeft: 6,
+                                                    color: UPDATE_STATUS_COLORS[agentUpdateStatus],
+                                                    textTransform: "uppercase",
+                                                    letterSpacing: "0.03em",
+                                                }}
+                                            >
+                                                {UPDATE_STATUS_LABELS[agentUpdateStatus]}
+                                            </span>
+                                        ) : isOutdated ? (
                                             <span
                                                 style={{
                                                     fontSize: 9,
@@ -1381,7 +1523,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                                             >
                                                 outdated
                                             </span>
-                                        )}
+                                        ) : null}
                                     </td>
                                     <td style={{ ...tableMutedCellStyle, textAlign: "right" }}>
                                         {a.cpu_cores}

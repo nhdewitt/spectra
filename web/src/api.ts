@@ -51,6 +51,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 
     if (res.status === 401) {
         window.__spectraLogout?.();
+        window.__spectraLogout = undefined;
         throw new HttpError(401, "Unauthorized");
     }
 

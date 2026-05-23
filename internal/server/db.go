@@ -113,6 +113,7 @@ type DB interface {
 
 	// Users
 	ListUsers(ctx context.Context) ([]database.ListUsersRow, error)
+	ListUsersWithLastLogin(ctx context.Context) ([]database.ListUsersWithLastLoginRow, error)
 	CreateUser(ctx context.Context, arg database.CreateUserParams) error
 	GetUserByID(ctx context.Context, id pgtype.UUID) (database.GetUserByIDRow, error)
 	SuperAdminCount(ctx context.Context) (int64, error)

@@ -20,6 +20,7 @@ export default function App() {
 	const [selectedAgent, setSelectedAgent] = useState<OverviewAgent | null>(null);
 	const [starredIds, setStarredIds] = useState<string[]>([]);
 	const [starredLoaded, setStarredLoaded] = useState(false);
+	const [logoutReason, setLogoutReason] = useState<string | null>(null);
 
 	const starredRef = useRef(starredIds);
 	starredRef.current = starredIds;
@@ -64,7 +65,7 @@ export default function App() {
 	}, [starredIds, user, starredLoaded]);
 
 	// Fetch agent list for sidebar quick access and online count
-	const agentFetcher = useCallback(() => api.overview(), []);
+	const agentFetcher = useCallback(() => user ? api.overview() : Promise.resolve([]), [user]);
 	const { data: agents } = usePolling(agentFetcher, 10_000);
 	const agentList = agents ?? [];
 
@@ -73,18 +74,19 @@ export default function App() {
 		return (Date.now() - new Date(a.last_seen).getTime()) / 1000 < 120;
 	}).length;
 
-	const handleLogout = useCallback(async () => {
+	const handleLogout = useCallback(async (reason?: string) => {
 		try {
 			await api.logout();
 		} catch {}
 		setUser(null);
 		setPage("overview");
 		setSelectedAgent(null);
+		if (reason) setLogoutReason(reason);
 	}, []);
 
 	// Expose logout for 401 interceptor in api.ts
 	useEffect(() => {
-		window.__spectraLogout = handleLogout;
+		window.__spectraLogout = () => handleLogout("Your session has expired.");
 		return () => {
 			delete window.__spectraLogout;
 		};
@@ -136,7 +138,7 @@ export default function App() {
 
 	// Not authenticated
 	if (!user) {
-		return <Login onLogin={setUser} />;
+		return <Login onLogin={(u) => { setUser(u); setLogoutReason(null); }} message={logoutReason} />;
 	}
 
 	// Authenticated shell

@@ -12,6 +12,7 @@ export interface ManagedUser {
     role: string;
     created_at: string;
     updated_at: string;
+    last_login?: string;
 }
 
 // Agents
@@ -41,6 +42,7 @@ export interface OverviewAgent {
     cpu_cores: number;
     last_seen: string | null;
     version: string;
+    commit?: string;
     cpu_usage: number | null;
     load_normalized: number | null;
     ram_percent: number | null;

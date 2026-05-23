@@ -52,3 +52,11 @@ WHERE id = @id;
 
 -- name: SuperAdminCount :one
 SELECT COUNT(*) FROM users WHERE role = 'superadmin';
+
+-- name: ListUsersWithLastLogin :many
+SELECT u.id, u.username, u.role, u.created_at, u.updated_at,
+	MAX(s.created_at)::TIMESTAMPTZ AS last_login
+FROM users u
+LEFT JOIN sessions s ON s.user_id = u.id
+GROUP BY u.id, u.username, u.role, u.created_at, u.updated_at
+ORDER BY u.created_at ASC;

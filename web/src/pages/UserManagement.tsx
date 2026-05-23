@@ -8,6 +8,7 @@ import {
 	LoadingSpinner,
 } from "../components/ui";
 import type { User, ManagedUser } from "../types";
+import { timeAgo } from "../utils";
 
 const btnStyle: React.CSSProperties = {
 	padding: "6px 14px",
@@ -293,6 +294,9 @@ export function UserManagement({ user }: UserManagementProps) {
 	const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 	const [roleEdit, setRoleEdit] = useState<string | null>(null);
 
+	const canManage = user.role === "superadmin" || user.role === "admin";
+	const isSuperAdmin = user.role === "superadmin";
+
 	const loadUsers = useCallback(() => {
 		api.listUsers()
 			.then(setUsers)
@@ -329,8 +333,6 @@ export function UserManagement({ user }: UserManagementProps) {
 		}
 	};
 
-	const isSuperAdmin = user.role === "superadmin";
-
 	if (loading) return <LoadingSpinner />;
 
 	return (
@@ -361,9 +363,11 @@ export function UserManagement({ user }: UserManagementProps) {
 			)}
 
 			<div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
-				<button onClick={() => setShowCreate(true)} style={btnStyle}>
-					+ Create User
-				</button>
+				{canManage && (
+					<button onClick={() => setShowCreate(true)} style={btnStyle}>
+						+ Create User
+					</button>
+				)}
 				<span
 					style={{
 						fontSize: 11,
@@ -389,7 +393,10 @@ export function UserManagement({ user }: UserManagementProps) {
 							<th style={tableHeaderStyle}>Username</th>
 							<th style={tableHeaderStyle}>Role</th>
 							<th style={tableHeaderStyle}>Created</th>
-							<th style={{ ...tableHeaderStyle, textAlign: "right" }}>Actions</th>
+							<th style={tableHeaderStyle}>Last Login</th>
+							{canManage && (
+								<th style={{ ...tableHeaderStyle, textAlign: "right" }}>Actions</th>
+							)}
 						</tr>
 					</thead>
 					<tbody>
@@ -453,67 +460,74 @@ export function UserManagement({ user }: UserManagementProps) {
 											</span>
 										)}
 									</td>
-									<td style={tableMutedCellStyle}>
-										{new Date(u.created_at).toLocaleDateString(undefined, {
-											month: "short",
-											day: "numeric",
-											year: "numeric",
-										})}
+									<td
+										style={tableMutedCellStyle}
+										title={new Date(u.created_at).toLocaleString()}
+									>
+										{timeAgo(u.created_at)}
 									</td>
-									<td style={{ ...tableCellStyle, textAlign: "right" }}>
-										{confirmDelete === u.id ? (
-											<div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-												<span
-													style={{
-														fontSize: 11,
-														fontFamily: themeVars.font,
-														color: themeVars.danger,
-													}}
-												>
-													Delete {u.username}?
-												</span>
-												<button
-													onClick={() => handleDelete(u.id)}
-													style={{
-														...btnStyle,
-														color: "#fff",
-														background: themeVars.danger,
-														borderColor: themeVars.danger,
-														padding: "3px 10px",
-													}}
-												>
-													Confirm
-												</button>
-												<button
-													onClick={() => setConfirmDelete(null)}
-													style={{
-														...btnStyle,
-														color: themeVars.textMuted,
-														background: "transparent",
-														borderColor: themeVars.border,
-														padding: "3px 10px",
-													}}
-												>
-													Cancel
-												</button>
-											</div>
-										) : (
-											!isSelf && (
-												<button
-													onClick={() => setConfirmDelete(u.id)}
-													style={{
-														...btnStyle,
-														color: themeVars.danger,
-														background: "transparent",
-														borderColor: themeVars.danger,
-														padding: "3px 10px",
-													}}
-												>
-													Delete
-												</button>
-											)
-										)}
+									<td
+										style={tableMutedCellStyle}
+										title={u.last_login ? new Date(u.last_login).toLocaleString() : undefined}
+									>
+										{u.last_login ? timeAgo(u.last_login) : "Never"}
 									</td>
+									{canManage && (
+										<td style={{ ...tableCellStyle, textAlign: "right" }}>
+											{confirmDelete === u.id ? (
+												<div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+													<span
+														style={{
+															fontSize: 11,
+															fontFamily: themeVars.font,
+															color: themeVars.danger,
+														}}
+													>
+														Delete {u.username}?
+													</span>
+													<button
+														onClick={() => handleDelete(u.id)}
+														style={{
+															...btnStyle,
+															color: "#fff",
+															background: themeVars.danger,
+															borderColor: themeVars.danger,
+															padding: "3px 10px",
+														}}
+													>
+														Confirm
+													</button>
+													<button
+														onClick={() => setConfirmDelete(null)}
+														style={{
+															...btnStyle,
+															color: themeVars.textMuted,
+															background: "transparent",
+															borderColor: themeVars.border,
+															padding: "3px 10px",
+														}}
+													>
+														Cancel
+													</button>
+												</div>
+											) : (
+												!isSelf && (
+													<button
+														onClick={() => setConfirmDelete(u.id)}
+														style={{
+															...btnStyle,
+															color: themeVars.danger,
+															background: "transparent",
+															borderColor: themeVars.danger,
+															padding: "3px 10px",
+														}}
+													>
+														Delete
+													</button>
+												)
+											)}
+										</td>
+									)}
 								</tr>
 							);
 						})}

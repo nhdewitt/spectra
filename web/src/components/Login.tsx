@@ -26,7 +26,7 @@ const inputStyle: React.CSSProperties = {
     boxSizing: "border-box",
 };
 
-export function Login({ onLogin }: { onLogin: (user: User) => void }) {
+export function Login({ onLogin, message }: { onLogin: (user: User) => void; message?: string | null }) {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
@@ -42,6 +42,8 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
         } catch (err) {
             if (err instanceof HttpError && err.status === 404) {
                 setError("Login service is unavailable. Check server URL/route.")
+            } else if (err instanceof HttpError && err.status === 429) {
+                setError("Too many login attempts. Please try again later.");
             } else {
                 setError(err instanceof Error ? err.message : "Login failed");
             }
@@ -140,6 +142,22 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
                 <div style={{ fontSize: 13, color: themeVars.textMuted, marginBottom: 32 }}>
                     System Monitoring
                 </div>
+
+                {message && (
+                    <div
+                        style={{
+                            color: themeVars.warn,
+                            fontSize: 12,
+                            fontFamily: themeVars.font,
+                            marginBottom: 16,
+                            padding: "8px 12px",
+                            border: `1px solid ${themeVars.warn}`,
+                            background: `color-mix(in srgb, ${themeVars.warn} 10%, transparent)`,
+                        }}
+                    >
+                        {message}
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit}>
                     <label style={labelStyle}>Username</label>

@@ -56,6 +56,14 @@ func seedUser(mock *MockDB, id pgtype.UUID, username, role string) {
 	}
 }
 
+func seedUserRows(mock *MockDB) {
+	mock.UserRowsWithLastLogin = []database.ListUsersWithLastLoginRow{
+		{ID: superadminUID, Username: "superadmin", Role: RoleSuperAdmin},
+		{ID: adminUID, Username: "admin", Role: RoleAdmin},
+		{ID: viewerUID, Username: "viewer", Role: RoleViewer},
+	}
+}
+
 func postJSON(path string, body any) *http.Request {
 	data, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(data))
@@ -70,42 +78,103 @@ func putJSON(path string, body any) *http.Request {
 	return req
 }
 
-func TestHandleListUsers_Superadmin(t *testing.T) {
+func TestHandleListUsers_SuperadminSeesAll(t *testing.T) {
 	s, _, _, mock := newTestServer()
 	setupSuperadminSession(mock)
+	seedUserRows(mock)
 
 	req := superadminRequest(httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil))
 	rec := httptest.NewRecorder()
 	s.Router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("status: got %d, want 200", rec.Code)
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+
+	var users []database.ListUsersWithLastLoginRow
+	if err := json.NewDecoder(rec.Body).Decode(&users); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(users) != 3 {
+		t.Errorf("superadmin should see 3 users, got %d", len(users))
 	}
 }
 
-func TestHandleListUsers_Admin(t *testing.T) {
+func TestHandleListUsers_AdminSeesNoSuperadmins(t *testing.T) {
 	s, _, _, mock := newTestServer()
 	setupAdminSession(mock)
+	seedUserRows(mock)
 
 	req := adminRequest(httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil))
 	rec := httptest.NewRecorder()
 	s.Router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("status: got %d, want 200", rec.Code)
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+
+	var users []database.ListUsersWithLastLoginRow
+	if err := json.NewDecoder(rec.Body).Decode(&users); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(users) != 2 {
+		t.Errorf("admin should see 2 users, got %d", len(users))
+	}
+	for _, u := range users {
+		if u.Role == RoleSuperAdmin {
+			t.Errorf("admin should not see superadmin user %s", u.Username)
+		}
 	}
 }
 
-func TestHandleListUsers_ViewerForbidden(t *testing.T) {
+func TestHandleListUsers_ViewerSeesOnlySelf(t *testing.T) {
 	s, _, _, mock := newTestServer()
 	setupViewerSession(mock)
+	seedUserRows(mock)
 
 	req := viewerRequest(httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil))
 	rec := httptest.NewRecorder()
 	s.Router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("status: got %d, want 403", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+
+	var users []database.ListUsersWithLastLoginRow
+	if err := json.NewDecoder(rec.Body).Decode(&users); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(users) != 1 {
+		t.Fatalf("viewer should see 1 user, got %d", len(users))
+	}
+	if formatUUID(users[0].ID) != viewerID {
+		t.Errorf("viewer should only see themselves, got %s", users[0].Username)
+	}
+}
+
+func TestHandleListUsers_ViewerSeesNothingIfNotInList(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupViewerSession(mock)
+	// Seed only superadmin and admin — viewer not in the list
+	mock.UserRowsWithLastLogin = []database.ListUsersWithLastLoginRow{
+		{ID: superadminUID, Username: "superadmin", Role: RoleSuperAdmin},
+		{ID: adminUID, Username: "admin", Role: RoleAdmin},
+	}
+
+	req := viewerRequest(httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil))
+	rec := httptest.NewRecorder()
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+
+	var users []database.ListUsersWithLastLoginRow
+	if err := json.NewDecoder(rec.Body).Decode(&users); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(users) != 0 {
+		t.Errorf("viewer not in list should see 0 users, got %d", len(users))
 	}
 }
 

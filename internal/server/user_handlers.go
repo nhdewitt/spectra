@@ -11,12 +11,33 @@ import (
 //
 // GET /api/v1/admin/users
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.DB.ListUsers(r.Context())
+	caller, _ := userFromContext(r.Context())
+
+	rows, err := s.DB.ListUsersWithLastLogin(r.Context())
 	if err != nil {
 		s.dbError(w, err, "handleListUsers")
 		return
 	}
-	respondJSON(w, http.StatusOK, rows)
+
+	var filtered []database.ListUsersWithLastLoginRow
+	if caller.Role == "viewer" {
+		for _, row := range rows {
+			if formatUUID(row.ID) == caller.ID {
+				filtered = append(filtered, row)
+				break
+			}
+		}
+	} else {
+		for _, row := range rows {
+			if caller.Role == "superadmin" {
+				filtered = append(filtered, row)
+			} else if row.Role != "superadmin" {
+				filtered = append(filtered, row)
+			}
+		}
+	}
+
+	respondJSON(w, http.StatusOK, filtered)
 }
 
 // handleCreateUser creates a new user account.

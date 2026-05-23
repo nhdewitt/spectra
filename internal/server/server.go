@@ -120,7 +120,7 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/version", s.rateLimit(s.handleVersion))
 
 	// User management
-	s.Router.HandleFunc("GET /api/v1/admin/users", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleListUsers))))
+	s.Router.HandleFunc("GET /api/v1/admin/users", s.requireUserAuth(s.rateLimitAuthed(s.handleListUsers)))
 	s.Router.HandleFunc("POST /api/v1/admin/users", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleCreateUser))))
 	s.Router.HandleFunc("DELETE /api/v1/admin/users/{id}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleDeleteUser))))
 	s.Router.HandleFunc("PUT /api/v1/admin/users/{id}/role", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleSuperAdmin)(s.handleUpdateUserRole))))

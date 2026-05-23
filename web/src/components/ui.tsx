@@ -10,30 +10,53 @@ interface StatBlockProps {
     value: string | null;
     unit?: string;
     color?: string;
+    copyable?: boolean;
+    small?: boolean;
 }
 
-export function StatBlock({ label, value, unit, color }: StatBlockProps) {
+export function StatBlock({ label, value, unit, color, copyable, small }: StatBlockProps) {
+    const [copied, setCopied] = useState(false);
+
+    const handleClick = () => {
+        if (!copyable || !value) return;
+        copyToClipboard(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     return (
         <div style={{ minWidth: 64 }}>
             <div
                 style={{
                     fontSize: 11,
-                    color: themeVars.textMuted,
+                    color: copied ? themeVars.ok : themeVars.textMuted,
                     fontFamily: themeVars.font,
                     letterSpacing: "0.04em",
                     textTransform: "uppercase",
                     marginBottom: 4,
+                    transition: "color 0.2s ease",
                 }}
             >
-                {label}
+                {copied ? "Copied!" : (
+                    <>
+                        {label}
+                        {copyable && (
+                            <span style={{ textTransform: "none", fontSize: 9, marginLeft: 4 }}>
+                                (click to copy)
+                            </span>
+                        )}
+                    </>
+                )}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
                 <span
+                    onClick={handleClick}
                     style={{
-                        fontSize: 18,
-                        fontWeight: 600,
+                        fontSize: small ? 11 : 18,
+                        fontWeight: small ? 500 : 600,
                         fontFamily: themeVars.font,
                         color: color ?? themeVars.text,
+                        cursor: copyable ? "pointer" : "default",
                     }}
                 >
                     {value ?? "—"}
