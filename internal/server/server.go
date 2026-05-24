@@ -142,6 +142,9 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleGetUserConfig)))
 	s.Router.HandleFunc("PUT /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleSetUserConfig)))
 	s.Router.HandleFunc("DELETE /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteUserConfig)))
+
+	// Embedded frontend (SPA fallback)
+	s.Router.Handle("/", spaHandler())
 }
 
 func (s *Server) Start() error {

@@ -16,11 +16,6 @@ import { themeVars, getTheme, getThemeName } from "../theme";
 import { LoadingSpinner } from "./ui";
 import { RangeSelection } from "../types";
 
-type MetricRow = {
-    time: string;
-    [key: string]: string | number | null | undefined;
-}
-
 export interface SeriesDef {
     key: string;
     label: string;
@@ -80,13 +75,6 @@ function palette(): string[] {
         "#fb923c",
         "#38bdf8",
     ];
-}
-
-function formatTime(iso: string): string {
-    const d = new Date(iso);
-    const h = d.getHours().toString().padStart(2, "0");
-    const m = d.getMinutes().toString().padStart(2, "0");
-    return `${h}:${m}`;
 }
 
 function formatTimeFull(iso: string): string {

@@ -23,7 +23,6 @@ import type {
     CommandResponse,
     CommandEntry,
     FleetHeatmapAgent,
-    ChartPoint,
     ManagedUser,
 } from "./types";
 

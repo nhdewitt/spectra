@@ -39,7 +39,6 @@ export function AgentDetail({
     const { data: liveAgent } = usePolling(useCallback(() => api.agent(agent.id), [agent.id]), 30_000);
     const { data: systemInfo } = usePolling(useCallback(() => api.agentSystemLatest(agent.id), [agent.id]), 30_000);
     
-    const lastSeen = liveAgent?.last_seen ?? agent.last_seen;
     const { status } = agentStatus(agent);
     const isStarred = starredIds.includes(agent.id);
     const isTimeSeriesTab = activeTab === "metrics" || activeTab === "containers";

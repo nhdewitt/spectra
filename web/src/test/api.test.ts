@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { api, HttpError } from '../api'
-import { optionsReducer } from 'recharts/types/state/optionsSlice'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)

@@ -7,6 +7,4 @@ export {
     LoadingSpinner,
 } from "./ui";
 export type { ViewMode } from "./ui";
-export { FleetHeatmap } from "./FleetHeatmap";
-export { FleetChart } from "./FleetChart";
 export { Sidebar } from "./Sidebar";

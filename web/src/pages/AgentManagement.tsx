@@ -794,6 +794,18 @@ function AgentConfigPanel({
                         >
                             Log Level
                         </div>
+                        <LabelEditor
+                            labels={config.labels ?? {}}
+                            onSet={(key, value) => {
+                                const next = { ...(config.labels ?? {}), [key]: value };
+                                saveLabels(next);
+                            }}
+                            onRemove={(key) => {
+                                const next = { ...(config.labels ?? {}) };
+                                delete next[key];
+                                saveLabels(next);
+                            }}
+                        />
                         <select
                             value={config.log_level ?? "info"}
                             onChange={async (e) => {
@@ -1173,7 +1185,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
         );
         if (!hasTerminal) return;
 
-        const timeout = setTimeout(() => {
+        setTimeout(() => {
             setUpdateStatuses((prev) => {
                 const next = new Map<string, UpdateStatus>();
                 for (const [id, status] of prev) {

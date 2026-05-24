@@ -151,8 +151,6 @@ export default function App() {
 				selectedAgent={selectedAgent}
 				onSelectAgent={handleSelectAgent}
 				agents={agentList}
-				onlineCount={onlineCount}
-				totalCount={agentList.length}
 				starredIds={starredIds}
 			/>
 

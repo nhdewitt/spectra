@@ -34,6 +34,7 @@ DARWIN_CGO_PLATFORMS = darwin/amd64 darwin/arm64
 
 build-server:
 	@mkdir -p $(RELEASE_DIR)
+	cd web && npm run build
 	go build -ldflags "$(LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-server ./cmd/server
 
 deploy-server:

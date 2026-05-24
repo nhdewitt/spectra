@@ -3,7 +3,6 @@ import { api } from "../api";
 import { themeVars } from "../theme";
 import { formatBytes, statusColor } from "../utils";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "../components/ui";
-import { DiagnosticsPanel } from "../components/DiagnosticsPanel";
 import type { OverviewAgent, CommandResponse, CommandEntry } from "../types";
 import { Pagination, usePagination } from "../hooks/usePagination";
 
@@ -735,7 +734,6 @@ export function Diagnostics({ agents, selectedAgent, onSelectAgent }: Diagnostic
 	};
 
 	const isRunning = Object.values(cardStatus).some((s) => s === "running");
-	const activeResult = activeTool && results[activeTool] ? activeTool : null;
 
 	const displayTool = activeTool ?? null;
 

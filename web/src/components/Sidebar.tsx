@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { themeVars } from "../theme";
 import { SpectraLogo } from "./SpectraLogo";
 import { statusColor } from "../utils";
 import type { Page, OverviewAgent, User } from "../types";
-import { api } from "../api";
 
 interface SidebarProps {
     user: User;
@@ -12,8 +11,6 @@ interface SidebarProps {
     selectedAgent: OverviewAgent | null;
     onSelectAgent: (agent: OverviewAgent) => void;
     agents: OverviewAgent[];
-    onlineCount: number;
-    totalCount: number;
     starredIds: string[];
 }
 
@@ -39,8 +36,6 @@ export function Sidebar({
     selectedAgent,
     onSelectAgent,
     agents,
-    onlineCount,
-    totalCount,
     starredIds,
 }: SidebarProps) {
     const [detailExpanded, setDetailExpanded] = useState(currentPage === "detail" || currentPage === "diagnostics");

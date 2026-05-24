@@ -3,7 +3,6 @@ import { api } from "../api";
 import { formatBytes } from "../utils";
 import { useMetric } from "../hooks/useMetric";
 import { MetricChart, type SeriesDef } from "./MetricChart";
-import { StatBlock } from "./ui";
 import { themeVars } from "../theme";
 import type { PiMetric, RangeSelection } from "../types";
 
