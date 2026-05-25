@@ -1,0 +1,1 @@
+ALTER TABLE agents ADD COLUMN binary_hash TEXT NOT NULL DEFAULT '';

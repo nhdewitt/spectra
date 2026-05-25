@@ -56,10 +56,11 @@ func (s *Server) requireAgentAuth(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if err := s.DB.TouchLastSeenIfStale(r.Context(), database.TouchLastSeenIfStaleParams{
-			ID:        id,
-			IpAddress: pgText(clientIP(r)),
-			Version:   r.Header.Get("X-Agent-Version"),
-			Commit:    r.Header.Get("X-Agent-Commit"),
+			ID:         id,
+			IpAddress:  pgText(clientIP(r)),
+			Version:    r.Header.Get("X-Agent-Version"),
+			Commit:     r.Header.Get("X-Agent-Commit"),
+			BinaryHash: r.Header.Get("X-Agent-Binary-Hash"),
 		}); err != nil {
 			s.Logger.Warn("failed to update agent last_seen", "agent_id", agentID, "error", err)
 		}

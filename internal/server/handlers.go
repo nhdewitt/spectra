@@ -103,10 +103,11 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	if s.DB != nil {
 		if err := s.DB.TouchLastSeenIfStale(r.Context(), database.TouchLastSeenIfStaleParams{
-			ID:        mustUUID(agentID),
-			IpAddress: pgText(clientIP(r)),
-			Version:   r.Header.Get("X-Agent-Version"),
-			Commit:    r.Header.Get("X-Agent-Commit"),
+			ID:         mustUUID(agentID),
+			IpAddress:  pgText(clientIP(r)),
+			Version:    r.Header.Get("X-Agent-Version"),
+			Commit:     r.Header.Get("X-Agent-Commit"),
+			BinaryHash: r.Header.Get("X-Agent-Binary-Hash"),
 		}); err != nil {
 			s.Logger.Error("database query error", "error", err, "handler", "handleMetrics")
 			http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -143,6 +143,11 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("PUT /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleSetUserConfig)))
 	s.Router.HandleFunc("DELETE /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteUserConfig)))
 
+	// API catch-all: reject unmatched /api/ routes before SPA fallback
+	s.Router.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+
 	// Embedded frontend (SPA fallback)
 	s.Router.Handle("/", spaHandler())
 }

@@ -133,7 +133,7 @@ func TestHandleAgentRegister_TokenSingleUse(t *testing.T) {
 	}
 }
 
-func TestHandleAgentRegister_MethodNotAllowed(t *testing.T) {
+func TestHandleAgentRegister_WrongMethod(t *testing.T) {
 	s := New(Config{Port: 8080}, NewMockDB())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/register", nil)
@@ -142,8 +142,8 @@ func TestHandleAgentRegister_MethodNotAllowed(t *testing.T) {
 
 	s.Router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("status: got %d, want 405", rec.Code)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status: got %d, want 404", rec.Code)
 	}
 }
 

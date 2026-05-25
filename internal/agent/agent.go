@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -61,6 +64,8 @@ type Agent struct {
 
 	Platform platform.Info
 	Identity Identity
+
+	BinaryHash string
 }
 
 type RetryConfig struct {
@@ -157,6 +162,13 @@ func (a *Agent) Start() error {
 		"version", version.Full(),
 	)
 
+	if err := a.computeBinaryHash(); err != nil {
+		a.Logger.Warn("failed to compute binary hash", "error", err)
+	}
+	if a.BinaryHash != "" {
+		a.commonHeaders["X-Agent-Binary-Hash"] = a.BinaryHash
+	}
+
 	if a.Identity.ID == "" {
 		if err := a.Register(ctx); err != nil {
 			return fmt.Errorf("registration failed: %w", err)
@@ -219,4 +231,28 @@ func (a *Agent) setHeaders(req *http.Request) {
 		req.Header.Set("X-Agent-ID", a.Identity.ID)
 		req.Header.Set("X-Agent-Secret", a.Identity.Secret)
 	}
+}
+
+func (a *Agent) computeBinaryHash() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve executable: %w", err)
+	}
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return fmt.Errorf("resolve symlinks: %w", err)
+	}
+	f, err := os.Open(exe)
+	if err != nil {
+		return fmt.Errorf("open executable: %w", err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("hash executable: %w", err)
+	}
+	a.BinaryHash = hex.EncodeToString(h.Sum(nil))
+	a.Logger.Info("binary hash computed", "sha256", a.BinaryHash)
+	return nil
 }

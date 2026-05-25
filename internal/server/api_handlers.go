@@ -33,6 +33,8 @@ type agentOverview struct {
 	MetricsUpdatedAt *string  `json:"metrics_updated_at"`
 	Version          string   `json:"version"`
 	Commit           string   `json:"commit"`
+	BinaryHash       string   `json:"binary_hash,omitempty"`
+	UpdateAvailable  bool     `json:"update_available"`
 }
 
 var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -178,6 +180,12 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		}
 		a.Version = row.Version
 		a.Commit = row.Commit
+		a.BinaryHash = row.BinaryHash
+
+		if s.Releases != nil && a.BinaryHash != "" {
+			expected := s.Releases.expectedHash(a.OS, a.Arch)
+			a.UpdateAvailable = expected != "" && expected != a.BinaryHash
+		}
 
 		result = append(result, a)
 	}

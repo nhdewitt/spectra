@@ -218,16 +218,17 @@ func (q *Queries) TouchLastSeen(ctx context.Context, id pgtype.UUID) error {
 
 const touchLastSeenIfStale = `-- name: TouchLastSeenIfStale :exec
 UPDATE agents
-SET last_seen = NOW(), ip_address = $2, version = $3, commit = $4
+SET last_seen = NOW(), ip_address = $2, version = $3, commit = $4, binary_hash = $5
 WHERE id = $1
     AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '60 seconds')
 `
 
 type TouchLastSeenIfStaleParams struct {
-	ID        pgtype.UUID `json:"id"`
-	IpAddress pgtype.Text `json:"ip_address"`
-	Version   string      `json:"version"`
-	Commit    string      `json:"commit"`
+	ID         pgtype.UUID `json:"id"`
+	IpAddress  pgtype.Text `json:"ip_address"`
+	Version    string      `json:"version"`
+	Commit     string      `json:"commit"`
+	BinaryHash string      `json:"binary_hash"`
 }
 
 func (q *Queries) TouchLastSeenIfStale(ctx context.Context, arg TouchLastSeenIfStaleParams) error {
@@ -236,6 +237,7 @@ func (q *Queries) TouchLastSeenIfStale(ctx context.Context, arg TouchLastSeenIfS
 		arg.IpAddress,
 		arg.Version,
 		arg.Commit,
+		arg.BinaryHash,
 	)
 	return err
 }

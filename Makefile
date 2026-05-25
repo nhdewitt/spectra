@@ -10,7 +10,7 @@ DEPLOY_HOST ?=
 DEPLOY_USER ?= root
 DEPLOY_PATH ?= /opt/spectra
 
-VERSION	?= $(shell git describe --tags --exact-match 2>/dev/null || echo "0.8.0-dev")
+VERSION	?= $(shell git describe --tags 2>/dev/null || echo "0.0.0-$(shell git rev-list --count HEAD).$(shell git rev-parse --short HEAD)")
 COMMIT	?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE	?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -94,7 +94,7 @@ deploy-releases:
 	scp $(RELEASE_DIR)/spectra-agent-* $(RELEASE_DIR)/checksums.sha256 $(DEPLOY_USER)@$(DEPLOY_HOST):$(DEPLOY_PATH)/releases/
 	@echo "  Releases deployed."
 
-deploy: deploy-server deploy-releases
+deploy: deploy-releases deploy-server
 	@echo "  Full deploy complete."
 
 clean:

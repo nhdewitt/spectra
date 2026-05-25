@@ -43,6 +43,8 @@ export interface OverviewAgent {
     last_seen: string | null;
     version: string;
     commit?: string;
+    binary_hash?: string;
+    update_available?: boolean;
     cpu_usage: number | null;
     load_normalized: number | null;
     ram_percent: number | null;

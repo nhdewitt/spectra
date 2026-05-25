@@ -162,7 +162,6 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                     overflowY: "auto",
                 }}
             >
-                {/* Header */}
                 <div
                     style={{
                         display: "flex",
@@ -211,7 +210,6 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                     </div>
                 )}
 
-                {/* Platform selection */}
                 {!loading && !result && (
                     <div>
                         <div
@@ -272,10 +270,8 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                     </div>
                 )}
 
-                {/* Result */}
                 {result && (
                     <div>
-                        {/* Token */}
                         <div style={{ marginBottom: 16 }}>
                             <div
                                 style={{
@@ -302,7 +298,6 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                             </div>
                         </div>
 
-                        {/* Download */}
                         {result.download_url && (
                             <div style={{ marginBottom: 16 }}>
                                 <div
@@ -352,7 +347,6 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                             </div>
                         )}
 
-                        {/* Install instructions */}
                         <div style={{ marginBottom: 16 }}>
                             <div
                                 style={{
@@ -439,7 +433,6 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                             </pre>
                         </div>
 
-                        {/* Actions */}
                         <div
                             style={{
                                 display: "flex",
@@ -695,7 +688,6 @@ function AgentConfigPanel({
             .finally(() => setLoading(false));
     }, [agent.id, isAdmin]);
 
-
     const saveList = useCallback(
         async (key: "ignored_filesystems" | "ignored_interfaces", items: string[]) => {
             setConfig((prev) => ({ ...prev, [key]: items }));
@@ -781,6 +773,19 @@ function AgentConfigPanel({
                         }}
                     />
 
+                    <LabelEditor
+                        labels={config.labels ?? {}}
+                        onSet={(key, value) => {
+                            const next = { ...(config.labels ?? {}), [key]: value };
+                            saveLabels(next);
+                        }}
+                        onRemove={(key) => {
+                            const next = { ...(config.labels ?? {}) };
+                            delete next[key];
+                            saveLabels(next);
+                        }}
+                    />
+
                     <div style={{ marginBottom: 16 }}>
                         <div
                             style={{
@@ -794,18 +799,6 @@ function AgentConfigPanel({
                         >
                             Log Level
                         </div>
-                        <LabelEditor
-                            labels={config.labels ?? {}}
-                            onSet={(key, value) => {
-                                const next = { ...(config.labels ?? {}), [key]: value };
-                                saveLabels(next);
-                            }}
-                            onRemove={(key) => {
-                                const next = { ...(config.labels ?? {}) };
-                                delete next[key];
-                                saveLabels(next);
-                            }}
-                        />
                         <select
                             value={config.log_level ?? "info"}
                             onChange={async (e) => {
@@ -1089,13 +1082,11 @@ export function AgentManagement({ user }: AgentManagementProps) {
     const [search, setSearch] = useState("");
     const [showProvision, setShowProvision] = useState(false);
 
-    const [serverVersion, setServerVersion] = useState<{ version: string; commit: string; } | null>(null);
     const [updateSelected, setUpdateSelected] = useState<Set<string>>(new Set());
     const [updating, setUpdating] = useState(false);
     const [updateResult, setUpdateResult] = useState<{ queued: number; skipped: number; failed: number } | null>(null);
     const [updateStatuses, setUpdateStatuses] = useState<Map<string, UpdateStatus>>(new Map());
     const updateStartedAt = useRef<number>(0);
-    const previousVersions = useRef<Map<string, { version: string; commit: string }>>(new Map());
 
     const isAdmin = user.role === "admin" || user.role === "superadmin";
 
@@ -1115,6 +1106,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
             .finally(() => setLoading(false));
     }, []);
 
+    // Normal polling at 30s, fast polling at 3s when updates are pending
     useEffect(() => {
         setLoading(true);
         loadAgents();
@@ -1123,16 +1115,9 @@ export function AgentManagement({ user }: AgentManagementProps) {
         return () => clearInterval(id);
     }, [loadAgents, hasPendingUpdates]);
 
-    // Fetch server version for comparison
+    // Track update progress by watching update_available changes
     useEffect(() => {
-        if (!isAdmin) return;
-        api.version()
-            .then((v) => setServerVersion({ version: v.version, commit: v.commit }))
-            .catch(() => {}); // non-critical
-    }, [isAdmin]);
-
-    useEffect(() => {
-        if (!serverVersion || updateStatuses.size === 0) return;
+        if (updateStatuses.size === 0) return;
 
         const elapsed = Date.now() - updateStartedAt.current;
 
@@ -1146,16 +1131,14 @@ export function AgentManagement({ user }: AgentManagementProps) {
                 const agent = agents.find((a) => a.id === agentId);
                 if (!agent) continue;
 
-                const isNowCurrent =
-                    agent.version === serverVersion.version &&
-                    (!serverVersion.commit || agent.commit === serverVersion.commit);
-
-                if (isNowCurrent) {
+                // Agent's binary now matches the release — update complete
+                if (!agent.update_available) {
                     next.set(agentId, "updated");
                     changed = true;
                     continue;
                 }
 
+                // Check if agent went offline (restarting)
                 const lastSeen = agent.last_seen ? new Date(agent.last_seen).getTime() : 0;
                 const isOffline = (Date.now() - lastSeen) > 15_000;
 
@@ -1167,6 +1150,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     changed = true;
                 }
 
+                // Timeout
                 if (elapsed > UPDATE_TIMEOUT_MS) {
                     next.set(agentId, "failed");
                     changed = true;
@@ -1174,9 +1158,10 @@ export function AgentManagement({ user }: AgentManagementProps) {
             }
 
             return changed ? next : prev;
-        })
-    }, [agents, serverVersion, updateStatuses]);
+        });
+    }, [agents, updateStatuses]);
 
+    // Clear terminal statuses after 10s
     useEffect(() => {
         if (updateStatuses.size === 0) return;
 
@@ -1185,7 +1170,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
         );
         if (!hasTerminal) return;
 
-        setTimeout(() => {
+        const timeout = setTimeout(() => {
             setUpdateStatuses((prev) => {
                 const next = new Map<string, UpdateStatus>();
                 for (const [id, status] of prev) {
@@ -1194,9 +1179,11 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     }
                 }
                 return next;
-            })
+            });
         }, 10_000);
-    })
+
+        return () => clearTimeout(timeout);
+    }, [updateStatuses]);
 
     useEffect(() => {
         if (!selectedId) return;
@@ -1219,20 +1206,14 @@ export function AgentManagement({ user }: AgentManagementProps) {
     }, [agents, search]);
 
     const outdatedIds = useMemo(() => {
-        if (!serverVersion) return new Set<string>();
         return new Set(
             agents
-                .filter((a) => {
-                    if (!a.version) return true;
-                    if (a.version !== serverVersion.version) return true;
-                    if (serverVersion.commit && a.commit !== serverVersion.commit) return true;
-                    return false;
-                })
+                .filter((a) => a.update_available)
                 .map((a) => a.id)
         );
-    }, [agents, serverVersion]);
+    }, [agents]);
 
-    // Clean up selections when agents or server version change
+    // Clean up selections when outdated set changes
     useEffect(() => {
         setUpdateSelected((prev) => {
             const next = new Set<string>();
@@ -1271,16 +1252,10 @@ export function AgentManagement({ user }: AgentManagementProps) {
             const res = await api.pushUpdate(ids);
             setUpdateResult(res);
 
-            const snapshots = new Map<string, { version: string; commit: string }>();
             const statuses = new Map<string, UpdateStatus>();
             for (const id of ids) {
-                const agent = agents.find((a) => a.id === id);
-                if (agent) {
-                    snapshots.set(id, { version: agent.version || "", commit: agent.commit || "" });
-                    statuses.set(id, "queued");
-                }
+                statuses.set(id, "queued");
             }
-            previousVersions.current = snapshots;
             updateStartedAt.current = Date.now();
             setUpdateStatuses(statuses);
             setUpdateSelected(new Set());
@@ -1289,7 +1264,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
         } finally {
             setUpdating(false);
         }
-    }, [updateSelected, agents]);
+    }, [updateSelected]);
 
     const { paged, page, setPage, totalPages, total } = usePagination(filtered, 20);
 
@@ -1384,10 +1359,10 @@ export function AgentManagement({ user }: AgentManagementProps) {
                             }}
                         >
                             {updating
-                                ? "Updating..."
+                                ? "Pushing..."
                                 : hasPendingUpdates
-                                    ? "Updating in progress..."
-                                    : `Update ${updateSelected.size !== 1 ? updateSelected.size : ""} Agent${updateSelected.size !== 1 ? "s" : ""}`}
+                                    ? "Update in progress..."
+                                    : `Update ${updateSelected.size} Agent${updateSelected.size !== 1 ? "s" : ""}`}
                         </button>
                     </>
                 )}
@@ -1415,14 +1390,6 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     }}
                 >
                     {agents.length} agent{agents.length === 1 ? "" : "s"} registered
-                    {serverVersion && (
-                        <span style={{ marginLeft: 8 }}>
-                            · server {serverVersion.version}
-                            {serverVersion.commit && (
-                                <span style={{ color: themeVars.textDim }}> ({serverVersion.commit.slice(0, 7)})</span>
-                            )}
-                        </span>
-                    )}
                 </span>
             </div>
 
@@ -1645,7 +1612,6 @@ export function AgentManagement({ user }: AgentManagementProps) {
                             overflowY: "auto",
                         }}
                     >
-                        {/* Close button */}
                         <div
                             style={{
                                 display: "flex",
@@ -1687,11 +1653,10 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     </div>
                 </div>
             )}
-            
+
             {showProvision && (
                 <ProvisionModal onClose={() => setShowProvision(false)} />
             )}
-
         </div>
     );
 }

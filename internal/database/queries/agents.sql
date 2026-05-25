@@ -39,7 +39,7 @@ UPDATE agents SET secret_sha256 = $2 WHERE id = $1;
 
 -- name: TouchLastSeenIfStale :exec
 UPDATE agents
-SET last_seen = NOW(), ip_address = @ip_address, version = @version, commit = @commit
+SET last_seen = NOW(), ip_address = @ip_address, version = @version, commit = @commit, binary_hash = @binary_hash
 WHERE id = $1
     AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '60 seconds');
 

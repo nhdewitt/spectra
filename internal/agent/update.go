@@ -16,7 +16,7 @@ import (
 )
 
 func (a *Agent) selfUpdate(ctx context.Context, req protocol.UpdateAgentRequest) (*protocol.UpdateAgentResult, error) {
-	if req.Version == version.Version && req.Commit == version.Commit {
+	if a.BinaryHash != "" && req.SHA256 == a.BinaryHash {
 		return &protocol.UpdateAgentResult{
 			PreviousVersion: version.Version,
 			NewVersion:      req.Version,

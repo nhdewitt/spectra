@@ -24,6 +24,7 @@ type Agent struct {
 	IpAddress    pgtype.Text        `json:"ip_address"`
 	Version      string             `json:"version"`
 	Commit       string             `json:"commit"`
+	BinaryHash   string             `json:"binary_hash"`
 }
 
 type AgentConfig struct {

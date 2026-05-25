@@ -205,3 +205,10 @@ func (rm *releaseManifest) get(filename string) (sha256 string, ok bool) {
 	sha256, ok = rm.checksums[filename]
 	return
 }
+
+func (rm *releaseManifest) expectedHash(goos, arch string) string {
+	filename := agentBinaryFilename(goos, arch)
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+	return rm.checksums[filename]
+}
