@@ -295,6 +295,23 @@ func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) 
 	return err
 }
 
+const upsertSuperadmin = `-- name: UpsertSuperadmin :exec
+INSERT INTO users (username, password, role)
+VALUES ($1, $2, 'superadmin')
+ON CONFLICT (username) DO UPDATE
+SET password = $2, role = 'superadmin', updated_at = NOW()
+`
+
+type UpsertSuperadminParams struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (q *Queries) UpsertSuperadmin(ctx context.Context, arg UpsertSuperadminParams) error {
+	_, err := q.db.Exec(ctx, upsertSuperadmin, arg.Username, arg.Password)
+	return err
+}
+
 const userCount = `-- name: UserCount :one
 SELECT COUNT(*) FROM users
 `

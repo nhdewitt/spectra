@@ -5,6 +5,8 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -35,6 +37,8 @@ type Config struct {
 	ConfigPath        string
 	LogFile           string
 	LogLevel          string
+	CACert            string
+	TLSSkipVerify     bool
 }
 
 // Agent is the main application controller
@@ -102,10 +106,6 @@ func (rc RetryConfig) Delay(attempt int) time.Duration {
 
 // New creates a configured Agent instance
 func New(cfg Config) *Agent {
-	client := &http.Client{
-		Timeout: 45 * time.Second,
-	}
-
 	if cfg.IdentityPath == "" {
 		cfg.IdentityPath = identityPath()
 	}
@@ -119,6 +119,13 @@ func New(cfg Config) *Agent {
 	}
 
 	logger := logging.New(logCfg)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsConfigFromAgentConfig(cfg, logger)
+
+	client := &http.Client{
+		Timeout:   45 * time.Second,
+		Transport: transport,
+	}
 
 	id, err := loadIdentity(cfg.IdentityPath)
 	if err != nil {
@@ -255,4 +262,38 @@ func (a *Agent) computeBinaryHash() error {
 	a.BinaryHash = hex.EncodeToString(h.Sum(nil))
 	a.Logger.Info("binary hash computed", "sha256", a.BinaryHash)
 	return nil
+}
+
+func tlsConfigFromAgentConfig(cfg Config, logger *logging.Logger) *tls.Config {
+	if cfg.TLSSkipVerify {
+		logger.Warn("TLS verification disabled")
+		return &tls.Config{
+			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
+		}
+	}
+
+	if cfg.CACert == "" {
+		return &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
+	}
+
+	caCert, err := os.ReadFile(cfg.CACert)
+	if err != nil {
+		logger.Error("failed to read CA cert, agent cannot connect to TLS server", "path", cfg.CACert, "error", err)
+		os.Exit(1)
+	}
+
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caCert) {
+		logger.Error("CA cert does not contain valid PEM certificates", "path", cfg.CACert)
+		os.Exit(1)
+	}
+
+	logger.Info("TLS CA loaded", "path", cfg.CACert)
+	return &tls.Config{
+		RootCAs:    pool,
+		MinVersion: tls.VersionTLS12,
+	}
 }

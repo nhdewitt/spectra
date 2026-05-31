@@ -1,7 +1,11 @@
 # Spectra Makefile
 # Usage:
-#	make release		- Cross-compile agent binaries + checksums
-#	make clean			- Remove release artifacts
+#	make release			- Cross-compile agent binaries + checksums
+#	make build-server		- Build frontend assets and server binary
+#	make deploy-releases	- Copy agent release binaries/checksums to server
+#	make deploy-server		- Deploy server binary and restart spectra-server
+#	make deploy				- Deploy releases, build server, deploy server
+#	make clean				- Remove release artifacts
 
 AGENT_SRC = ./cmd/agent
 RELEASE_DIR = releases
@@ -30,12 +34,16 @@ PLATFORMS = \
 
 DARWIN_CGO_PLATFORMS = darwin/amd64 darwin/arm64
 
-.PHONY: release clean
+.PHONY: release build-server deploy-server deploy-releases deploy clean
 
 build-server:
 	@mkdir -p $(RELEASE_DIR)
 	cd web && npm run build
 	go build -ldflags "$(LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-server ./cmd/server
+
+build-setup:
+	@mkdir -p $(RELEASE_DIR)
+	go build -ldflags "$(LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-setup ./cmd/setup
 
 deploy-server:
 	@test -f $(RELEASE_DIR)/spectra-server || { echo "No server binary. Run 'make build-server first.'"; exit 1; }
@@ -94,7 +102,7 @@ deploy-releases:
 	scp $(RELEASE_DIR)/spectra-agent-* $(RELEASE_DIR)/checksums.sha256 $(DEPLOY_USER)@$(DEPLOY_HOST):$(DEPLOY_PATH)/releases/
 	@echo "  Releases deployed."
 
-deploy: deploy-releases deploy-server
+deploy: release deploy-releases build-server deploy-server
 	@echo "  Full deploy complete."
 
 clean:

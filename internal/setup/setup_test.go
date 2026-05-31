@@ -267,3 +267,117 @@ func TestPromptPort_Zero(t *testing.T) {
 		t.Errorf("PromptPort = %d, want 8080", got)
 	}
 }
+
+func TestDBConfig_DSN(t *testing.T) {
+	db := &DBConfig{
+		Host:    "localhost",
+		Port:    "5432",
+		Name:    "spectra",
+		User:    "spectra",
+		Pass:    "secret",
+		SSLMode: "disable",
+	}
+
+	dsn := db.DSN()
+	if !strings.HasPrefix(dsn, "postgres://") {
+		t.Errorf("DSN missing scheme: %s", dsn)
+	}
+	if !strings.Contains(dsn, "localhost:5432") {
+		t.Errorf("DSN missing host:port: %s", dsn)
+	}
+	if !strings.Contains(dsn, "sslmode=disable") {
+		t.Errorf("DSN missing sslmode: %s", dsn)
+	}
+}
+
+func TestDBConfig_DSN_SpecialPassword(t *testing.T) {
+	db := &DBConfig{
+		Host:    "localhost",
+		Port:    "5432",
+		Name:    "spectra",
+		User:    "spectra",
+		Pass:    "p@ss:w/rd",
+		SSLMode: "disable",
+	}
+
+	dsn := db.DSN()
+	// Special chars should be escaped
+	if strings.Contains(dsn, "p@ss:w/rd@") {
+		t.Errorf("password not properly escaped: %s", dsn)
+	}
+}
+
+func TestPromptYesNo(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		defaultYes bool
+		want       bool
+	}{
+		{"yes", "yes\n", false, true},
+		{"no", "no\n", true, false},
+		{"default yes", "\n", true, true},
+		{"default no", "\n", false, false},
+		{"invalid then yes", "maybe\nyes\n", false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := bufio.NewReader(strings.NewReader(tt.input))
+			got := PromptYesNo(reader, "Test", tt.defaultYes)
+			if got != tt.want {
+				t.Errorf("PromptYesNo = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectExternalURL(t *testing.T) {
+	url := detectExternalURL(8080, false)
+	if !strings.HasPrefix(url, "http://") {
+		t.Errorf("expected http:// prefix, got %s", url)
+	}
+	if !strings.HasSuffix(url, ":8080") {
+		t.Errorf("expected :8080 suffix, got %s", url)
+	}
+}
+
+func TestDetectExternalURL_TLS(t *testing.T) {
+	url := detectExternalURL(8080, true)
+	if !strings.HasPrefix(url, "https://") {
+		t.Errorf("expected https:// prefix, got %s", url)
+	}
+}
+
+func TestSaveAndLoadConfig_WithTLS(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/server.json"
+
+	cfg := &ServerConfig{
+		DatabaseURL: "postgres://user:pass@localhost:5432/spectra",
+		ListenPort:  8080,
+		ExternalURL: "https://10.10.107.1:8080",
+		TLSCert:     "/etc/spectra/tls/server.crt",
+		TLSKey:      "/etc/spectra/tls/server.key",
+		TLSCA:       "/etc/spectra/tls/ca.crt",
+	}
+
+	if err := SaveConfig(cfg, path); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	loaded, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	if loaded.TLSCert != cfg.TLSCert {
+		t.Errorf("TLSCert = %s, want %s", loaded.TLSCert, cfg.TLSCert)
+	}
+	if loaded.TLSKey != cfg.TLSKey {
+		t.Errorf("TLSKey = %s, want %s", loaded.TLSKey, cfg.TLSKey)
+	}
+	if loaded.TLSCA != cfg.TLSCA {
+		t.Errorf("TLSCA = %s, want %s", loaded.TLSCA, cfg.TLSCA)
+	}
+}

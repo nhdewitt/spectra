@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/nhdewitt/spectra/internal/database"
 	"go.yaml.in/yaml/v3"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // SetupFile is the YAML structure for non-interactive setup.
@@ -20,6 +18,7 @@ type SetupFile struct {
 		User     string `yaml:"user"`
 		Password string `yaml:"password"`
 		SSL      string `yaml:"ssl"`
+		Create   bool   `yaml:"create"` // auto-create user and database
 	} `yaml:"database"`
 	Admin struct {
 		Username string `yaml:"username"`
@@ -30,6 +29,20 @@ type SetupFile struct {
 		Migrations  string `yaml:"migrations"`
 		ExternalURL string `yaml:"external_url"`
 	} `yaml:"server"`
+	TLS struct {
+		Enabled bool     `yaml:"enabled"`
+		SANs    []string `yaml:"sans"`
+	} `yaml:"tls"`
+	SkipPrerequisites bool `yaml:"skip_prerequisites"`
+}
+
+var validSSLModes = map[string]bool{
+	"disable":     true,
+	"allow":       true,
+	"prefer":      true,
+	"require":     true,
+	"verify-ca":   true,
+	"verify-full": true,
 }
 
 // LoadSetupFile reads and validates a YAML setup file.
@@ -54,7 +67,7 @@ func LoadSetupFile(path string) (*SetupFile, error) {
 		sf.Database.Name = "spectra"
 	}
 	if sf.Database.User == "" {
-		sf.Database.User = "postgres"
+		sf.Database.User = "spectra"
 	}
 	if sf.Database.SSL == "" {
 		sf.Database.SSL = "disable"
@@ -63,7 +76,7 @@ func LoadSetupFile(path string) (*SetupFile, error) {
 		sf.Server.Port = 8080
 	}
 	if sf.Server.Migrations == "" {
-		sf.Server.Migrations = "internal/database/migrations"
+		sf.Server.Migrations = DefaultMigrationsPath
 	}
 
 	if sf.Database.Password == "" {
@@ -78,8 +91,21 @@ func LoadSetupFile(path string) (*SetupFile, error) {
 	if len(sf.Admin.Password) < 8 {
 		return nil, fmt.Errorf("admin.password must be at least 8 characters")
 	}
+	dbPort, err := strconv.Atoi(sf.Database.Port)
+	if err != nil || dbPort < 1 || dbPort > 65535 {
+		return nil, fmt.Errorf("database.port must be 1-65535")
+	}
 	if sf.Server.Port < 1 || sf.Server.Port > 65535 {
 		return nil, fmt.Errorf("server.port must be 1-65535")
+	}
+	if !validIdent(sf.Database.Name) {
+		return nil, fmt.Errorf("database.name contains invalid characters")
+	}
+	if !validIdent(sf.Database.User) {
+		return nil, fmt.Errorf("database.user contains invalid characters")
+	}
+	if !validSSLModes[sf.Database.SSL] {
+		return nil, fmt.Errorf("database.ssl must be one of: disable, allow, prefer, require, verify-ca, verify-full")
 	}
 
 	return &sf, nil
@@ -87,94 +113,35 @@ func LoadSetupFile(path string) (*SetupFile, error) {
 
 // RunNonInteractive performs the full setup from a SetupFile without prompts.
 func RunNonInteractive(ctx context.Context, sf *SetupFile, configPath string) error {
-	dbURL := buildDSN(
-		sf.Database.Host,
-		sf.Database.Port,
-		sf.Database.Name,
-		sf.Database.User,
-		sf.Database.Password,
-		sf.Database.SSL,
-	)
-
-	fmt.Print("Testing database connection... ")
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		fmt.Println("FAILED")
-		return fmt.Errorf("database connection failed: %w", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		fmt.Println("FAILED")
-		pool.Close()
-		return fmt.Errorf("database ping failed: %w", err)
-	}
-	fmt.Println("OK")
-	defer pool.Close()
-
-	var migrated bool
-	err = pool.QueryRow(ctx,
-		"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users')").Scan(&migrated)
-	if err != nil {
-		migrated = false
+	sc := &SetupConfig{
+		DBConfig: &DBConfig{
+			Host:    sf.Database.Host,
+			Port:    sf.Database.Port,
+			Name:    sf.Database.Name,
+			User:    sf.Database.User,
+			Pass:    sf.Database.Password,
+			SSLMode: sf.Database.SSL,
+		},
+		CreateDB:      sf.Database.Create,
+		MigrationsDir: sf.Server.Migrations,
+		Admin: &AdminCredentials{
+			Username: sf.Admin.Username,
+			Password: sf.Admin.Password,
+		},
+		Port:        sf.Server.Port,
+		ExternalURL: sf.Server.ExternalURL,
+		SkipPrereqs: sf.SkipPrerequisites,
 	}
 
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	if !migrated {
-		fmt.Print("Running migrations... ")
-		applied, err := RunMigrationsTx(ctx, tx, sf.Server.Migrations)
-		if err != nil {
-			fmt.Println("FAILED")
-			return fmt.Errorf("migration failed: %w", err)
+	if sf.TLS.Enabled {
+		sc.TLS = &TLSSetupConfig{
+			SANs: sf.TLS.SANs,
 		}
-		fmt.Printf("OK (%d applied)\n", applied)
-	} else {
-		fmt.Println("Database already migrated, skipping.")
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(sf.Admin.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("hashing password: %w", err)
+	if sc.ExternalURL == "" {
+		sc.ExternalURL = detectExternalURL(sc.Port, sc.TLS != nil)
 	}
 
-	fmt.Print("Creating superadmin user... ")
-	queries := database.New(tx)
-	if err := queries.CreateUser(ctx, database.CreateUserParams{
-		Username: sf.Admin.Username,
-		Password: string(hash),
-		Role:     "superadmin",
-	}); err != nil {
-		fmt.Println("FAILED")
-		return fmt.Errorf("creating superadmin user: %w", err)
-	}
-	fmt.Println("OK")
-
-	externalURL := sf.Server.ExternalURL
-	if externalURL == "" {
-		externalURL = detectExternalURL(sf.Server.Port)
-	}
-
-	cfg := &ServerConfig{
-		DatabaseURL: dbURL,
-		ListenPort:  sf.Server.Port,
-		ExternalURL: externalURL,
-	}
-
-	fmt.Print("Saving configuration... ")
-	if err := SaveConfig(cfg, configPath); err != nil {
-		fmt.Println("FAILED")
-		return fmt.Errorf("saving config: %w", err)
-	}
-	fmt.Println("OK")
-
-	if err := tx.Commit(ctx); err != nil {
-		os.Remove(configPath)
-		return fmt.Errorf("commit failed: %w", err)
-	}
-
-	fmt.Printf("\nConfiguration saved to %s\n", configPath)
-	return nil
+	return RunSetup(ctx, sc, configPath)
 }

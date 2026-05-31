@@ -949,3 +949,9 @@ func (m *MockDB) ListUsersWithLastLogin(_ context.Context) ([]database.ListUsers
 	}
 	return m.UserRowsWithLastLogin, nil
 }
+
+func (m *MockDB) UpsertSuperadmin(_ context.Context, _ database.UpsertSuperadminParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}

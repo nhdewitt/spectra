@@ -12,10 +12,12 @@ import (
 // fileConfig represents the JSON config file on disk.
 // After registration, Token is cleared and AgentID/Secret are written.
 type fileConfig struct {
-	Server  string `json:"server"`
-	Token   string `json:"token,omitempty"`
-	AgentID string `json:"agent_id,omitempty"`
-	Secret  string `json:"secret,omitempty"`
+	Server        string `json:"server"`
+	Token         string `json:"token,omitempty"`
+	AgentID       string `json:"agent_id,omitempty"`
+	Secret        string `json:"secret,omitempty"`
+	CACert        string `json:"ca_cert,omitempty"`
+	TLSSkipVerify bool   `json:"tls_skip_verify,omitempty"`
 }
 
 // DefaultConfigPath returns the OS-appropriate config file location.
@@ -60,6 +62,9 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.RegistrationToken = fc.Token
 	}
 
+	cfg.CACert = fc.CACert
+	cfg.TLSSkipVerify = fc.TLSSkipVerify
+
 	return cfg, nil
 }
 
@@ -83,11 +88,16 @@ func ConfigFromEnv() *Config {
 // the config file after registration and clears the one-time
 // token.
 func SaveCredentials(path, server, agentID, secret string) error {
-	fc := fileConfig{
-		Server:  server,
-		AgentID: agentID,
-		Secret:  secret,
+	var fc fileConfig
+
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &fc)
 	}
+
+	fc.Server = server
+	fc.Token = ""
+	fc.AgentID = agentID
+	fc.Secret = secret
 
 	data, err := json.MarshalIndent(fc, "", "  ")
 	if err != nil {

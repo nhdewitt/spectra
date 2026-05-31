@@ -264,6 +264,7 @@ export interface PlatformInfo {
 export interface AgentConfig {
     server: string;
     token: string;
+    ca_cert?: string;
 }
 
 export interface InstallInstructions {
@@ -277,6 +278,7 @@ export interface ProvisionResponse {
     expires_at: string;
     platform: string;
     download_url: string;
+    ca_cert?: string;
     config: AgentConfig;
     install: InstallInstructions;
 }

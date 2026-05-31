@@ -2,6 +2,12 @@
 INSERT INTO users (username, password, role)
 VALUES (@username, @password, @role);
 
+-- name: UpsertSuperadmin :exec
+INSERT INTO users (username, password, role)
+VALUES (@username, @password, 'superadmin')
+ON CONFLICT (username) DO UPDATE
+SET password = @password, role = 'superadmin', updated_at = NOW();
+
 -- name: GetUserByUsername :one
 SELECT id, username, password, role, created_at
 FROM users

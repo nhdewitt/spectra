@@ -41,6 +41,9 @@ func main() {
 		ReleasesDir:    "releases",
 		MaxConnections: 1024,
 		ExternalURL:    cfg.ExternalURL,
+		TLSCert:        cfg.TLSCert,
+		TLSKey:         cfg.TLSKey,
+		TLSCA:          cfg.TLSCA,
 	}
 
 	srv := server.New(srvCfg, queries)

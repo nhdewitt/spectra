@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -23,14 +24,17 @@ type provisionResponse struct {
 	ExpiresAt   string              `json:"expires_at"`
 	Platform    string              `json:"platform"`
 	DownloadURL string              `json:"download_url"`
+	CACert      string              `json:"ca_cert,omitempty"`
 	Config      agentConfig         `json:"config"`
 	Install     installInstructions `json:"install"`
 }
 
 type agentConfig struct {
-	Server   string `json:"server"`
-	Token    string `json:"token"`
-	Interval int    `json:"interval"`
+	Server        string `json:"server"`
+	Token         string `json:"token"`
+	Interval      int    `json:"interval"`
+	CACert        string `json:"ca_cert,omitempty"`
+	TLSSkipVerify bool   `json:"tls_skip_verify,omitempty"`
 }
 
 // Handlers
@@ -108,6 +112,21 @@ func (s *Server) handleProvision(w http.ResponseWriter, r *http.Request) {
 		serverURL = fmt.Sprintf("%s://%s", scheme, r.Host)
 	}
 
+	// Load CA cert if TLS is configured
+	var caCertPEM string
+	if s.Config.TLSCA != "" {
+		data, err := os.ReadFile(s.Config.TLSCA)
+		if err != nil {
+			s.Logger.Error("failed to read TLS CA", "path", s.Config.TLSCA, "error", err)
+			http.Error(w, "TLS CA is configured but could not be read", http.StatusInternalServerError)
+			return
+		}
+		caCertPEM = string(data)
+	}
+	if !strings.HasSuffix(caCertPEM, "\n") {
+		caCertPEM += "\n"
+	}
+
 	// If binary exists, build download URL
 	downloadURL := ""
 	if s.Releases != nil {
@@ -119,18 +138,25 @@ func (s *Server) handleProvision(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	caCertPath := ""
+	if caCertPEM != "" {
+		caCertPath = agentCACertPath(matched.OS)
+	}
+
 	config := agentConfig{
 		Server: serverURL,
 		Token:  token,
+		CACert: caCertPath,
 	}
 
-	install := generateInstallInstructions(matched, serverURL, token)
+	install := generateInstallInstructions(matched, serverURL, token, caCertPEM)
 
 	resp := provisionResponse{
 		Token:       token,
 		ExpiresAt:   time.Now().Add(24 * time.Hour).Format(time.RFC3339),
 		Platform:    req.Platform,
 		DownloadURL: downloadURL,
+		CACert:      caCertPEM,
 		Config:      config,
 		Install:     install,
 	}
@@ -193,5 +219,18 @@ func (s *Server) handleDownloadConfig(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := w.Write(data); err != nil {
 		s.Logger.Warn("failed to write config response", "error", err)
+	}
+}
+
+func agentCACertPath(os string) string {
+	switch os {
+	case "linux":
+		return "/etc/spectra/ca.crt"
+	case "darwin", "freebsd":
+		return "/usr/local/etc/spectra/ca.crt"
+	case "windows":
+		return `C:\Spectra\ca.crt`
+	default:
+		return ""
 	}
 }

@@ -2,6 +2,7 @@ package setup
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -10,24 +11,68 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nhdewitt/spectra/internal/fileutil"
 	"golang.org/x/term"
 )
 
-const DefaultConfigPath = "/etc/spectra/server.json"
+const (
+	DefaultConfigPath     = "/etc/spectra/server.json"
+	DefaultMigrationsPath = "internal/database/migrations"
+)
 
 // ServerConfig is the persistent server configuration.
 type ServerConfig struct {
 	DatabaseURL string `json:"database_url"`
 	ListenPort  int    `json:"listen_port"`
 	ExternalURL string `json:"external_url,omitempty"`
+	TLSCert     string `json:"tls_cert,omitempty"`
+	TLSKey      string `json:"tls_key,omitempty"`
+	TLSCA       string `json:"tls_ca,omitempty"`
 }
 
 // AdminCredentials holds the admin user info collected during setup.
 // The password is bcrypt-hashed.
 type AdminCredentials struct {
-	Username     string
-	PasswordHash string
+	Username string
+	Password string
+}
+
+// DBConfig holds the database connection details.
+type DBConfig struct {
+	Host    string
+	Port    string
+	Name    string
+	User    string
+	Pass    string
+	SSLMode string
+}
+
+// DSN returns a PostgreSQL connection string.
+func (d *DBConfig) DSN() string {
+	return buildDSN(d.Host, d.Port, d.Name, d.User, d.Pass, d.SSLMode)
+}
+
+// TLSSetupConfig holds TLS setup parameters.
+// Cert/Key/CA are pre-generated paths (from interactive prompting).
+// If empty, RunSetup generates them from SANs.
+type TLSSetupConfig struct {
+	SANs []string
+	Cert string
+	Key  string
+	CA   string
+}
+
+// SetupConfig is the shared configuration for both interactive and unattended setup.
+type SetupConfig struct {
+	DBConfig      *DBConfig
+	CreateDB      bool
+	MigrationsDir string
+	Admin         *AdminCredentials
+	Port          int
+	TLS           *TLSSetupConfig // nil if TLS disabled
+	ExternalURL   string
+	SkipPrereqs   bool
 }
 
 // ConfigExists confirms that the config file is present.
@@ -66,72 +111,75 @@ func SaveConfig(cfg *ServerConfig, path string) error {
 	return fileutil.WriteSecure(path, data)
 }
 
-// PromptDB collects database connection info interactively and
-// returns a Postgres connection string.
-func PromptDB(reader *bufio.Reader) string {
-	fmt.Println("=== Spectra Database Configuration ===")
+// TablesExist checks if the database has been migrated.
+func TablesExist(ctx context.Context, pool *pgxpool.Pool) bool {
+	var exists bool
+	err := pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users')").Scan(&exists)
+	return err == nil && exists
+}
 
-	host := prompt(reader, "PostgreSQL host", "localhost")
-	port := prompt(reader, "PostgreSQL port", "5432")
+// PromptDBConfig collects database connection info interactively.
+// When local is true, host/port/SSL are defaulted and not prompted.
+func PromptDBConfig(reader *bufio.Reader, local bool) *DBConfig {
+	fmt.Println("=== Database Configuration ===")
 
-	var dbName string
+	db := &DBConfig{
+		Host:    "localhost",
+		Port:    "5432",
+		Name:    "spectra",
+		User:    "spectra",
+		SSLMode: "disable",
+	}
+
+	if !local {
+		db.Host = prompt(reader, "PostgreSQL host", db.Host)
+		db.Port = prompt(reader, "PostgreSQL port", db.Port)
+	}
+
 	for {
-		dbName = prompt(reader, "Database name", "spectra")
-		if len(dbName) > 63 {
-			fmt.Println("  [x] Database name too long (max 63 characters).")
+		db.Name = prompt(reader, "Database name", db.Name)
+		if !validIdent(db.Name) {
+			fmt.Println("  [x] Database name may only contain letters, numbers, and underscores.")
 			continue
 		}
 		break
 	}
 
-	var dbUser string
 	for {
-		dbUser = prompt(reader, "Username", "postgres")
-		if len(dbUser) > 63 {
-			fmt.Println("  [x] Username too long (max 63 characters).")
+		db.User = prompt(reader, "Database user", db.User)
+		if !validIdent(db.User) {
+			fmt.Println("  [x] Username may only contain letters, numbers, and underscores..")
 			continue
 		}
 		break
 	}
 
-	dbPass, err := promptPassword("Password: ")
+	pass, err := promptPasswordConfirm()
 	if err != nil {
-		fmt.Printf("\n  [!] Fatal: coult not read password: %v\n", err)
+		fmt.Printf("\n  [!] Fatal: could not read password: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Println()
+	db.Pass = pass
 
-	sslMode := "disable"
-	for {
-		useSSL := prompt(reader, "Use SSL (yes/no)", "no")
-		switch strings.ToLower(useSSL) {
-		case "yes":
-			sslMode = "require"
-		case "no":
-		default:
-			continue
+	if !local {
+		for {
+			useSSL := prompt(reader, "Use SSL (yes/no)", "no")
+			switch strings.ToLower(useSSL) {
+			case "yes":
+				db.SSLMode = "require"
+			case "no":
+			default:
+				continue
+			}
+			break
 		}
-		break
 	}
 
-	return buildDSN(host, port, dbName, dbUser, dbPass, sslMode)
-}
-
-// buildDSN constructs a PostgreSQL connection string with escaped credentials.
-func buildDSN(host, port, dbName, user, pass, sslMode string) string {
-	u := &url.URL{
-		Scheme:   "postgres",
-		User:     url.UserPassword(user, pass),
-		Host:     net.JoinHostPort(host, port),
-		Path:     dbName,
-		RawQuery: "sslmode=" + url.QueryEscape(sslMode),
-	}
-
-	return u.String()
+	return db
 }
 
 // PromptAdmin collects admin username and password interactively.
-// Returns credentials with the password bcrypt-hashed.
 func PromptAdmin(reader *bufio.Reader) *AdminCredentials {
 	fmt.Println("=== Admin Account ===")
 
@@ -145,8 +193,8 @@ func PromptAdmin(reader *bufio.Reader) *AdminCredentials {
 	fmt.Println()
 
 	return &AdminCredentials{
-		Username:     username,
-		PasswordHash: password,
+		Username: username,
+		Password: password,
 	}
 }
 
@@ -175,9 +223,119 @@ func PromptMigrationsDir(reader *bufio.Reader) string {
 			fmt.Printf("  [x] Directory not found: %s", migDir)
 			continue
 		}
-		break
+		return migDir
 	}
-	return migDir
+}
+
+// PromptYesNo asks a yes/no question with a default.
+func PromptYesNo(reader *bufio.Reader, label string, defaultYes bool) bool {
+	def := "no"
+	if defaultYes {
+		def = "yes"
+	}
+	for {
+		answer := prompt(reader, label+" (yes/no)", def)
+		switch strings.ToLower(answer) {
+		case "yes":
+			return true
+		case "no":
+			return false
+		}
+	}
+}
+
+// PromptTLS asks whether to enable TLS and generates certs if yes.
+// Returns nil if TLS is not enabled.
+func PromptTLS(reader *bufio.Reader) *TLSSetupConfig {
+	fmt.Println("=== TLS Configuration ===")
+
+	if !PromptYesNo(reader, "Enable TLS", true) {
+		return nil
+	}
+
+	// Collect additional SANs
+	detectedIP := detectLANIP()
+	fmt.Printf("  Detected LAN IP: %s\n", detectedIP)
+	fmt.Println("  Enter additional hostnames or IPs (comma-separated, or blank for none):")
+	extra := prompt(reader, "Additional SANs", "")
+
+	sans := []string{detectedIP}
+	if extra != "" {
+		for s := range strings.SplitSeq(extra, ",") {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			if net.ParseIP(s) != nil {
+				sans = append(sans, s)
+				continue
+			}
+			// Basic hostname validation: no spaces, no special chars
+			if strings.ContainsAny(s, " \t!@#$%^&*()+=[]{}|\\;:'\"<>?/") {
+				fmt.Printf("  [!] Skipping invalid SAN: %s\n", s)
+				continue
+			}
+			sans = append(sans, s)
+		}
+	}
+
+	return &TLSSetupConfig{SANs: sans}
+}
+
+// PromptExternalURL collects the externally-reachable server URL.
+func PromptExternalURL(reader *bufio.Reader, port int, tlsEnabled bool) string {
+	fmt.Println("=== External URL ===")
+	fmt.Println("How agents and browsers reach this server.")
+
+	detected := detectExternalURL(port, tlsEnabled)
+	return prompt(reader, "External URL", detected)
+}
+
+// buildDSN constructs a PostgreSQL connection string with escaped credentials.
+func buildDSN(host, port, dbName, user, pass, sslMode string) string {
+	u := &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(user, pass),
+		Host:     net.JoinHostPort(host, port),
+		Path:     dbName,
+		RawQuery: "sslmode=" + url.QueryEscape(sslMode),
+	}
+
+	return u.String()
+}
+
+// detectExternalURL finds the first non-loopback IPv4 address and
+// builds a default URL from it.
+func detectExternalURL(port int, tlsEnabled bool) string {
+	scheme := "http"
+	if tlsEnabled {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s:%d", scheme, detectLANIP(), port)
+}
+
+// detectLANIP returns the first non-loopback IPv4 address.
+func detectLANIP() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "127.0.0.1"
+	}
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return "127.0.0.1"
 }
 
 func prompt(reader *bufio.Reader, label, defaultVal string) string {
@@ -243,39 +401,4 @@ func promptPasswordConfirm() (string, error) {
 
 		return pass, nil
 	}
-}
-
-// detectExternalURL finds the first non-loopback IPv4 address and
-// builds a default URL from it.
-func detectExternalURL(port int) string {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return fmt.Sprintf("http://localhost:%d", port)
-	}
-
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, addr := range addrs {
-			if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil {
-				return fmt.Sprintf("http://%s:%d", ipnet.IP.String(), port)
-			}
-		}
-	}
-
-	return fmt.Sprintf("http://localhost:%d", port)
-}
-
-// PromptExternalURL collects the externally-reachable server URL.
-func PromptExternalURL(reader *bufio.Reader, port int) string {
-	fmt.Println("=== External URL ===")
-	fmt.Println("How agents and browsers reach this server.")
-
-	detected := detectExternalURL(port)
-	return prompt(reader, "External URL", detected)
 }

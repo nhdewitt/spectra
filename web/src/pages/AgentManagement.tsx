@@ -342,8 +342,20 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                                     Or download directly on the target host:
                                 </div>
                                 <CopyBlock
-                                    value={`curl -fSL -o ${result.platform} "${result.config.server}/api/v1/admin/releases/${result.platform}?token=${result.token}"`}
+                                    value={`curl -fSL${result.config.ca_cert ? ` --cacert ${result.config.ca_cert}` : ''} -o ${result.platform} "${result.config.server}/api/v1/admin/releases/${result.platform}?token=${result.token}"`}
                                 />
+                                {result.config.ca_cert && (
+                                    <div
+                                        style={{
+                                            fontSize: 10,
+                                            fontFamily: themeVars.font,
+                                            color: themeVars.warn,
+                                            marginTop: 4,
+                                        }}
+                                    >
+                                        Requires the CA certificate - follow the install steps below first.
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -373,6 +385,7 @@ function ProvisionModal({ onClose }: { onClose: () => void }) {
                                             .split("\n")
                                             .filter((line) => {
                                                 const trimmed = line.trim();
+                                                if (!trimmed) return true; // preserve blank lines
                                                 return trimmed && !/^\d+\.\s/.test(trimmed);
                                             })
                                             .join("\n");

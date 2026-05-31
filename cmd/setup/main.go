@@ -3,16 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/nhdewitt/spectra/internal/database"
 	"github.com/nhdewitt/spectra/internal/setup"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
@@ -40,108 +36,31 @@ func main() {
 	fmt.Println("====================")
 	fmt.Println()
 
-	// Database
-	dbURL := setup.PromptDB(reader)
-	fmt.Println()
+	local := setup.PromptYesNo(reader, "Use local database", true)
+	dbCfg := setup.PromptDBConfig(reader, local)
 
-	fmt.Print("Testing connection... ")
-	pool, err := database.NewPool(ctx, dbURL)
-	if err != nil {
-		fmt.Println("FAILED")
-		log.Fatalf("Could not connect to database: %v", err)
-	}
-	fmt.Println("OK")
-	fmt.Println()
-
-	migrated := tablesExist(ctx, pool)
-	var migrationsDir string
-	if !migrated {
+	migrationsDir := setup.DefaultMigrationsPath
+	if _, err := os.Stat(migrationsDir); err != nil {
+		fmt.Printf("  [!] Default migrations path not found: %s\n", migrationsDir)
 		migrationsDir = setup.PromptMigrationsDir(reader)
-		fmt.Println()
 	}
 
-	// Collect remaining input
 	admin := setup.PromptAdmin(reader)
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(admin.PasswordHash), bcrypt.DefaultCost)
-	if err != nil {
-		log.Fatalf("Failed to hash password: %v", err)
-	}
-
 	port := setup.PromptPort(reader)
-	fmt.Println()
+	tlsCfg := setup.PromptTLS(reader)
+	externalURL := setup.PromptExternalURL(reader, port, tlsCfg != nil)
 
-	externalURL := setup.PromptExternalURL(reader, port)
-	fmt.Println()
-
-	cfg := &setup.ServerConfig{
-		DatabaseURL: dbURL,
-		ListenPort:  port,
-		ExternalURL: externalURL,
+	sc := &setup.SetupConfig{
+		DBConfig:      dbCfg,
+		CreateDB:      local,
+		MigrationsDir: migrationsDir,
+		Admin:         admin,
+		Port:          port,
+		TLS:           tlsCfg,
+		ExternalURL:   externalURL,
 	}
 
-	// Start a transaction, allow for rollback on failure.
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		log.Fatalf("Failed to begin transaction: %v", err)
+	if err := setup.RunSetup(ctx, sc, *configPath); err != nil {
+		log.Fatalf("Setup failed: %v", err)
 	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
-	// Run migrations if DB tables don't already exist.
-	if !migrated {
-		fmt.Print("Running migration... ")
-		applied, err := setup.RunMigrationsTx(ctx, tx, migrationsDir)
-		if err != nil {
-			fmt.Println("FAILED")
-			_ = tx.Rollback(ctx)
-			log.Fatalf("Migration failed: %v", err)
-		}
-		fmt.Printf("OK (%d applied)\n", applied)
-	}
-
-	// Create superadmin
-	fmt.Print("Creating superadmin user... ")
-	queries := database.New(tx)
-	if err := queries.CreateUser(ctx, database.CreateUserParams{
-		Username: admin.Username,
-		Password: string(hash),
-		Role:     "superadmin",
-	}); err != nil {
-		fmt.Println("FAILED")
-		_ = tx.Rollback(ctx)
-		log.Fatalf("Failed to create superadmin user: %v", err)
-	}
-	fmt.Println("OK")
-
-	// Save config before committing, rollback on failure
-	fmt.Print("Saving configuration... ")
-	if err := setup.SaveConfig(cfg, *configPath); err != nil {
-		fmt.Println("FAILED")
-		if errors.Is(err, os.ErrPermission) {
-			fmt.Printf("  [!] Permission denied. Try: sudo %s\n", os.Args[0])
-		}
-		_ = tx.Rollback(ctx)
-		log.Fatalf("[!] Fatal: %v", err)
-	}
-	fmt.Println("OK")
-
-	// Commit
-	if err := tx.Commit(ctx); err != nil {
-		// Remove config on commit error
-		os.Remove(*configPath)
-		log.Fatalf("Failed to commit database changes: %v", err)
-	}
-
-	pool.Close()
-
-	fmt.Println()
-	fmt.Printf("Configuration saved to %s\n", *configPath)
-	fmt.Println("Run spectra-server to start.")
-}
-
-func tablesExist(ctx context.Context, pool *pgxpool.Pool) (exists bool) {
-	err := pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users')").Scan(&exists)
-	return err == nil && exists
 }

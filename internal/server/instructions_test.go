@@ -85,7 +85,7 @@ func TestGenerateInstallInstructions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &platformInfo{OS: tt.os, Filename: "test-binary"}
-			got := generateInstallInstructions(p, "https://example.com", "test-token")
+			got := generateInstallInstructions(p, "https://example.com", "test-token", "")
 
 			if got.Type != tt.wantType {
 				t.Errorf("Type = %q, want %q", got.Type, tt.wantType)
@@ -246,10 +246,114 @@ func TestInstallInstructionsContent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &platformInfo{OS: tt.os, Filename: "test-binary"}
-			got := generateInstallInstructions(p, "https://example.com", "test-token")
+			got := generateInstallInstructions(p, "https://example.com", "test-token", "")
 
 			if tt.wantContentHas != "" && !strings.Contains(got.Content, tt.wantContentHas) {
 				t.Errorf("Content missing %q\ncontent:\n%s", tt.wantContentHas, got.Content)
+			}
+		})
+	}
+}
+
+func TestGenerateInstallInstructionsWithCACert(t *testing.T) {
+	const caCert = "-----BEGIN CERTIFICATE-----\ntest-cert\n-----END CERTIFICATE-----\n"
+
+	tests := []struct {
+		name         string
+		os           string
+		wantType     string
+		wantContains []string
+	}{
+		{
+			name:     "linux",
+			os:       "linux",
+			wantType: "systemd",
+			wantContains: []string{
+				"Install the CA certificate",
+				"/etc/spectra/ca.crt",
+				`"ca_cert": "/etc/spectra/ca.crt"`,
+				caCert,
+			},
+		},
+		{
+			name:     "darwin",
+			os:       "darwin",
+			wantType: "launchd",
+			wantContains: []string{
+				"Install the CA certificate",
+				"/usr/local/etc/spectra/ca.crt",
+				`"ca_cert": "/usr/local/etc/spectra/ca.crt"`,
+				caCert,
+			},
+		},
+		{
+			name:     "freebsd",
+			os:       "freebsd",
+			wantType: "rc_d",
+			wantContains: []string{
+				"Install the CA certificate",
+				"/usr/local/etc/spectra/ca.crt",
+				`"ca_cert": "/usr/local/etc/spectra/ca.crt"`,
+				caCert,
+			},
+		},
+		{
+			name:     "windows",
+			os:       "windows",
+			wantType: "windows_service",
+			wantContains: []string{
+				"Install the CA certificate",
+				`C:\Spectra\ca.crt`,
+				`"ca_cert": "C:\Spectra\ca.crt"`,
+				caCert,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &platformInfo{OS: tt.os, Filename: "test-binary"}
+			got := generateInstallInstructions(p, "https://example.com", "test-token", caCert)
+
+			if got.Type != tt.wantType {
+				t.Errorf("Type = %q, want %q", got.Type, tt.wantType)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(got.Steps, want) {
+					t.Errorf("Steps missing %q\nsteps:\n%s", want, got.Steps)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateInstallInstructionsWithoutCACert(t *testing.T) {
+	tests := []struct {
+		name string
+		os   string
+	}{
+		{"linux", "linux"},
+		{"darwin", "darwin"},
+		{"freebsd", "freebsd"},
+		{"windows", "windows"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &platformInfo{OS: tt.os, Filename: "test-binary"}
+			got := generateInstallInstructions(p, "https://example.com", "test-token", "")
+
+			unwanted := []string{
+				"Install the CA certificate",
+				`"ca_cert"`,
+				"ca.crt",
+			}
+
+			for _, s := range unwanted {
+				if strings.Contains(got.Steps, s) {
+					t.Errorf("Steps unexpectedly contain %q\nsteps:\n%s", s, got.Steps)
+				}
 			}
 		})
 	}

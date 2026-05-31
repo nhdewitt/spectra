@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -20,6 +21,9 @@ type Config struct {
 	MaxConnections uint
 	LogFile        string // path to JSON log file
 	LogLevel       string // "debug", "info", "warn", "error"
+	TLSCert        string
+	TLSKey         string
+	TLSCA          string
 }
 
 type Server struct {
@@ -161,6 +165,9 @@ func (s *Server) Start() error {
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      40 * time.Second,
 		IdleTimeout:       30 * time.Second,
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
 	}
 
 	ln, err := net.Listen("tcp", addr)
@@ -168,6 +175,11 @@ func (s *Server) Start() error {
 		return fmt.Errorf("listen on %s: %w", addr, err)
 	}
 	ln = netutil.LimitListener(ln, int(s.Config.MaxConnections))
+
+	if s.Config.TLSCert != "" && s.Config.TLSKey != "" {
+		s.Logger.Info("server started (TLS)", "addr", addr, "version", version.Full())
+		return s.httpServer.ServeTLS(ln, s.Config.TLSCert, s.Config.TLSKey)
+	}
 
 	s.Logger.Info("server started", "addr", addr, "version", version.Full())
 	return s.httpServer.Serve(ln)
