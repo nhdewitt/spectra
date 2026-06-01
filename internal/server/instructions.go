@@ -324,29 +324,6 @@ sudo rm -f /usr/local/var/log/spectra-agent.log /usr/local/var/log/spectra-agent
 }
 
 func generateRCDInstructions(p *platformInfo, serverURL, token, caCertPEM string) installInstructions {
-	rcScript := `#!/bin/sh
-
-# PROVIDE: spectra_agent
-# REQUIRE: NETWORKING
-# KEYWORD: shutdown
-
-. /etc/rc.subr
-
-name="spectra_agent"
-rcvar="${name}_enable"
-
-: ${spectra_agent_enable:="NO"}
-: ${spectra_agent_config:="/usr/local/etc/spectra/agent.json"}
-
-pidfile="/var/run/${name}.pid"
-procname="/usr/local/bin/spectra-agent"
-command="/usr/sbin/daemon"
-command_args="-p ${pidfile} -r -f ${procname} -config ${spectra_agent_config}"
-
-load_rc_config $name
-run_rc_command "$1"
-`
-
 	caCertPath := ""
 	if caCertPEM != "" {
 		caCertPath = "/usr/local/etc/spectra/ca.crt"
@@ -380,7 +357,7 @@ sudo chmod 0600 /usr/local/etc/spectra/agent.json`, configJSON),
 sudo tee /usr/local/etc/rc.d/spectra_agent > /dev/null <<'EOF'
 %s
 EOF
-sudo chmod 0555 /usr/local/etc/rc.d/spectra_agent`, rcScript),
+sudo chmod 0555 /usr/local/etc/rc.d/spectra_agent`, rcdRCScript),
 
 		`Enable the service
 sudo sysrc spectra_agent_enable=YES`,
@@ -394,7 +371,7 @@ sudo service spectra_agent status`,
 
 	return installInstructions{
 		Type:    "rc_d",
-		Content: rcScript,
+		Content: rcdRCScript,
 		Steps:   numberSteps(steps),
 	}
 }

@@ -115,6 +115,7 @@ type DB interface {
 	ListUsers(ctx context.Context) ([]database.ListUsersRow, error)
 	ListUsersWithLastLogin(ctx context.Context) ([]database.ListUsersWithLastLoginRow, error)
 	CreateUser(ctx context.Context, arg database.CreateUserParams) error
+	UpsertSuperadmin(ctx context.Context, arg database.UpsertSuperadminParams) error
 	GetUserByID(ctx context.Context, id pgtype.UUID) (database.GetUserByIDRow, error)
 	SuperAdminCount(ctx context.Context) (int64, error)
 	DeleteUser(ctx context.Context, id pgtype.UUID) error

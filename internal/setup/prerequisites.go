@@ -195,6 +195,12 @@ func EnsurePrerequisites() error {
 
 	fmt.Printf("  Detected: %s (%s)\n", d.Family, d.ID)
 
+	if d.Family == FamilyDebian || d.Family == FamilyUbuntu {
+		if _, err := runCmd(d.PkgMgr, "install", "-y", "-qq", "gnupg", "lsb-release", "wget", "curl", "ca-certificates"); err != nil {
+			return fmt.Errorf("install base dependencies: %w", err)
+		}
+	}
+
 	if commandExists("psql") {
 		fmt.Println("  PostgreSQL: found")
 	} else {
@@ -276,11 +282,8 @@ func (d *Distro) installPostgresDebian() error {
 	if _, err := runCmd(d.PkgMgr, "update", "-qq"); err != nil {
 		return err
 	}
-	if _, err := runCmd(d.PkgMgr, "install", "-y", "-qq", "gnupg", "lsb-release", "wget", "curl", "ca-certificates"); err != nil {
-		return err
-	}
 
-	if _, err := runCmd("sh", "-c", `curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg`); err != nil {
+	if _, err := runCmd("sh", "-c", `curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor --yes -o /usr/share/keyrings/postgresql.gpg`); err != nil {
 		return fmt.Errorf("add pgdg key: %w", err)
 	}
 
@@ -396,7 +399,7 @@ func (d *Distro) installTimescaleDB() error {
 }
 
 func (d *Distro) installTimescaleDBDebian() error {
-	if _, err := runCmd("sh", "-c", `curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey | gpg --dearmor -o /usr/share/keyrings/timescaledb.gpg`); err != nil {
+	if _, err := runCmd("sh", "-c", `curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey | gpg --dearmor --yes -o /usr/share/keyrings/timescaledb.gpg`); err != nil {
 		return fmt.Errorf("add timescaledb key: %w", err)
 	}
 

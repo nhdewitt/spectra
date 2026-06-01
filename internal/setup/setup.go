@@ -148,7 +148,7 @@ func PromptDBConfig(reader *bufio.Reader, local bool) *DBConfig {
 	for {
 		db.User = prompt(reader, "Database user", db.User)
 		if !validIdent(db.User) {
-			fmt.Println("  [x] Username may only contain letters, numbers, and underscores..")
+			fmt.Println("  [x] Username may only contain letters, numbers, and underscores.")
 			continue
 		}
 		break
