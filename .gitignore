@@ -26,3 +26,4 @@ releases/
 bin/
 *.cov
 vite.config.ts
+!scripts/*.sh
