@@ -109,9 +109,7 @@ func (s *Server) handlePutAgentLabel(w http.ResponseWriter, r *http.Request) {
 	}
 	key := r.PathValue("key")
 
-	var req struct {
-		Value string `json:"value"`
-	}
+	var req putLabelRequest
 	if err := decodeJSONBody(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
