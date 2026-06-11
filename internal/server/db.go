@@ -124,6 +124,16 @@ type DB interface {
 	SetUserConfig(ctx context.Context, arg database.SetUserConfigParams) error
 	DeleteUserConfig(ctx context.Context, arg database.DeleteUserConfigParams) error
 
+	// Labels
+	ReplaceAutoLabels(ctx context.Context, arg database.ReplaceAutoLabelsParams) error
+	UpsertAutoLabel(ctx context.Context, arg database.UpsertAutoLabelParams) error
+	ListAgentLabels(ctx context.Context, id pgtype.UUID) ([]database.ListAgentLabelsRow, error)
+	ListLabelKeys(ctx context.Context) ([]database.ListLabelKeysRow, error)
+	ListLabelValuesForKey(ctx context.Context, key string) ([]string, error)
+	UpsertUserLabel(ctx context.Context, arg database.UpsertUserLabelParams) (database.AgentLabel, error)
+	GetAgentLabel(ctx context.Context, arg database.GetAgentLabelParams) (database.GetAgentLabelRow, error)
+	DeleteUserLabel(ctx context.Context, arg database.DeleteUserLabelParams) (int64, error)
+
 	PurgeOfflineAgents(ctx context.Context) (int64, error)
 }
 

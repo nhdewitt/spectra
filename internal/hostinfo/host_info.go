@@ -5,17 +5,18 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/nhdewitt/spectra/internal/platform"
 	"github.com/nhdewitt/spectra/internal/protocol"
 	"github.com/nhdewitt/spectra/internal/version"
 )
 
 func CollectHostInfo() protocol.HostInfo {
-	platform, platVer := getPlatformInfo()
+	plat, platVer := getPlatformInfo()
 
 	return protocol.HostInfo{
 		Hostname: getHostname(),
 		OS:       runtime.GOOS,
-		Platform: platform,
+		Platform: plat,
 		PlatVer:  platVer,
 		Kernel:   getKernel(),
 		Arch:     getArch(),
@@ -24,6 +25,7 @@ func CollectHostInfo() protocol.HostInfo {
 		RAMTotal: getRAMTotal(),
 		BootTime: getBootTime(),
 		IPs:      getIPs(),
+		Hardware: platform.HardwareClass(),
 	}
 }
 

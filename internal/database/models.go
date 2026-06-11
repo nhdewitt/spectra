@@ -34,6 +34,14 @@ type AgentConfig struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type AgentLabel struct {
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	Key       string             `json:"key"`
+	Value     string             `json:"value"`
+	Source    string             `json:"source"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type CurrentApplication struct {
 	AgentID   pgtype.UUID        `json:"agent_id"`
 	Name      string             `json:"name"`

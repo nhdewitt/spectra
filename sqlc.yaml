@@ -16,6 +16,7 @@ sql:
       - "internal/database/migrations/011_user_config.up.sql"
       - "internal/database/migrations/012_add_agent_commit.up.sql"
       - "internal/database/migrations/013_add_agent_binary_hash.up.sql"
+      - "internal/database/migrations/014_agent_labels.up.sql"
     gen:
       go:
         package: "database"

@@ -4,7 +4,7 @@ import { formatBytes, formatUptime, agentStatus, agentStatusColor } from "../uti
 import { StatBlock, TimeRangePicker } from "../components";
 import { MetricsTab } from "../components/MetricsTab";
 import { OSIcon } from "../icons";
-import type { OverviewAgent, RangeSelection } from "../types";
+import type { OverviewAgent, RangeSelection, User } from "../types";
 import { api } from "../api";
 import { usePolling } from "../hooks/usePolling";
 import { ProcessesTab } from "../components/ProcessesTab";
@@ -12,12 +12,14 @@ import { ServicesTab } from "../components/ServicesTab";
 import { ApplicationsTab } from "../components/ApplicationsTab";
 import { UpdatesTab } from "../components/UpdatesTab";
 import { ContainersTab } from "../components/ContainersTab";
+import { AgentLabelChips } from "../components/AgentLabelChips";
 
 const TABS = ["metrics", "processes", "services", "containers", "apps", "updates"] as const;
 
 interface AgentDetailProps {
     agent: OverviewAgent;
     agents: OverviewAgent[];
+    user: User;
     onSelectAgent: (agent: OverviewAgent) => void;
     onBack: () => void;
     starredIds: string[];
@@ -27,6 +29,7 @@ interface AgentDetailProps {
 export function AgentDetail({
     agent,
     agents,
+    user,
     onSelectAgent,
     onBack,
     starredIds,
@@ -42,6 +45,7 @@ export function AgentDetail({
     const { status } = agentStatus(agent);
     const isStarred = starredIds.includes(agent.id);
     const isTimeSeriesTab = activeTab === "metrics" || activeTab === "containers";
+    const isAdmin = user.role === "admin" || user.role === "superadmin";
 
     // Close dropdown on escape
     useEffect(() => {
@@ -288,6 +292,7 @@ export function AgentDetail({
                     <>
                         <StatBlock label="CPU" value={liveAgent.cpu_model ?? null} />
                         <StatBlock label="RAM" value={formatBytes(liveAgent.ram_total)} />
+                        <AgentLabelChips agentId={liveAgent.id} isAdmin={isAdmin}  />
                     </>
                 )}
             </div>

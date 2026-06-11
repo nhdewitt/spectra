@@ -40,7 +40,7 @@ func (s *Server) handleUpgradeInstructions(w http.ResponseWriter, r *http.Reques
 
 	p := platformFromAgent(agent.Os.String, agent.Arch.String)
 	if p == nil {
-		http.Error(w, "unknown platform for this agent", http.StatusBadRequest)
+		respondJSON(w, http.StatusOK, upgradeInstructions{})
 		return
 	}
 
@@ -63,7 +63,7 @@ func (s *Server) handleUninstallInstructions(w http.ResponseWriter, r *http.Requ
 
 	p := platformFromAgent(agent.Os.String, agent.Arch.String)
 	if p == nil {
-		http.Error(w, "unknown platform for this agent", http.StatusBadRequest)
+		respondJSON(w, http.StatusOK, uninstallInstructions{})
 		return
 	}
 

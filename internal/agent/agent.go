@@ -238,6 +238,7 @@ func (a *Agent) setHeaders(req *http.Request) {
 		req.Header.Set("X-Agent-ID", a.Identity.ID)
 		req.Header.Set("X-Agent-Secret", a.Identity.Secret)
 	}
+	req.Header.Set("X-Spectra-Agent-Version", version.Version)
 }
 
 func (a *Agent) computeBinaryHash() error {

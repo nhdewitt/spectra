@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "../api";
 import { themeVars } from "../theme";
 import { OSIcon } from "../icons";
@@ -6,7 +6,8 @@ import { Sparkline } from "../Sparkline";
 import { usePolling, useSparkHistory } from "../hooks";
 import type { SparkData } from "../hooks";
 import { StatBlock, LoadingSpinner } from "../components";
-import type { OverviewAgent } from "../types";
+import { LabelChip } from "../components/LabelChip";
+import type { OverviewAgent, AgentLabel, LabelKey } from "../types";
 import {
 	formatBytes,
 	formatUptime,
@@ -22,6 +23,11 @@ interface OverviewProps {
 	onSelectAgent: (agent: OverviewAgent) => void;
 	starredIds: string[];
 	onToggleStar: (agentId: string) => void;
+}
+
+interface LabelFilter {
+	key: string;
+	value: string;
 }
 
 // --- Stat Bar ---
@@ -183,6 +189,173 @@ function StarButton({
 	);
 }
 
+// --- Label Filter Bar ---
+
+function LabelFilterBar({
+	filters,
+	knownKeys,
+	labelsByAgent,
+	onAdd,
+	onRemove,
+	onClear,
+}: {
+	filters: LabelFilter[];
+	knownKeys: LabelKey[];
+	labelsByAgent: Map<string, AgentLabel[]>;
+	onAdd: (key: string, value: string) => void;
+	onRemove: (f: LabelFilter) => void;
+	onClear: () => void;
+}) {
+	const [pickerKey, setPickerKey] = useState("");
+	const [pickerValue, setPickerValue] = useState("");
+
+	const userKeys = useMemo(() => knownKeys.filter((k) => k.source === "user"), [knownKeys]);
+
+	const pickerValues = useMemo(() => {
+		if (!pickerKey) return [];
+		const s = new Set<string>();
+		for (const labels of labelsByAgent.values()) {
+			for (const l of labels) {
+				if (l.key === pickerKey) s.add(l.value);
+			}
+		}
+		return Array.from(s).sort();
+	}, [pickerKey, labelsByAgent]);
+
+	const handleAdd = () => {
+		const k = pickerKey.trim();
+		const v = pickerValue.trim();
+		if (!k || !v) return;
+		onAdd(k, v);
+		setPickerKey("");
+		setPickerValue("");
+	};
+
+	const selectStyle: React.CSSProperties = {
+		padding: "4px 8px",
+		fontSize: 11,
+		fontFamily: themeVars.font,
+		color: themeVars.text,
+		background: themeVars.surface,
+		border: `1px solid ${themeVars.border}`,
+		cursor: "pointer",
+	};
+
+	return (
+		<div
+			style={{
+				display: "flex",
+				alignItems: "center",
+				gap: 8,
+				flexWrap: "wrap",
+				marginBottom: 12,
+				padding: "8px 12px",
+				background: themeVars.surface,
+				border: `1px solid ${themeVars.border}`,
+			}}
+		>
+			<span
+				style={{
+					fontSize: 10,
+					fontFamily: themeVars.font,
+					color: themeVars.textMuted,
+					textTransform: "uppercase",
+					letterSpacing: "0.04em",
+				}}
+			>
+				Label filters
+				{filters.length > 0 ? ` (AND)` : ""}
+			</span>
+ 
+			{filters.map((f) => {
+				const synthetic: AgentLabel = {
+					key: f.key,
+					value: f.value,
+					source: "user",
+					updated_at: "",
+				};
+				return (
+					<LabelChip
+						key={`${f.key}=${f.value}`}
+						label={synthetic}
+						onDelete={() => onRemove(f)}
+					/>
+				);
+			})}
+ 
+			{/* Inline picker */}
+			<select
+				value={pickerKey}
+				onChange={(e) => {
+					setPickerKey(e.target.value);
+					setPickerValue("");
+				}}
+				style={selectStyle}
+			>
+				<option value="">+ Add filter</option>
+				{userKeys.map((k) => (
+					<option key={k.key} value={k.key}>{k.key}</option>
+				))}
+			</select>
+ 
+			{pickerKey && (
+				<>
+					<span style={{ color: themeVars.textDim, fontSize: 11 }}>=</span>
+					<select
+						value={pickerValue}
+						onChange={(e) => setPickerValue(e.target.value)}
+						style={selectStyle}
+						autoFocus
+					>
+						<option value="">choose value</option>
+						{pickerValues.map((v) => (
+							<option key={v} value={v}>{v}</option>
+						))}
+					</select>
+					<button
+						onClick={handleAdd}
+						disabled={!pickerValue}
+						style={{
+							padding: "4px 10px",
+							fontSize: 11,
+							fontFamily: themeVars.font,
+							color: themeVars.text,
+							background: pickerValue ? themeVars.accentDim : "transparent",
+							border: `1px solid ${pickerValue ? themeVars.accent : themeVars.border}`,
+							cursor: pickerValue ? "pointer" : "default",
+							opacity: pickerValue ? 1 : 0.5,
+							textTransform: "uppercase",
+							letterSpacing: "0.03em",
+						}}
+					>
+						Add
+					</button>
+				</>
+			)}
+ 
+			{filters.length > 0 && (
+				<button
+					onClick={onClear}
+					style={{
+						marginLeft: "auto",
+						padding: "2px 8px",
+						fontSize: 10,
+						fontFamily: themeVars.font,
+						color: themeVars.textMuted,
+						background: "transparent",
+						border: `1px solid ${themeVars.border}`,
+						cursor: "pointer",
+						textTransform: "uppercase",
+						letterSpacing: "0.03em",
+					}}
+				>
+					Clear all
+				</button>
+			)}
+		</div>
+	);
+}
+
 // --- Filter Toolbar ---
 
 const selectStyle: React.CSSProperties = {
@@ -202,9 +375,15 @@ function FilterToolbar({
 	onStatusFilterChange,
 	osFilter,
 	onOsFilterChange,
+	archFilter,
+	onArchFilterChange,
+	hardwareFilter,
+	onHardwareFilterChange,
 	sort,
 	onSortChange,
 	osOptions,
+	archOptions,
+	hardwareOptions,
 }: {
 	search: string;
 	onSearchChange: (v: string) => void;
@@ -212,9 +391,15 @@ function FilterToolbar({
 	onStatusFilterChange: (v: AgentStatus | "all") => void;
 	osFilter: string;
 	onOsFilterChange: (v: string) => void;
+	archFilter: string;
+	onArchFilterChange: (v: string) => void;
+	hardwareFilter: string;
+	onHardwareFilterChange: (v: string) => void;
 	sort: SortOption;
 	onSortChange: (v: SortOption) => void;
 	osOptions: string[];
+	archOptions: string[];
+	hardwareOptions: string[];
 }) {
 	return (
 		<div
@@ -241,7 +426,7 @@ function FilterToolbar({
 					flex: "0 1 220px",
 				}}
 			/>
-
+ 
 			<select
 				value={statusFilter}
 				onChange={(e) => onStatusFilterChange(e.target.value as AgentStatus | "all")}
@@ -254,7 +439,7 @@ function FilterToolbar({
 				<option value="stale">Stale</option>
 				<option value="offline">Offline</option>
 			</select>
-
+ 
 			<select
 				value={osFilter}
 				onChange={(e) => onOsFilterChange(e.target.value)}
@@ -265,7 +450,31 @@ function FilterToolbar({
 					<option key={os} value={os}>{os}</option>
 				))}
 			</select>
-
+ 
+			<select
+				value={archFilter}
+				onChange={(e) => onArchFilterChange(e.target.value)}
+				style={selectStyle}
+			>
+				<option value="all">All Arch</option>
+				{archOptions.map((arch) => (
+					<option key={arch} value={arch}>{arch}</option>
+				))}
+			</select>
+ 
+			{hardwareOptions.length > 0 && (
+				<select
+					value={hardwareFilter}
+					onChange={(e) => onHardwareFilterChange(e.target.value)}
+					style={selectStyle}
+				>
+					<option value="all">All Hardware</option>
+					{hardwareOptions.map((hw) => (
+						<option key={hw} value={hw}>{hw}</option>
+					))}
+				</select>
+			)}
+ 
 			<select
 				value={sort}
 				onChange={(e) => onSortChange(e.target.value as SortOption)}
@@ -377,7 +586,7 @@ function AgentRow({
 					}}
 				/>
 			</td>
-
+ 
 			{/* Hostname + reboot badge + star */}
 			<td style={{ ...cellStyle, fontWeight: 500, color: themeVars.text }}>
 				<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -407,47 +616,41 @@ function AgentRow({
 					{agent.platform} · {agent.arch}
 				</div>
 			</td>
-
+ 
 			{/* Status badge */}
 			<td style={cellStyle}>
 				<StatusBadge agent={agent} />
 			</td>
-
+ 
 			{/* OS / Platform */}
 			<td style={{ ...cellStyle, color: themeVars.textMuted, fontSize: 11 }}>
 				{agent.os} · {agent.arch}
 			</td>
-
+ 
 			{/* CPU % */}
 			<td style={{ ...cellStyle, textAlign: "right", color: severityColor(cpu, [50, 80, 95]) }}>
 				{cpu.toFixed(1)}%
 			</td>
-
-			{/* CPU bar */}
 			<td style={cellStyle}>
 				<PercentBar value={cpu} thresholds={[50, 80, 95]} />
 			</td>
-
+ 
 			{/* Memory % */}
 			<td style={{ ...cellStyle, textAlign: "right", color: severityColor(mem, [50, 80, 95]) }}>
 				{mem.toFixed(1)}%
 			</td>
-
-			{/* Memory bar */}
 			<td style={cellStyle}>
 				<PercentBar value={mem} thresholds={[50, 80, 95]} />
 			</td>
-
+ 
 			{/* Disk % */}
 			<td style={{ ...cellStyle, textAlign: "right", color: severityColor(disk, [80, 98, 99]) }}>
 				{disk.toFixed(1)}%
 			</td>
-
-			{/* Disk bar */}
 			<td style={cellStyle}>
 				<PercentBar value={disk} thresholds={[80, 98, 99]} />
 			</td>
-
+ 
 			{/* Temp */}
 			<td
 				style={{
@@ -458,27 +661,27 @@ function AgentRow({
 			>
 				{temp > 0 ? `${temp.toFixed(0)}°` : "—"}
 			</td>
-
+ 
 			{/* CPU trend */}
 			<td style={{ ...cellStyle, textAlign: "center" }}>
 				<Sparkline data={sparkData?.cpu ?? []} width={60} height={20} thresholds={[50, 80, 95]} />
 			</td>
-
+ 
 			{/* Uptime */}
 			<td style={{ ...cellStyle, textAlign: "right", color: themeVars.textMuted }}>
 				{formatUptime(agent.uptime)}
 			</td>
-
+ 
 			{/* Last Seen */}
 			<td style={{ ...cellStyle, textAlign: "right", color: themeVars.textMuted }}>
 				{formatLastSeen(agent.last_seen)}
 			</td>
-
+ 
 			{/* Process count */}
 			<td style={{ ...cellStyle, textAlign: "right", color: themeVars.textMuted }}>
 				{agent.process_count ?? "—"}
 			</td>
-
+ 
 			{/* Net RX/TX */}
 			<td style={{ ...cellStyle, textAlign: "right", color: themeVars.textMuted, fontSize: 11 }}>
 				{agent.net_rx_bytes != null ? (
@@ -577,7 +780,7 @@ function AgentCard({
 					<StatusBadge agent={agent} />
 				</div>
 			</div>
-
+ 
 			{/* Stats */}
 			<div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
 				<StatBlock label="CPU" value={cpu.toFixed(1)} unit="%" color={severityColor(cpu, [50, 80, 95])} />
@@ -587,7 +790,7 @@ function AgentCard({
 					<StatBlock label="TEMP" value={temp.toFixed(0)} unit="°C" color={severityColor(temp, [50, 70, 85])} />
 				)}
 			</div>
-
+ 
 			{/* Hover details */}
 			{hovered && (
 				<div
@@ -655,18 +858,66 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<AgentStatus | "all">("all");
 	const [osFilter, setOsFilter] = useState("all");
+	const [archFilter, setArchFilter] = useState("all");
+	const [hardwareFilter, setHardwareFilter] = useState("all");
 	const [sort, setSort] = useState<SortOption>("severity");
 	const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+
+	const [activeFilters, setActiveFilters] = useState<LabelFilter[]>([]);
+	const [labelsByAgent, setLabelsByAgent] = useState<Map<string, AgentLabel[]>>(new Map());
+	const [knownKeys, setKnownKeys] = useState<LabelKey[]>([]);
 
 	const fetcher = useCallback(() => api.overview(), []);
 	const { data, loading, error } = usePolling(fetcher, 10_000);
 	const agents = data ?? [];
 	const sparkHistory = useSparkHistory(agents);
 
+	const agentIdsKey = useMemo(() => agents.map((a) => a.id).sort().join(","), [agents]);
+
+	useEffect(() => {
+		if (agents.length === 0) return;
+		let cancelled = false;
+		Promise.all(
+			agents.map((a) =>
+				api
+					.agentLabels(a.id)
+					.then((labels) => [a.id, labels] as const)
+					.catch(() => [a.id, [] as AgentLabel[]] as const)
+			)
+		).then((results) => {
+			if (cancelled) return;
+			const m = new Map<string, AgentLabel[]>();
+			for (const [id, labels] of results) m.set(id, labels);
+			setLabelsByAgent(m);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [agentIdsKey]);
+
+	useEffect(() => {
+		api.labelKeys().then(setKnownKeys).catch(() => {});
+	}, [labelsByAgent]);
+
 	const osOptions = useMemo(() => {
 		const set = new Set(agents.map((a) => a.os).filter(Boolean));
 		return Array.from(set).sort();
 	}, [agents]);
+
+	const archOptions = useMemo(() => {
+		const set = new Set(agents.map((a) => a.arch).filter(Boolean));
+		return Array.from(set).sort();
+	}, [agents]);
+
+	const hardwareOptions = useMemo(() => {
+		const set = new Set<string>();
+		for (const labels of labelsByAgent.values()) {
+			for (const l of labels) {
+				if (l.key === "hardware") set.add(l.value);
+			}
+		}
+		return Array.from(set).sort();
+	}, [labelsByAgent]);
 
 	const filtered = useMemo(() => {
 		let result = agents;
@@ -684,8 +935,43 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 			result = result.filter((a) => a.os === osFilter);
 		}
 
+		if (archFilter !== "all") {
+			result = result.filter((a) => agentStatus(a).status === statusFilter);
+		}
+
+		if (hardwareFilter !== "all") {
+			result = result.filter((a) => {
+				const labels = labelsByAgent.get(a.id) ?? [];
+				return labels.some((l) => l.key === "hardware" && l.value === hardwareFilter);
+			});
+		}
+
+		if (activeFilters.length > 0) {
+			result = result.filter((a) => {
+				const labels = labelsByAgent.get(a.id) ?? [];
+				return activeFilters.every((f) =>
+					labels.some((l) => l.key === f.key && l.value === f.value)
+				);
+			});
+		}
+
 		return sortAgents(result, sort);
-	}, [agents, search, statusFilter, osFilter, sort]);
+	}, [agents, search, statusFilter, osFilter, archFilter, hardwareFilter, sort, activeFilters, labelsByAgent]);
+
+	const addFilter = useCallback((key: string, value: string) => {
+		setActiveFilters((prev) => {
+			if (prev.some((f) => f.key === key && f.value === value)) return prev;
+			return [...prev, { key, value }];
+		});
+	}, []);
+
+	const removeFilter = useCallback((f: LabelFilter) => {
+		setActiveFilters((prev) =>
+			prev.filter((x) => !(x.key === f.key && x.value === f.value))
+		);
+	}, []);
+
+	const clearFilters = useCallback(() => setActiveFilters([]), []);
 
 	if (loading && agents.length === 0) return <LoadingSpinner />;
 
@@ -722,10 +1008,10 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 			>
 				Fleet Overview
 			</div>
-
+ 
 			{/* Stat bar */}
 			<StatBar agents={agents} />
-
+ 
 			{/* Filters + view toggle */}
 			<div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
 				<FilterToolbar
@@ -735,11 +1021,17 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 					onStatusFilterChange={setStatusFilter}
 					osFilter={osFilter}
 					onOsFilterChange={setOsFilter}
+					archFilter={archFilter}
+					onArchFilterChange={setArchFilter}
+					hardwareFilter={hardwareFilter}
+					onHardwareFilterChange={setHardwareFilter}
 					sort={sort}
 					onSortChange={setSort}
 					osOptions={osOptions}
+					archOptions={archOptions}
+					hardwareOptions={hardwareOptions}
 				/>
-
+ 
 				<div style={{ display: "flex", gap: 4 }}>
 					<button onClick={() => setViewMode("table")} style={btnStyle(viewMode === "table")}>
 						☰ Table
@@ -749,7 +1041,17 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 					</button>
 				</div>
 			</div>
-
+ 
+			{/* Label filter bar */}
+			<LabelFilterBar
+				filters={activeFilters}
+				knownKeys={knownKeys}
+				labelsByAgent={labelsByAgent}
+				onAdd={addFilter}
+				onRemove={removeFilter}
+				onClear={clearFilters}
+			/>
+ 
 			{/* Table view */}
 			{viewMode === "table" && (
 				<div style={{ overflowX: "auto", border: `1px solid ${themeVars.border}` }}>
@@ -772,7 +1074,7 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 					</table>
 				</div>
 			)}
-
+ 
 			{/* Cards view */}
 			{viewMode === "cards" && (
 				<div
@@ -793,7 +1095,7 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 					))}
 				</div>
 			)}
-
+ 
 			{/* Empty state */}
 			{filtered.length === 0 && agents.length > 0 && (
 				<div
@@ -808,7 +1110,7 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 					No agents match the current filters.
 				</div>
 			)}
-
+ 
 			{agents.length === 0 && (
 				<div
 					style={{

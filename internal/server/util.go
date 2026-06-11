@@ -54,6 +54,11 @@ func respondJSON(w http.ResponseWriter, status int, data any) {
 	}
 }
 
+// respondError sends a JSON error response.
+func respondError(w http.ResponseWriter, status int, msg string) {
+	respondJSON(w, status, map[string]string{"error": msg})
+}
+
 // queueHelper abstracts the repetitive command creation/queueing logic for Admin handlers.
 func (s *Server) queueHelper(w http.ResponseWriter, agentID string, cmdType protocol.CommandType, payload []byte, successMsg string) {
 	cmd := protocol.Command{

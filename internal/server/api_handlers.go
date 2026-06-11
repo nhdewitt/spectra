@@ -222,6 +222,7 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 		s.dbError(w, err, "handleDeleteAgent")
 		return
 	}
+	s.forgetAgentLabels(agentID)
 
 	s.CmdQueue.Remove(agentID)
 	w.WriteHeader(http.StatusNoContent)

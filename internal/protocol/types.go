@@ -173,6 +173,8 @@ type HostInfo struct {
 	AgentCommit string   `json:"agent_commit"`
 	BootTime    int64    `json:"boot_time"`
 	IPs         []string `json:"ips"` // List of local interface IPs
+
+	Hardware string `json:"hardware,omitempty"`
 }
 
 type RegisterRequest struct {

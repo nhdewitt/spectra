@@ -16,7 +16,6 @@ import type { DiskMetric, NetworkMetric, OverviewAgent, PlatformInfo, ProvisionR
 interface AgentConfig {
     ignored_filesystems?: string[];
     ignored_interfaces?: string[];
-    labels?: Record<string, string>;
     log_level?: string;
 }
 
@@ -539,126 +538,6 @@ function IgnoreChecklist({
     );
 }
 
-function LabelEditor({
-    labels,
-    onSet,
-    onRemove,
-}: {
-    labels: Record<string, string>;
-    onSet: (key: string, value: string) => void;
-    onRemove: (key: string) => void;
-}) {
-    const [keyInput, setKeyInput] = useState("");
-    const [valueInput, setValueInput] = useState("");
-
-    const handleAdd = () => {
-        const k = keyInput.trim();
-        const v = valueInput.trim();
-        if (k && v) {
-            onSet(k, v);
-            setKeyInput("");
-            setValueInput("");
-        }
-    };
-
-    const entries = Object.entries(labels);
-
-    return (
-        <div style={{ marginBottom: 16 }}>
-            <div
-                style={{
-                    fontSize: 11,
-                    fontFamily: themeVars.font,
-                    color: themeVars.textDim,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    marginBottom: 6,
-                }}
-            >
-                Labels
-            </div>
-
-            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                <input
-                    type="text"
-                    value={keyInput}
-                    onChange={(e) => setKeyInput(e.target.value)}
-                    placeholder="Key"
-                    style={{
-                        flex: 1,
-                        padding: "4px 8px",
-                        fontSize: 12,
-                        fontFamily: themeVars.font,
-                        color: themeVars.text,
-                        background: themeVars.surface,
-                        border: `1px solid ${themeVars.border}`,
-                    }}
-                />
-                <input
-                    type="text"
-                    value={valueInput}
-                    onChange={(e) => setValueInput(e.target.value)}
-                    placeholder="Value"
-                    style={{
-                        flex: 1,
-                        padding: "4px 8px",
-                        fontSize: 12,
-                        fontFamily: themeVars.font,
-                        color: themeVars.text,
-                        background: themeVars.surface,
-                        border: `1px solid ${themeVars.border}`,
-                    }}
-                />
-                <button onClick={handleAdd} style={btnStyle}>
-                    Add
-                </button>
-            </div>
-
-            {entries.length === 0 && (
-                <div style={{ fontSize: 11, fontFamily: themeVars.font, color: themeVars.textDim }}>
-                    No labels set.
-                </div>
-            )}
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {entries.map(([k, v]) => (
-                    <span
-                        key={k}
-                        style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                            padding: "2px 8px",
-                            fontSize: 11,
-                            fontFamily: themeVars.font,
-                            color: themeVars.text,
-                            background: themeVars.surfaceHover,
-                            border: `1px solid ${themeVars.border}`,
-                        }}
-                    >
-                        <span style={{ color: themeVars.accent }}>{k}</span>
-                        <span style={{ color: themeVars.textDim }}>=</span>
-                        {v}
-                        <button
-                            onClick={() => onRemove(k)}
-                            style={{
-                                background: "none",
-                                border: "none",
-                                color: themeVars.danger,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                padding: 0,
-                                lineHeight: 1,
-                            }}
-                        >
-                            ×
-                        </button>
-                    </span>
-                ))}
-            </div>
-        </div>
-    );
-}
-
 function AgentConfigPanel({
     agent,
     onDelete,
@@ -713,22 +592,12 @@ function AgentConfigPanel({
         [agent.id]
     );
 
-    const saveLabels = useCallback(
-        async (labels: Record<string, string>) => {
-            setConfig((prev) => ({ ...prev, labels }));
-            if (Object.keys(labels).length === 0) {
-                await api.deleteAgentConfig(agent.id, "labels");
-            } else {
-                await api.setAgentConfig(agent.id, "labels", labels);
-            }
-        },
-        [agent.id]
-    );
-
     const handleUpgrade = async () => {
         try {
             const res = await api.upgradeInstructions(agent.id);
-            setUpgradeSteps(res.steps);
+            if (res.steps) {
+                setUpgradeSteps(res.steps);
+            }
         } catch {
             setUpgradeSteps("Failed to load upgrade instructions.");
         }
@@ -737,7 +606,12 @@ function AgentConfigPanel({
     const handleShowUninstall = async () => {
         try {
             const res = await api.uninstallInstructions(agent.id);
-            setUninstallSteps(res.steps);
+            if (res.steps) {
+                setUninstallSteps(res.steps);
+            } else {
+                // Agent platform unknown or offline. Skip straight to delete confirmation.
+                setConfirmDelete(true);
+            }
         } catch {
             setUninstallSteps("Failed to load uninstall instructions.");
         }
@@ -783,19 +657,6 @@ function AgentConfigPanel({
                                 ? [...current, item]
                                 : current.filter((i) => i !== item);
                             saveList("ignored_interfaces", next);
-                        }}
-                    />
-
-                    <LabelEditor
-                        labels={config.labels ?? {}}
-                        onSet={(key, value) => {
-                            const next = { ...(config.labels ?? {}), [key]: value };
-                            saveLabels(next);
-                        }}
-                        onRemove={(key) => {
-                            const next = { ...(config.labels ?? {}) };
-                            delete next[key];
-                            saveLabels(next);
                         }}
                     />
 
@@ -1094,13 +955,13 @@ export function AgentManagement({ user }: AgentManagementProps) {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [search, setSearch] = useState("");
     const [showProvision, setShowProvision] = useState(false);
-
+ 
     const [updateSelected, setUpdateSelected] = useState<Set<string>>(new Set());
     const [updating, setUpdating] = useState(false);
     const [updateResult, setUpdateResult] = useState<{ queued: number; skipped: number; failed: number } | null>(null);
     const [updateStatuses, setUpdateStatuses] = useState<Map<string, UpdateStatus>>(new Map());
     const updateStartedAt = useRef<number>(0);
-
+ 
     const isAdmin = user.role === "admin" || user.role === "superadmin";
 
     const hasPendingUpdates = useMemo(() => {
@@ -1319,7 +1180,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
             >
                 Agent Management
             </div>
-
+ 
             <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
                 <input
                     type="text"
@@ -1339,13 +1200,13 @@ export function AgentManagement({ user }: AgentManagementProps) {
                         flex: "0 1 300px",
                     }}
                 />
-
+ 
                 {isAdmin && (
                     <button onClick={() => setShowProvision(true)} style={btnStyle}>
                         + Provision Agent
                     </button>
                 )}
-
+ 
                 {isAdmin && hasOutdated && (
                     <>
                         <button
@@ -1379,7 +1240,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                         </button>
                     </>
                 )}
-
+ 
                 {updateResult && !hasPendingUpdates && (
                     <span
                         style={{
@@ -1393,7 +1254,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                         {updateResult.failed > 0 && `, ${updateResult.failed} failed`}
                     </span>
                 )}
-
+ 
                 <span
                     style={{
                         fontSize: 11,
@@ -1405,7 +1266,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     {agents.length} agent{agents.length === 1 ? "" : "s"} registered
                 </span>
             </div>
-
+ 
             {/* Agent table */}
             <div style={{ overflowX: "auto" }}>
                 <table
@@ -1433,7 +1294,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                             const isOutdated = outdatedIds.has(a.id);
                             const isChecked = updateSelected.has(a.id);
                             const agentUpdateStatus = updateStatuses.get(a.id);
-
+ 
                             return (
                                 <tr
                                     key={a.id}
@@ -1536,7 +1397,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     </tbody>
                 </table>
             </div>
-
+ 
             <Pagination
                 page={page}
                 totalPages={totalPages}
@@ -1544,7 +1405,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                 pageSize={20}
                 onPageChange={setPage}
             />
-
+ 
             {/* Danger Zone */}
             {isAdmin && (
                 <div
@@ -1567,7 +1428,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     >
                         Danger Zone
                     </div>
-
+ 
                     <DangerAction
                         title="Purge Offline Agents"
                         description="Remove all agents that haven't been seen in more than 7 days. Cascades metric data."
@@ -1579,9 +1440,9 @@ export function AgentManagement({ user }: AgentManagementProps) {
                             return `${res.purged} agent${res.purged !== 1 ? "s" : ""} purged.`;
                         }}
                     />
-
+ 
                     <div style={{ borderTop: `1px solid ${themeVars.border}`, margin: "12px 0" }} />
-
+ 
                     <DangerAction
                         title="Revoke All Tokens"
                         description="Invalidate all pending registration tokens immediately."
@@ -1594,8 +1455,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     />
                 </div>
             )}
-
-            {/* Expanded config panel */}
+ 
             {selectedId && (
                 <div
                     style={{
@@ -1657,7 +1517,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                                 ×
                             </button>
                         </div>
-
+ 
                         <AgentConfigPanel
                             agent={agents.find((a) => a.id === selectedId)!}
                             onDelete={() => handleDelete(selectedId)}
@@ -1666,7 +1526,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                     </div>
                 </div>
             )}
-
+ 
             {showProvision && (
                 <ProvisionModal onClose={() => setShowProvision(false)} />
             )}

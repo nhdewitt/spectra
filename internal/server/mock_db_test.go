@@ -1,10 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nhdewitt/spectra/internal/database"
@@ -16,6 +18,8 @@ const (
 	testSessionToken = "test-session-token"
 	// testSessionIP is the IP address bound to the test session.
 	testSessionIP = "192.168.1.100"
+	// testAgentID is a fixed, regex-valid UUID for tests.
+	testAgentUUID = "550e8400-e29b-41d4-a716-446655440000"
 )
 
 // setupTestSession creates a valid session in the mock DB for use in tests
@@ -59,6 +63,14 @@ func authedRequestAs(req *http.Request, token, ip string) *http.Request {
 	return req
 }
 
+func tsNow() pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: time.Now(), Valid: true}
+}
+
+func putBody(value string) *bytes.Buffer {
+	return bytes.NewBufferString(fmt.Sprintf(`{"value":%q}`, value))
+}
+
 // MockDB implements the DB interface for unit testing.
 type MockDB struct {
 	mu sync.Mutex
@@ -94,6 +106,30 @@ type MockDB struct {
 
 	OverviewRows []database.GetOverviewRow
 	HeatmapRows  []database.GetFleetHeatmapRow
+
+	// Labels
+	ReplaceAutoLabelsCount      int
+	LastReplaceAutoLabelsParams database.ReplaceAutoLabelsParams
+	UpsertAutoLabelCount        int
+	LastUpsertAutoLabelParams   database.UpsertAutoLabelParams
+	ListAgentLabelsCount        int
+	ListAgentLabelsReturn       []database.ListAgentLabelsRow
+	ListLabelKeysCount          int
+	ListLabelKeysReturn         []database.ListLabelKeysRow
+	ListLabelValuesForKeyCount  int
+	ListLabelValuesForKeyReturn []string
+	UpsertUserLabelCount        int
+	LastUpsertUserLabelParams   database.UpsertUserLabelParams
+	UpsertUserLabelReturn       database.AgentLabel
+	UpsertUserLabelErr          error
+	DeleteUserLabelCount        int
+	DeleteUserLabelErr          error
+	LastDeleteUserLabelParams   database.DeleteUserLabelParams
+	DeleteUserLabelRows         int64
+	GetAgentLabelCount          int
+	LastGetAgentLabelParams     database.GetAgentLabelParams
+	GetAgentLabelReturn         database.GetAgentLabelRow
+	GetAgentLabelErr            error
 
 	UserRows              []database.ListUsersRow
 	UserRowsWithLastLogin []database.ListUsersWithLastLoginRow
@@ -954,4 +990,100 @@ func (m *MockDB) UpsertSuperadmin(_ context.Context, _ database.UpsertSuperadmin
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.Err
+}
+
+func (m *MockDB) ReplaceAutoLabels(_ context.Context, arg database.ReplaceAutoLabelsParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ReplaceAutoLabelsCount++
+	m.LastReplaceAutoLabelsParams = arg
+	return m.Err
+}
+
+func (m *MockDB) UpsertAutoLabel(_ context.Context, arg database.UpsertAutoLabelParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.UpsertAutoLabelCount++
+	m.LastUpsertAutoLabelParams = arg
+	return m.Err
+}
+
+func (m *MockDB) ListAgentLabels(_ context.Context, _ pgtype.UUID) ([]database.ListAgentLabelsRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ListAgentLabelsCount++
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	return m.ListAgentLabelsReturn, nil
+}
+
+func (m *MockDB) ListLabelKeys(_ context.Context) ([]database.ListLabelKeysRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	return m.ListLabelKeysReturn, nil
+}
+
+func (m *MockDB) ListLabelValuesForKey(_ context.Context, _ string) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ListLabelValuesForKeyCount++
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	return m.ListLabelValuesForKeyReturn, nil
+}
+
+func (m *MockDB) UpsertUserLabel(_ context.Context, arg database.UpsertUserLabelParams) (database.AgentLabel, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.UpsertUserLabelCount++
+	m.LastUpsertUserLabelParams = arg
+	if m.UpsertUserLabelErr != nil {
+		return database.AgentLabel{}, m.UpsertUserLabelErr
+	}
+	if m.Err != nil {
+		return database.AgentLabel{}, m.Err
+	}
+	return m.UpsertUserLabelReturn, nil
+}
+
+func (m *MockDB) GetAgentLabel(_ context.Context, arg database.GetAgentLabelParams) (database.GetAgentLabelRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.GetAgentLabelCount++
+	m.LastGetAgentLabelParams = arg
+	if m.GetAgentLabelErr != nil {
+		return database.GetAgentLabelRow{}, m.GetAgentLabelErr
+	}
+	if m.Err != nil {
+		return database.GetAgentLabelRow{}, m.Err
+	}
+	return m.GetAgentLabelReturn, nil
+}
+
+func (m *MockDB) DeleteUserLabel(_ context.Context, arg database.DeleteUserLabelParams) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.DeleteUserLabelCount++
+	m.LastDeleteUserLabelParams = arg
+	if m.DeleteUserLabelErr != nil {
+		return 0, m.DeleteUserLabelErr
+	}
+	if m.Err != nil {
+		return 0, m.Err
+	}
+	return m.DeleteUserLabelRows, nil
 }

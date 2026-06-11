@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nhdewitt/spectra/internal/database"
+	"github.com/nhdewitt/spectra/internal/labels"
 	"github.com/nhdewitt/spectra/internal/protocol"
 	"github.com/nhdewitt/spectra/internal/version"
 )
@@ -86,6 +87,17 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 		"platform", req.Info.Platform,
 	)
 
+	autoInfo := labels.AgentInfo{
+		OS:           req.Info.OS,
+		Arch:         req.Info.Arch,
+		Hardware:     req.Info.Hardware,
+		AgentVersion: req.Info.AgentVer,
+	}
+	if err := s.syncAutoLabelsOnRegister(r.Context(), agentID, autoInfo); err != nil {
+		s.Logger.Warn("auto label sync failed on register",
+			"agent_id", agentID, "err", err)
+	}
+
 	respondJSON(w, http.StatusCreated, protocol.RegisterResponse{
 		AgentID: agentID,
 		Secret:  secret,
@@ -94,6 +106,13 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	agentID := getAgentID(r)
+
+	if v := r.Header.Get("X-Spectra-Agent-Version"); v != "" {
+		if err := s.syncAgentVersionLabel(r.Context(), agentID, v); err != nil {
+			s.Logger.Warn("agent_version sync failed",
+				"agent_id", agentID, "err", err)
+		}
+	}
 
 	var rawEnvelopes []RawEnvelope
 	if err := decodeJSONBody(r, &rawEnvelopes); err != nil {

@@ -9,6 +9,7 @@ import { AgentManagement } from "./pages/AgentManagement";
 import { Diagnostics } from "./pages/Diagnostics";
 import { UserManagement } from "./pages/UserManagement";
 import { Settings } from "./pages/Settings";
+import { Tags } from "./pages/Tags";
 import type { User, Page, OverviewAgent } from "./types";
 import { usePolling } from "./hooks";
 import { statusColor } from "./utils";
@@ -195,6 +196,7 @@ export default function App() {
 					<AgentDetail
 						agent={selectedAgent}
 						agents={agentList}
+						user={user}
 						onSelectAgent={handleSelectAgent}
 						onBack={() => { setSelectedAgent(null); setPage("overview"); }}
 						starredIds={starredIds}
@@ -272,6 +274,8 @@ export default function App() {
 				)}
 
 				{page === "agents" && <AgentManagement user={user}/>}
+
+				{page === "tags" && <Tags user={user} />}
 
 				{page === "users" && <UserManagement user={user} />}
 

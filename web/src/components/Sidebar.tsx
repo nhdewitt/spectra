@@ -19,6 +19,7 @@ const NAV_ICON: Record<string, string> = {
   detail: "◆",
   diagnostics: "○",
   agents: "☐",
+  tags: "▲",
   users: "☐",
 };
 
@@ -56,6 +57,7 @@ export function Sidebar({
         { key: "detail", label: "Agent Detail" },
         { key: "diagnostics", label: "Diagnostics", indent: true },
         { key: "agents", label: "Agent Mgmt" },
+        { key: "tags", label: "Tags" },
         { key: "users", label: "User Mgmt", adminOnly: true },
     ];
 

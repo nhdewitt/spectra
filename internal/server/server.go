@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/nhdewitt/spectra/internal/labels"
 	"github.com/nhdewitt/spectra/internal/logging"
 	"github.com/nhdewitt/spectra/internal/version"
 	"golang.org/x/net/netutil"
@@ -38,6 +39,7 @@ type Server struct {
 	Releases     *releaseManifest
 	httpServer   *http.Server
 	Commands     *commandResultStore
+	versionCache *labels.VersionCache
 
 	done chan struct{}
 }
@@ -68,6 +70,7 @@ func New(cfg Config, db DB) *Server {
 		Limiters:     newTieredLimiters(),
 		Releases:     newReleaseManifest(cfg.ReleasesDir),
 		Commands:     newCommandResultStore(10 * time.Minute),
+		versionCache: labels.NewVersionCache(),
 		done:         make(chan struct{}),
 	}
 	s.routes()
@@ -128,6 +131,15 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("POST /api/v1/admin/users", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleCreateUser))))
 	s.Router.HandleFunc("DELETE /api/v1/admin/users/{id}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleDeleteUser))))
 	s.Router.HandleFunc("PUT /api/v1/admin/users/{id}/role", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleSuperAdmin)(s.handleUpdateUserRole))))
+
+	// Label reads (any authenticated user)
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/labels", s.requireUserAuth(s.rateLimitAuthed(s.handleListAgentLabels)))
+	s.Router.HandleFunc("GET /api/v1/labels/keys", s.requireUserAuth(s.rateLimitAuthed(s.handleListLabelKeys)))
+	s.Router.HandleFunc("GET /api/v1/labels/values", s.requireUserAuth(s.rateLimitAuthed(s.handleListLabelValues)))
+
+	// Label writes (admin+)
+	s.Router.HandleFunc("PUT /api/v1/admin/agents/{id}/labels/{key}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handlePutAgentLabel))))
+	s.Router.HandleFunc("DELETE /api/v1/admin/agents/{id}/labels/{key}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleDeleteAgentLabel))))
 
 	// Operational write endpoints (admin+)
 	s.Router.HandleFunc("DELETE /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleDeleteAgent))))

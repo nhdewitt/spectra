@@ -244,7 +244,7 @@ export interface Updates {
 
 export type TimeRange = "5m" | "15m" | "1h" | "6h" | "24h" | "7d" | "30d"
 export type ProcessSort = "cpu" | "memory";
-export type Page = "overview" | "detail" | "diagnostics" | "agents" | "users" | "settings";
+export type Page = "overview" | "detail" | "diagnostics" | "agents" | "users" | "settings" | "tags";
 
 /* Unified time selection - either a quick preset or a custom start/end. */
 export type RangeSelection =
@@ -265,6 +265,28 @@ export interface AgentConfig {
     server: string;
     token: string;
     ca_cert?: string;
+}
+
+/**
+ * A single label on an agent. Matches the backend labelDTO struct.
+ * 
+ * source distinguishes server-managed labels from admin-set ones.
+ * The UI uses this to disable delete/edit controls on auto labels.
+ */
+export interface AgentLabel {
+    key: string;
+    value: string;
+    source: "auto" | "user";
+    updated_at: string;
+}
+
+/**
+ * A label key with its source, for the rule-editor/filter picker.
+ * Matches the backend labelKeyDTO struct.
+ */
+export interface LabelKey {
+    key: string;
+    source: "auto" | "user";
 }
 
 export interface InstallInstructions {

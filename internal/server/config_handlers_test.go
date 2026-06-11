@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-const testAgentUUID = "550e8400-e29b-41d4-a716-446655440000"
-
 func TestHandleGetAgentConfig_Success(t *testing.T) {
 	s, _, _, mock := newTestServer()
 	setupTestSession(mock)
