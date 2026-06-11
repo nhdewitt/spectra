@@ -37,6 +37,10 @@ func (s *Server) handleUpgradeInstructions(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}
+	if agent.Os.String == "" || agent.Arch.String == "" {
+		http.Error(w, "no platform match for empty OS/arch", http.StatusBadRequest)
+		return
+	}
 
 	p := platformFromAgent(agent.Os.String, agent.Arch.String)
 	if p == nil {
@@ -58,6 +62,10 @@ func (s *Server) handleUninstallInstructions(w http.ResponseWriter, r *http.Requ
 	agent, err := s.DB.GetAgent(r.Context(), mustUUID(agentID))
 	if err != nil {
 		http.Error(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	if agent.Os.String == "" || agent.Arch.String == "" {
+		http.Error(w, "no platform match for empty OS/arch", http.StatusBadRequest)
 		return
 	}
 
