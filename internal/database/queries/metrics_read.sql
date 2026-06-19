@@ -64,3 +64,13 @@ FROM metrics_system
 WHERE agent_id = @agent_id
 ORDER BY time DESC
 LIMIT 1;
+
+-- name: GetDiskTrend :many
+-- Returns recent disk usage samples for a specific agent+mountpoint,
+-- ordered ascending for linear regression in the alert evaluator.
+SELECT time, used_percent
+FROM metrics_disk
+WHERE agent_id = @agent_id
+  AND mountpoint = @mountpoint
+  AND time >= @start_time
+ORDER BY time ASC;

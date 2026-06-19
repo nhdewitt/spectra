@@ -794,6 +794,6 @@ func BenchmarkParseAgentID(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		parseAgentID(req)
+		parsePathID(req)
 	}
 }

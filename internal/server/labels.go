@@ -30,7 +30,7 @@ type putLabelRequest struct {
 //
 // GET /api/v1/agents/{id}/labels
 func (s *Server) handleListAgentLabels(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -102,7 +102,7 @@ func (s *Server) handleListLabelValues(w http.ResponseWriter, r *http.Request) {
 //
 // PUT /api/v1/admin/agents/{id}/labels/{key}
 func (s *Server) handlePutAgentLabel(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -151,7 +151,7 @@ func (s *Server) handlePutAgentLabel(w http.ResponseWriter, r *http.Request) {
 //
 // DELETE /api/v1/admin/agents/{id}/labels/{key}
 func (s *Server) handleDeleteAgentLabel(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return

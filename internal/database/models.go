@@ -42,6 +42,42 @@ type AgentLabel struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type AlertChannel struct {
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	Type      string             `json:"type"`
+	Config    []byte             `json:"config"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AlertEvent struct {
+	ID                pgtype.UUID        `json:"id"`
+	RuleID            pgtype.UUID        `json:"rule_id"`
+	AgentID           pgtype.UUID        `json:"agent_id"`
+	FiredAt           pgtype.Timestamptz `json:"fired_at"`
+	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
+	LastNotifiedAt    pgtype.Timestamptz `json:"last_notified_at"`
+	ConditionSnapshot []byte             `json:"condition_snapshot"`
+}
+
+type AlertRule struct {
+	ID              pgtype.UUID        `json:"id"`
+	Name            string             `json:"name"`
+	Enabled         bool               `json:"enabled"`
+	Scope           string             `json:"scope"`
+	AgentID         pgtype.UUID        `json:"agent_id"`
+	ConditionType   string             `json:"condition_type"`
+	ConditionParams []byte             `json:"condition_params"`
+	CooldownSeconds int32              `json:"cooldown_seconds"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type AlertRuleChannel struct {
+	RuleID    pgtype.UUID `json:"rule_id"`
+	ChannelID pgtype.UUID `json:"channel_id"`
+}
+
 type CurrentApplication struct {
 	AgentID   pgtype.UUID        `json:"agent_id"`
 	Name      string             `json:"name"`
@@ -248,6 +284,18 @@ type Session struct {
 	IpAddress string             `json:"ip_address"`
 	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type SmtpConfig struct {
+	ID                bool               `json:"id"`
+	Enabled           bool               `json:"enabled"`
+	Host              string             `json:"host"`
+	Port              int32              `json:"port"`
+	Username          string             `json:"username"`
+	PasswordEncrypted string             `json:"password_encrypted"`
+	FromAddress       string             `json:"from_address"`
+	TlsMode           string             `json:"tls_mode"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 }
 
 type User struct {

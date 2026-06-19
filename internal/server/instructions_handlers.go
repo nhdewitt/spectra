@@ -26,7 +26,7 @@ func platformFromAgent(os, arch string) *platformInfo {
 }
 
 func (s *Server) handleUpgradeInstructions(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -53,7 +53,7 @@ func (s *Server) handleUpgradeInstructions(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleUninstallInstructions(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

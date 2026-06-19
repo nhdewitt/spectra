@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,9 +11,36 @@ import (
 
 	"github.com/nhdewitt/spectra/internal/labels"
 	"github.com/nhdewitt/spectra/internal/logging"
+	"github.com/nhdewitt/spectra/internal/secret"
 	"github.com/nhdewitt/spectra/internal/version"
 	"golang.org/x/net/netutil"
 )
+
+// SMTPTLSMode controls how the SMTP client negotiates transport security.
+type SMTPTLSMode string
+
+const (
+	// SMTPTLSStartTLS dials plaintext then upgrades via STARTTLS (e.g. SES :587).
+	SMTPTLSStartTLS SMTPTLSMode = "starttls"
+	// SMTPTLSImplicit dials a TLS connection up front (e.g. SES :465).
+	SMTPTLSImplicit SMTPTLSMode = "implicit"
+	// SMTPTLSNone uses no transport security (LAN relay only).
+	SMTPTLSNone SMTPTLSMode = "none"
+)
+
+// ParseSMTPTLSMode validates a configured TLS mode string. The value is required
+// when SMTP is enabled so opting into or out of transport security is always
+// an explicit choice. Invalid values are caught at startup.
+func ParseSMTPTLSMode(s string) (SMTPTLSMode, error) {
+	switch SMTPTLSMode(s) {
+	case SMTPTLSStartTLS, SMTPTLSImplicit, SMTPTLSNone:
+		return SMTPTLSMode(s), nil
+	case "":
+		return "", errors.New("SMTP TLS mode is required (want starttls, implicit, or none)")
+	default:
+		return "", fmt.Errorf("invalid SMTP TLS mode %q (want starttls, implicit, or none)", s)
+	}
+}
 
 type Config struct {
 	Port           int
@@ -40,6 +68,7 @@ type Server struct {
 	httpServer   *http.Server
 	Commands     *commandResultStore
 	versionCache *labels.VersionCache
+	Cipher       *secret.Cipher
 
 	done chan struct{}
 }
@@ -159,6 +188,30 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("PUT /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleSetUserConfig)))
 	s.Router.HandleFunc("DELETE /api/v1/user/config", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteUserConfig)))
 
+	// Alert channels
+	s.Router.HandleFunc("GET /api/v1/alerts/channels", s.requireUserAuth(s.rateLimitAuthed(s.handleListAlertChannels)))
+	s.Router.HandleFunc("POST /api/v1/alerts/channels", s.requireUserAuth(s.rateLimitAuthed(s.handleCreateAlertChannel)))
+	s.Router.HandleFunc("PUT /api/v1/alerts/channels/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleUpdateAlertChannel)))
+	s.Router.HandleFunc("DELETE /api/v1/alerts/channels/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAlertChannel)))
+
+	// Alert rules
+	s.Router.HandleFunc("GET /api/v1/alerts/rules", s.requireUserAuth(s.rateLimitAuthed(s.handleListAlertRules)))
+	s.Router.HandleFunc("POST /api/v1/alerts/rules", s.requireUserAuth(s.rateLimitAuthed(s.handleCreateAlertRule)))
+	s.Router.HandleFunc("GET /api/v1/alerts/rules/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAlertRule)))
+	s.Router.HandleFunc("PUT /api/v1/alerts/rules/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleUpdateAlertRule)))
+	s.Router.HandleFunc("PUT /api/v1/alerts/rules/{id}/enabled", s.requireUserAuth(s.rateLimitAuthed(s.handleSetAlertRuleEnabled)))
+	s.Router.HandleFunc("DELETE /api/v1/alerts/rules/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAlertRule)))
+
+	// Alert events
+	s.Router.HandleFunc("GET /api/v1/alerts/active", s.requireUserAuth(s.rateLimitAuthed(s.handleListActiveAlerts)))
+	s.Router.HandleFunc("GET /api/v1/alerts/history", s.requireUserAuth(s.rateLimitAuthed(s.handleListAlertHistory)))
+	s.Router.HandleFunc("GET /api/v1/agents/{id}/alerts/history", s.requireUserAuth(s.rateLimitAuthed(s.handleListAgentAlertHistory)))
+
+	// SMTP config (admin+)
+	s.Router.HandleFunc("GET /api/v1/admin/smtp", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleGetSMTPConfig))))
+	s.Router.HandleFunc("PUT /api/v1/admin/smtp", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleUpdateSMTPConfig))))
+	s.Router.HandleFunc("POST /api/v1/admin/smtp/test", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleTestSMTPConfig))))
+
 	// API catch-all: reject unmatched /api/ routes before SPA fallback
 	s.Router.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
@@ -187,6 +240,8 @@ func (s *Server) Start() error {
 		return fmt.Errorf("listen on %s: %w", addr, err)
 	}
 	ln = netutil.LimitListener(ln, int(s.Config.MaxConnections))
+
+	go s.startAlertEvaluator()
 
 	if s.Config.TLSCert != "" && s.Config.TLSKey != "" {
 		s.Logger.Info("server started (TLS)", "addr", addr, "version", version.Full())

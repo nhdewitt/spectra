@@ -11,12 +11,15 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
+
+var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // decodeJSONBody reads the request body, handling optional gzip compression,
 // and decodes it into the provided target struct.
@@ -150,4 +153,21 @@ func (s *Server) dbError(w http.ResponseWriter, err error, handler string) {
 func isPgUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func mustMarshal(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte("{}")
+	}
+	return b
+}
+
+// parsePathID extracts and validates the agent UUID from the path.
+func parsePathID(r *http.Request) (string, error) {
+	id := r.PathValue("id")
+	if !uuidRegex.MatchString(id) {
+		return "", fmt.Errorf("invalid agent ID")
+	}
+	return id, nil
 }

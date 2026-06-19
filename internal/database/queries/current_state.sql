@@ -69,3 +69,10 @@ SET pending_count = EXCLUDED.pending_count,
 SELECT agent_id, pending_count, security_count, reboot_required, package_manager, updated_at
 FROM current_updates
 WHERE agent_id = $1;
+
+-- name: GetAllServices :many
+-- Bulk-load current services across the whole fleet so the evaluator can build
+-- an agent_id -> services map in one query instead of GetServices per agent.
+SELECT agent_id, name, status, sub_status, updated_at
+FROM current_services
+ORDER BY agent_id, name;

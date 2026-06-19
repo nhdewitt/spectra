@@ -3,11 +3,13 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nhdewitt/spectra/internal/database"
 	"golang.org/x/crypto/bcrypt"
@@ -69,6 +71,19 @@ func tsNow() pgtype.Timestamptz {
 
 func putBody(value string) *bytes.Buffer {
 	return bytes.NewBufferString(fmt.Sprintf(`{"value":%q}`, value))
+}
+
+func newTestUUID() pgtype.UUID {
+	var id pgtype.UUID
+
+	if _, err := rand.Read(id.Bytes[:]); err != nil {
+		panic(err)
+	}
+
+	id.Bytes[6] = (id.Bytes[6] & 0x0f) | 0x40
+	id.Bytes[8] = (id.Bytes[8] & 0x3f) | 0x80
+	id.Valid = true
+	return id
 }
 
 // MockDB implements the DB interface for unit testing.
@@ -139,6 +154,27 @@ type MockDB struct {
 	UpdateUserRoleCount   int
 	OfflineAgentCount     int64
 
+	AlertChannels   map[string]database.AlertChannel // UUID -> channel
+	AlertChannelErr error
+
+	AlertRules   map[string]database.AlertRule // UUID -> rule
+	AlertRuleErr error
+
+	RuleChannels map[string][]pgtype.UUID // rule id -> []channel id
+
+	AlertEvents   map[string]database.AlertEvent // id -> event
+	AlertEventErr error
+
+	DiskTrendRows []database.GetDiskTrendRow
+	DiskTrendErr  error
+
+	AllServices []database.CurrentService // Bulk preload
+
+	ServicesByAgent map[string][]database.CurrentService // agentID -> services
+
+	SMTPConfig    *database.SmtpConfig
+	SMTPConfigErr error
+
 	Err         error
 	QueryErr    error // errors for data queries (not auth)
 	GetAgentErr error
@@ -163,11 +199,16 @@ type mockSession struct {
 
 func NewMockDB() *MockDB {
 	return &MockDB{
-		Agents:      make(map[string]string),
-		Users:       make(map[string]mockUser),
-		Sessions:    make(map[string]mockSession),
-		AgentSHA256: make(map[string][]byte),
-		SuperAdmins: 1,
+		Agents:          make(map[string]string),
+		Users:           make(map[string]mockUser),
+		Sessions:        make(map[string]mockSession),
+		AgentSHA256:     make(map[string][]byte),
+		SuperAdmins:     1,
+		AlertChannels:   make(map[string]database.AlertChannel),
+		AlertRules:      make(map[string]database.AlertRule),
+		RuleChannels:    make(map[string][]pgtype.UUID),
+		AlertEvents:     make(map[string]database.AlertEvent),
+		ServicesByAgent: make(map[string][]database.CurrentService),
 	}
 }
 
@@ -605,11 +646,14 @@ func (m *MockDB) GetProcessesByMemory(_ context.Context, _ database.GetProcesses
 	return []database.CurrentProcess{}, nil
 }
 
-func (m *MockDB) GetServices(_ context.Context, _ pgtype.UUID) ([]database.CurrentService, error) {
+func (m *MockDB) GetServices(_ context.Context, id pgtype.UUID) ([]database.CurrentService, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.QueryErr != nil {
 		return nil, m.QueryErr
+	}
+	if svcs, ok := m.ServicesByAgent[formatUUID(id)]; ok {
+		return svcs, nil
 	}
 	return []database.CurrentService{}, nil
 }
@@ -1086,4 +1130,444 @@ func (m *MockDB) DeleteUserLabel(_ context.Context, arg database.DeleteUserLabel
 		return 0, m.Err
 	}
 	return m.DeleteUserLabelRows, nil
+}
+
+func (m *MockDB) CreateAlertChannel(_ context.Context, arg database.CreateAlertChannelParams) (database.AlertChannel, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertChannelErr != nil {
+		return database.AlertChannel{}, m.AlertChannelErr
+	}
+	ch := database.AlertChannel{
+		ID:     newTestUUID(),
+		Name:   arg.Name,
+		Type:   arg.Type,
+		Config: arg.Config,
+	}
+	m.AlertChannels[formatUUID(ch.ID)] = ch
+	return ch, nil
+}
+
+func (m *MockDB) GetAlertChannel(_ context.Context, id pgtype.UUID) (database.AlertChannel, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertChannelErr != nil {
+		return database.AlertChannel{}, m.AlertChannelErr
+	}
+	ch, ok := m.AlertChannels[formatUUID(id)]
+	if !ok {
+		return database.AlertChannel{}, fmt.Errorf("alert channel not found")
+	}
+	return ch, nil
+}
+
+func (m *MockDB) ListAlertChannels(_ context.Context) ([]database.AlertChannel, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertChannelErr != nil {
+		return nil, m.AlertChannelErr
+	}
+	out := make([]database.AlertChannel, 0, len(m.AlertChannels))
+	for _, ch := range m.AlertChannels {
+		out = append(out, ch)
+	}
+	return out, nil
+}
+
+func (m *MockDB) UpdateAlertChannel(_ context.Context, arg database.UpdateAlertChannelParams) (database.AlertChannel, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertChannelErr != nil {
+		return database.AlertChannel{}, m.AlertChannelErr
+	}
+	key := formatUUID(arg.ID)
+	ch, ok := m.AlertChannels[key]
+	if !ok {
+		return database.AlertChannel{}, fmt.Errorf("alert channel not found")
+	}
+	ch.Name = arg.Name
+	ch.Type = arg.Type
+	ch.Config = arg.Config
+	m.AlertChannels[key] = ch
+	return ch, nil
+}
+
+func (m *MockDB) DeleteAlertChannel(_ context.Context, id pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertChannelErr != nil {
+		return m.AlertChannelErr
+	}
+	delete(m.AlertChannels, formatUUID(id))
+	return nil
+}
+
+func (m *MockDB) CreateAlertRule(_ context.Context, arg database.CreateAlertRuleParams) (database.AlertRule, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertRuleErr != nil {
+		return database.AlertRule{}, m.AlertRuleErr
+	}
+	r := database.AlertRule{
+		ID:              newTestUUID(),
+		Name:            arg.Name,
+		Enabled:         arg.Enabled,
+		Scope:           arg.Scope,
+		AgentID:         arg.AgentID,
+		ConditionType:   arg.ConditionType,
+		ConditionParams: arg.ConditionParams,
+		CooldownSeconds: arg.CooldownSeconds,
+	}
+	m.AlertRules[formatUUID(r.ID)] = r
+	return r, nil
+}
+
+func (m *MockDB) GetAlertRule(_ context.Context, id pgtype.UUID) (database.AlertRule, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertRuleErr != nil {
+		return database.AlertRule{}, m.AlertRuleErr
+	}
+	r, ok := m.AlertRules[formatUUID(id)]
+	if !ok {
+		return database.AlertRule{}, fmt.Errorf("alert rule not found")
+	}
+	return r, nil
+}
+
+func (m *MockDB) ListAlertRules(_ context.Context) ([]database.AlertRule, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertRuleErr != nil {
+		return nil, m.AlertRuleErr
+	}
+	out := make([]database.AlertRule, 0, len(m.AlertRules))
+	for _, r := range m.AlertRules {
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (m *MockDB) ListEnabledAlertRules(_ context.Context) ([]database.AlertRule, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertRuleErr != nil {
+		return nil, m.AlertRuleErr
+	}
+	var out []database.AlertRule
+	for _, r := range m.AlertRules {
+		if r.Enabled {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (m *MockDB) UpdateAlertRule(_ context.Context, arg database.UpdateAlertRuleParams) (database.AlertRule, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertRuleErr != nil {
+		return database.AlertRule{}, m.AlertRuleErr
+	}
+	key := formatUUID(arg.ID)
+	r, ok := m.AlertRules[key]
+	if !ok {
+		return database.AlertRule{}, fmt.Errorf("alert rule not found")
+	}
+	r.Name = arg.Name
+	r.Enabled = arg.Enabled
+	r.ConditionParams = arg.ConditionParams
+	r.CooldownSeconds = arg.CooldownSeconds
+	m.AlertRules[key] = r
+	return r, nil
+}
+
+func (m *MockDB) DeleteAlertRule(_ context.Context, id pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertRuleErr != nil {
+		return m.AlertRuleErr
+	}
+	delete(m.AlertRules, formatUUID(id))
+	return nil
+}
+
+func (m *MockDB) SetAlertRuleEnabled(_ context.Context, arg database.SetAlertRuleEnabledParams) (database.AlertRule, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertRuleErr != nil {
+		return database.AlertRule{}, m.AlertRuleErr
+	}
+	key := formatUUID(arg.ID)
+	r, ok := m.AlertRules[key]
+	if !ok {
+		return database.AlertRule{}, fmt.Errorf("alert rule not found")
+	}
+	r.Enabled = arg.Enabled
+	m.AlertRules[key] = r
+	return r, nil
+}
+
+func (m *MockDB) AddChannelToRule(_ context.Context, arg database.AddChannelToRuleParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := formatUUID(arg.RuleID)
+	for _, id := range m.RuleChannels[key] {
+		if id == arg.ChannelID {
+			return nil // ON CONFLICT DO NOTHING
+		}
+	}
+	m.RuleChannels[key] = append(m.RuleChannels[key], arg.ChannelID)
+	return nil
+}
+
+func (m *MockDB) RemoveChannelFromRule(_ context.Context, arg database.RemoveChannelFromRuleParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := formatUUID(arg.RuleID)
+	channels := m.RuleChannels[key]
+	for i, id := range channels {
+		if id == arg.ChannelID {
+			m.RuleChannels[key] = append(channels[:i], channels[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *MockDB) ListChannelsForRule(_ context.Context, ruleID pgtype.UUID) ([]database.AlertChannel, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []database.AlertChannel
+	for _, chID := range m.RuleChannels[formatUUID(ruleID)] {
+		if ch, ok := m.AlertChannels[formatUUID(chID)]; ok {
+			out = append(out, ch)
+		}
+	}
+	return out, nil
+}
+
+func (m *MockDB) DeleteChannelsForRule(_ context.Context, ruleID pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.RuleChannels, formatUUID(ruleID))
+	return nil
+}
+
+func (m *MockDB) GetActiveEvent(_ context.Context, arg database.GetActiveEventParams) (database.AlertEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertEventErr != nil {
+		return database.AlertEvent{}, m.AlertEventErr
+	}
+	for _, ev := range m.AlertEvents {
+		if ev.RuleID == arg.RuleID && ev.AgentID == arg.AgentID && !ev.ResolvedAt.Valid {
+			return ev, nil
+		}
+	}
+	return database.AlertEvent{}, fmt.Errorf("no active event")
+}
+
+func (m *MockDB) GetLastEventForRule(_ context.Context, arg database.GetLastEventForRuleParams) (database.AlertEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertEventErr != nil {
+		return database.AlertEvent{}, m.AlertEventErr
+	}
+	var latest database.AlertEvent
+	found := false
+	for _, ev := range m.AlertEvents {
+		if ev.RuleID == arg.RuleID && ev.AgentID == arg.AgentID {
+			if !found || ev.FiredAt.Time.After(latest.FiredAt.Time) {
+				latest = ev
+				found = true
+			}
+		}
+	}
+	if !found {
+		return database.AlertEvent{}, fmt.Errorf("no event found")
+	}
+	return latest, nil
+}
+
+func (m *MockDB) CreateAlertEvent(_ context.Context, arg database.CreateAlertEventParams) (database.AlertEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertEventErr != nil {
+		return database.AlertEvent{}, m.AlertEventErr
+	}
+	ev := database.AlertEvent{
+		ID:                newTestUUID(),
+		RuleID:            arg.RuleID,
+		AgentID:           arg.AgentID,
+		FiredAt:           pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		ConditionSnapshot: arg.ConditionSnapshot,
+		LastNotifiedAt:    pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}
+	m.AlertEvents[formatUUID(ev.ID)] = ev
+	return ev, nil
+}
+
+func (m *MockDB) ResolveAlertEvent(_ context.Context, arg database.ResolveAlertEventParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertEventErr != nil {
+		return m.AlertEventErr
+	}
+	for key, ev := range m.AlertEvents {
+		if ev.RuleID == arg.RuleID && ev.AgentID == arg.AgentID && !ev.ResolvedAt.Valid {
+			ev.ResolvedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+			m.AlertEvents[key] = ev
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *MockDB) TouchAlertEventNotified(_ context.Context, id pgtype.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertEventErr != nil {
+		return m.AlertEventErr
+	}
+	key := formatUUID(id)
+	if ev, ok := m.AlertEvents[key]; ok {
+		ev.LastNotifiedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+		m.AlertEvents[key] = ev
+	}
+	return nil
+}
+
+func (m *MockDB) ListActiveAlertEvents(_ context.Context) ([]database.ListActiveAlertEventsRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertEventErr != nil {
+		return nil, m.AlertEventErr
+	}
+	var out []database.ListActiveAlertEventsRow
+	for _, ev := range m.AlertEvents {
+		if !ev.ResolvedAt.Valid {
+			r, ok := m.AlertRules[formatUUID(ev.RuleID)]
+			if !ok {
+				continue
+			}
+			out = append(out, database.ListActiveAlertEventsRow{
+				ID:                ev.ID,
+				RuleID:            ev.RuleID,
+				AgentID:           ev.AgentID,
+				FiredAt:           ev.FiredAt,
+				ResolvedAt:        ev.ResolvedAt,
+				LastNotifiedAt:    ev.LastNotifiedAt,
+				ConditionSnapshot: ev.ConditionSnapshot,
+				RuleName:          r.Name,
+				ConditionType:     r.ConditionType,
+			})
+		}
+	}
+	return out, nil
+}
+
+func (m *MockDB) ListAlertEventHistory(_ context.Context, arg database.ListAlertEventHistoryParams) ([]database.ListAlertEventHistoryRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertEventErr != nil {
+		return nil, m.AlertEventErr
+	}
+	return []database.ListAlertEventHistoryRow{}, nil
+}
+
+func (m *MockDB) ListAlertEventsByAgent(_ context.Context, arg database.ListAlertEventsByAgentParams) ([]database.ListAlertEventsByAgentRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertEventErr != nil {
+		return nil, m.AlertEventErr
+	}
+	return []database.ListAlertEventsByAgentRow{}, nil
+}
+
+func (m *MockDB) GetDiskTrend(_ context.Context, _ database.GetDiskTrendParams) ([]database.GetDiskTrendRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.DiskTrendErr != nil {
+		return nil, m.DiskTrendErr
+	}
+	return m.DiskTrendRows, nil
+}
+
+func (m *MockDB) ListAllActiveEvents(_ context.Context) ([]database.AlertEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertEventErr != nil {
+		return nil, m.AlertEventErr
+	}
+	var out []database.AlertEvent
+	for _, ev := range m.AlertEvents {
+		if !ev.ResolvedAt.Valid {
+			out = append(out, ev)
+		}
+	}
+	return out, nil
+}
+
+func (m *MockDB) ListLastEventPerRuleAgent(_ context.Context) ([]database.AlertEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.AlertEventErr != nil {
+		return nil, m.AlertEventErr
+	}
+	// Most recent event per (rule_id, agent_id).
+	latest := make(map[string]database.AlertEvent)
+	for _, ev := range m.AlertEvents {
+		key := formatUUID(ev.RuleID) + ":" + formatUUID(ev.AgentID)
+		if cur, ok := latest[key]; !ok || ev.FiredAt.Time.After(cur.FiredAt.Time) {
+			latest[key] = ev
+		}
+	}
+	out := make([]database.AlertEvent, 0, len(latest))
+	for _, ev := range latest {
+		out = append(out, ev)
+	}
+	return out, nil
+}
+
+func (m *MockDB) GetAllServices(_ context.Context) ([]database.CurrentService, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
+	return m.AllServices, nil
+}
+
+func (m *MockDB) GetSMTPConfig(_ context.Context) (database.SmtpConfig, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.SMTPConfigErr != nil {
+		return database.SmtpConfig{}, m.SMTPConfigErr
+	}
+	if m.SMTPConfig == nil {
+		return database.SmtpConfig{}, pgx.ErrNoRows
+	}
+	return *m.SMTPConfig, nil
+}
+
+func (m *MockDB) UpsertSMTPConfig(_ context.Context, arg database.UpsertSMTPConfigParams) (database.SmtpConfig, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.SMTPConfigErr != nil {
+		return database.SmtpConfig{}, m.SMTPConfigErr
+	}
+	cfg := database.SmtpConfig{
+		ID:                true,
+		Enabled:           arg.Enabled,
+		Host:              arg.Host,
+		Port:              arg.Port,
+		Username:          arg.Username,
+		PasswordEncrypted: arg.PasswordEncrypted,
+		FromAddress:       arg.FromAddress,
+		TlsMode:           arg.TlsMode,
+		UpdatedAt:         pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}
+	m.SMTPConfig = &cfg
+	return cfg, nil
 }

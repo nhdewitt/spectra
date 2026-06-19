@@ -192,6 +192,48 @@ func (q *Queries) GetDiskRange(ctx context.Context, arg GetDiskRangeParams) ([]M
 	return items, nil
 }
 
+const getDiskTrend = `-- name: GetDiskTrend :many
+SELECT time, used_percent
+FROM metrics_disk
+WHERE agent_id = $1
+  AND mountpoint = $2
+  AND time >= $3
+ORDER BY time ASC
+`
+
+type GetDiskTrendParams struct {
+	AgentID    pgtype.UUID        `json:"agent_id"`
+	Mountpoint pgtype.Text        `json:"mountpoint"`
+	StartTime  pgtype.Timestamptz `json:"start_time"`
+}
+
+type GetDiskTrendRow struct {
+	Time        pgtype.Timestamptz `json:"time"`
+	UsedPercent pgtype.Float8      `json:"used_percent"`
+}
+
+// Returns recent disk usage samples for a specific agent+mountpoint,
+// ordered ascending for linear regression in the alert evaluator.
+func (q *Queries) GetDiskTrend(ctx context.Context, arg GetDiskTrendParams) ([]GetDiskTrendRow, error) {
+	rows, err := q.db.Query(ctx, getDiskTrend, arg.AgentID, arg.Mountpoint, arg.StartTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetDiskTrendRow{}
+	for rows.Next() {
+		var i GetDiskTrendRow
+		if err := rows.Scan(&i.Time, &i.UsedPercent); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getLatestSystem = `-- name: GetLatestSystem :one
 SELECT time, agent_id, uptime, process_count, user_count, boot_time
 FROM metrics_system

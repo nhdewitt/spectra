@@ -26,6 +26,40 @@ func (q *Queries) DeleteStaleProcesses(ctx context.Context, arg DeleteStaleProce
 	return err
 }
 
+const getAllServices = `-- name: GetAllServices :many
+SELECT agent_id, name, status, sub_status, updated_at
+FROM current_services
+ORDER BY agent_id, name
+`
+
+// Bulk-load current services across the whole fleet so the evaluator can build
+// an agent_id -> services map in one query instead of GetServices per agent.
+func (q *Queries) GetAllServices(ctx context.Context) ([]CurrentService, error) {
+	rows, err := q.db.Query(ctx, getAllServices)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CurrentService{}
+	for rows.Next() {
+		var i CurrentService
+		if err := rows.Scan(
+			&i.AgentID,
+			&i.Name,
+			&i.Status,
+			&i.SubStatus,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getApplications = `-- name: GetApplications :many
 SELECT agent_id, name, version, updated_at
 FROM current_applications

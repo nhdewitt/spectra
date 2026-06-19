@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/database"
+	"github.com/nhdewitt/spectra/internal/secret"
 	"github.com/nhdewitt/spectra/internal/server"
 	"github.com/nhdewitt/spectra/internal/setup"
 )
@@ -47,6 +49,17 @@ func main() {
 	}
 
 	srv := server.New(srvCfg, queries)
+
+	cipher, err := secret.NewFromEnv()
+	switch {
+	case errors.Is(err, secret.ErrNoKey):
+		srv.Logger.Warn("email delivery disabled: " + secret.KeyEnvVar + " not set")
+	case err != nil:
+		srv.Logger.Error("invalid secret key", "key", secret.KeyEnvVar, "error", err)
+		os.Exit(1)
+	default:
+		srv.Cipher = cipher
+	}
 
 	errCh := make(chan error, 1)
 	go func() {

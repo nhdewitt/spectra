@@ -11,7 +11,7 @@ import (
 //
 // GET /api/v1/agents/{id}/config
 func (s *Server) handleGetAgentConfig(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -37,7 +37,7 @@ func (s *Server) handleGetAgentConfig(w http.ResponseWriter, r *http.Request) {
 //
 // PUT /api/v1/agents/{id}/config
 func (s *Server) handleSetAgentConfig(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -85,7 +85,7 @@ func (s *Server) handleSetAgentConfig(w http.ResponseWriter, r *http.Request) {
 //
 // DELETE /api/v1/agents/{id}/config
 func (s *Server) handleDeleteAgentConfig(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

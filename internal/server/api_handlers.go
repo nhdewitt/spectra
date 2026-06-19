@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"regexp"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -36,8 +35,6 @@ type agentOverview struct {
 	BinaryHash       string   `json:"binary_hash,omitempty"`
 	UpdateAvailable  bool     `json:"update_available"`
 }
-
-var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // shortRanges maps quick range strings to durations.
 var shortRanges = map[string]time.Duration{
@@ -102,15 +99,6 @@ func parseTimeRange(r *http.Request) (pgtype.Timestamptz, pgtype.Timestamptz, er
 	}
 
 	return pgTimestamp(start), pgTimestamp(end), nil
-}
-
-// parseAgentID extracts and validates the agent UUID from the path.
-func parseAgentID(r *http.Request) (string, error) {
-	id := r.PathValue("id")
-	if !uuidRegex.MatchString(id) {
-		return "", fmt.Errorf("invalid agent ID")
-	}
-	return id, nil
 }
 
 // handleOverview returns all agents with their current metrics for the dashboard.
@@ -195,7 +183,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 
 // handleGetAgent returns details for a single agent.
 func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -212,7 +200,7 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteAgent removes an agent and all associated data.
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -510,7 +498,7 @@ func (s *Server) handleGetPi(w http.ResponseWriter, r *http.Request) {
 
 // handleGetProcesses returns the top processes for an agent, sorted by CPU or memory.
 func (s *Server) handleGetProcesses(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -558,7 +546,7 @@ func (s *Server) handleGetProcesses(w http.ResponseWriter, r *http.Request) {
 
 // handleGetServices returns the current services for an agent.
 func (s *Server) handleGetServices(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -575,7 +563,7 @@ func (s *Server) handleGetServices(w http.ResponseWriter, r *http.Request) {
 
 // handleGetApplications returns the installed applications for an agent.
 func (s *Server) handleGetApplications(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -592,7 +580,7 @@ func (s *Server) handleGetApplications(w http.ResponseWriter, r *http.Request) {
 
 // handleGetUpdates returns the current update status for an agent.
 func (s *Server) handleGetUpdates(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -619,7 +607,7 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetLatestSystem(w http.ResponseWriter, r *http.Request) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -634,7 +622,7 @@ func (s *Server) handleGetLatestSystem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) parseRangeRequest(w http.ResponseWriter, r *http.Request) (pgtype.UUID, pgtype.Timestamptz, pgtype.Timestamptz, bool) {
-	agentID, err := parseAgentID(r)
+	agentID, err := parsePathID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return pgtype.UUID{}, pgtype.Timestamptz{}, pgtype.Timestamptz{}, false

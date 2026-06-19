@@ -135,6 +135,50 @@ type DB interface {
 	DeleteUserLabel(ctx context.Context, arg database.DeleteUserLabelParams) (int64, error)
 
 	PurgeOfflineAgents(ctx context.Context) (int64, error)
+
+	// Alert channels
+	CreateAlertChannel(ctx context.Context, arg database.CreateAlertChannelParams) (database.AlertChannel, error)
+	GetAlertChannel(ctx context.Context, id pgtype.UUID) (database.AlertChannel, error)
+	ListAlertChannels(ctx context.Context) ([]database.AlertChannel, error)
+	UpdateAlertChannel(ctx context.Context, arg database.UpdateAlertChannelParams) (database.AlertChannel, error)
+	DeleteAlertChannel(ctx context.Context, id pgtype.UUID) error
+
+	// Alert rules
+	CreateAlertRule(ctx context.Context, arg database.CreateAlertRuleParams) (database.AlertRule, error)
+	GetAlertRule(ctx context.Context, id pgtype.UUID) (database.AlertRule, error)
+	ListAlertRules(ctx context.Context) ([]database.AlertRule, error)
+	ListEnabledAlertRules(ctx context.Context) ([]database.AlertRule, error)
+	UpdateAlertRule(ctx context.Context, arg database.UpdateAlertRuleParams) (database.AlertRule, error)
+	DeleteAlertRule(ctx context.Context, id pgtype.UUID) error
+	SetAlertRuleEnabled(ctx context.Context, arg database.SetAlertRuleEnabledParams) (database.AlertRule, error)
+
+	// Alert rule channels
+	AddChannelToRule(ctx context.Context, arg database.AddChannelToRuleParams) error
+	RemoveChannelFromRule(ctx context.Context, arg database.RemoveChannelFromRuleParams) error
+	ListChannelsForRule(ctx context.Context, ruleID pgtype.UUID) ([]database.AlertChannel, error)
+	DeleteChannelsForRule(ctx context.Context, ruleID pgtype.UUID) error
+
+	// Alert events
+	GetActiveEvent(ctx context.Context, arg database.GetActiveEventParams) (database.AlertEvent, error)
+	GetLastEventForRule(ctx context.Context, arg database.GetLastEventForRuleParams) (database.AlertEvent, error)
+	CreateAlertEvent(ctx context.Context, arg database.CreateAlertEventParams) (database.AlertEvent, error)
+	ResolveAlertEvent(ctx context.Context, arg database.ResolveAlertEventParams) error
+	TouchAlertEventNotified(ctx context.Context, id pgtype.UUID) error
+	ListActiveAlertEvents(ctx context.Context) ([]database.ListActiveAlertEventsRow, error)
+	ListAlertEventHistory(ctx context.Context, arg database.ListAlertEventHistoryParams) ([]database.ListAlertEventHistoryRow, error)
+	ListAlertEventsByAgent(ctx context.Context, arg database.ListAlertEventsByAgentParams) ([]database.ListAlertEventsByAgentRow, error)
+
+	// Bulk preload (alert evaluator)
+	ListAllActiveEvents(ctx context.Context) ([]database.AlertEvent, error)
+	ListLastEventPerRuleAgent(ctx context.Context) ([]database.AlertEvent, error)
+	GetAllServices(ctx context.Context) ([]database.CurrentService, error)
+
+	// Disk trend (for disk_prediction evaluator)
+	GetDiskTrend(ctx context.Context, arg database.GetDiskTrendParams) ([]database.GetDiskTrendRow, error)
+
+	// SMTP Config
+	GetSMTPConfig(ctx context.Context) (database.SmtpConfig, error)
+	UpsertSMTPConfig(ctx context.Context, arg database.UpsertSMTPConfigParams) (database.SmtpConfig, error)
 }
 
 // Compile-time check that *database.Queries satisfies the DB interface.
