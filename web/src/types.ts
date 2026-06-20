@@ -346,3 +346,106 @@ export interface ChartPoint {
     t: string;
     v: number;
 }
+
+// Alerting
+
+export type ChannelType = "webhook" | "email";
+
+export interface WebhookConfig {
+    url: string;
+}
+
+export interface EmailConfig {
+    to: string;
+}
+
+export type ChannelConfig = WebhookConfig | EmailConfig;
+
+export interface AlertChannel {
+    id: string;
+    name: string;
+    type: ChannelType;
+    config: ChannelConfig;
+    created_at: string;
+}
+
+export type AlertScope = "global" | "agent";
+
+export type ConditionType = "agent_offline" | "disk_prediction" | "service_down";
+
+export interface AgentOfflineParams {
+    timeout_seconds: number;
+}
+
+export interface DiskPredictionParams {
+    mount: string;
+    warn_hours: number;
+}
+
+export interface ServiceDownParams {
+    service_name: string;
+}
+
+export type ConditionParams = AgentOfflineParams | DiskPredictionParams | ServiceDownParams;
+
+export interface AlertRule {
+    id: string;
+    name: string;
+    enabled: boolean;
+    scope: AlertScope;
+    agent_id: string | null;
+    condition_type: ConditionType;
+    condition_params: ConditionParams;
+    cooldown_seconds: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface RuleResponse {
+    rule: AlertRule;
+    warnings?: string[];
+}
+
+export interface RuleWithChannels {
+    rule: AlertRule;
+    channels: AlertChannel[];
+}
+
+export interface AlertEvent {
+    id: string;
+    rule_id: string;
+    agent_id: string;
+    fired_at: string | null;
+    resolved_at: string | null;
+    last_notified_at: string | null;
+    condition_snapshot: unknown;
+    rule_name: string;
+    condition_type: ConditionType;
+    hostname?: string;
+}
+
+// SMTP transport (admin)
+
+export type TLSMode = "starttls" | "implicit" | "none";
+
+export interface SMTPConfig {
+    enabled: boolean;
+    host: string;
+    port: number;
+    username: string;
+    password_set: boolean;
+    from_address: string;
+    tls_mode: TLSMode;
+    updated_at: string;
+}
+
+export interface SMTPConfigUpdate {
+    enabled: boolean;
+    host: string;
+    port: number;
+    username: string;
+    password?: string;  // omit to leave unchanged, "" to clear, value to set
+    from_address: string;
+    tls_mode: TLSMode;
+    test_to?: string;
+}

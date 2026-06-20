@@ -25,6 +25,18 @@ import type {
     ManagedUser,
     AgentLabel,
     LabelKey,
+    AlertChannel,
+    ChannelType,
+    ChannelConfig,
+    AlertRule,
+    RuleWithChannels,
+    AlertScope,
+    ConditionType,
+    ConditionParams,
+    RuleResponse,
+    AlertEvent,
+    SMTPConfig,
+    SMTPConfigUpdate,
 } from "./types";
 
 declare global {
@@ -432,4 +444,127 @@ export const api = {
         validateLabelKey(key);
         return apiFetch(`/labels/values?key=${key}`);
     },
+
+    // Alerting - channels
+
+    /** GET /alerts/channels - all configured channels, ordered by name. */
+    listAlertChannels: () =>
+        apiFetch<AlertChannel[]>("/alerts/channels"),
+
+    /** POST /alerts/channels - create a webhook or email channel. */
+    createAlertChannel: (name: string, type: ChannelType, config: ChannelConfig) =>
+        apiFetch<AlertChannel>("/alerts/channels", {
+            method: "POST",
+            body: JSON.stringify({ name, type, config }),
+        }),
+
+    /** PUT /alerts/channels/{id} - update a channel. */
+    updateAlertChannel: (id: string, name: string, type: ChannelType, config: ChannelConfig) =>
+        apiFetch<AlertChannel>(`/alerts/channels/${id}`, {
+            method: "PUT",
+            body: JSON.stringify({ name, type, config }),
+        }),
+
+    /** DELETE /alerts/channels/{id} - remove a channel and its rule associations. */
+    deleteAlertChannel: (id: string) =>
+        apiFetch<null>(`/alerts/channels/${id}`, { method: "DELETE" }),
+
+    // Alerting - rules
+
+    /** GET /alerts/rules - all rules, newest first. */
+    listAlertRules: () =>
+        apiFetch<AlertRule[]>("/alerts/rules"),
+
+    /** GET /alerts/rules/{id} - a rule with its attached channels. */
+    getAlertRule: (id: string) =>
+        apiFetch<RuleWithChannels>(`/alerts/rules/${id}`),
+
+    /**
+     * POST /alerts/rules - create a rule and attach channels. scope, agent_id,
+     * and condition_type are fixed at creation. Returns the rule plus warnings.
+     */
+    createAlertRule: (rule: {
+        name: string;
+        enabled: boolean;
+        scope: AlertScope;
+        agent_id?: string;
+        condition_type: ConditionType;
+        condition_params: ConditionParams;
+        cooldown_seconds: number;
+        channel_ids: string[];
+    }) =>
+        apiFetch<RuleResponse>("/alerts/rules", {
+            method: "POST",
+            body: JSON.stringify(rule),
+        }),
+
+    /**
+     * PUT /alerts/rules/{id} - update mutable fields (name, enabled, 
+     * condition_params, cooldown, channels) and re-sync channels.
+     * 
+     * scope, agent, and condition_type are immutable and ignored if sent.
+     */
+    updateAlertRule: (id: string, rule: {
+        name: string;
+        enabled: boolean;
+        condition_params: ConditionParams;
+        cooldown_seconds: number;
+        channel_ids: string[];
+    }) =>
+        apiFetch<RuleResponse>(`/alerts/rules/${id}`, {
+            method: "PUT",
+            body: JSON.stringify(rule),
+        }),
+
+    /** PUT /alerts/rules/{id}/enabled - toggle a rule on or off. */
+    setRuleAlertEnabled: (id: string, enabled: boolean) =>
+        apiFetch<AlertRule>(`/alerts/rules/${id}/enabled`, {
+            method: "PUT",
+            body: JSON.stringify({ enabled }),
+        }),
+
+    /** DELETE /alerts/rules/{id} - remove a rule, its channels, and its events. */
+    deleteAlertRule: (id: string) =>
+        apiFetch<null>(`/alerts/rules/${id}`, { method: "DELETE" }),
+
+    // Alerting - events
+
+    /** GET /alerts/active - currently firing (unresolved) alerts. */
+    activeAlerts: () =>
+        apiFetch<AlertEvent[]>("/alerts/active"),
+
+    /** GET /alerts/history - paginated event history across all agents. */
+    alertHistory: (limit = 50, offset = 0) =>
+        apiFetch<AlertEvent[]>(`/alerts/history?limit=${limit}&offset=${offset}`),
+
+    /** GET /agents/{id}/alerts/history - paginated event history for one agent. */
+    agentAlertHistory: (id: string, limit = 50, offset = 0) =>
+        apiFetch<AlertEvent[]>(`/agents/${id}/alerts/history?limit=${limit}&offset=${offset}`),
+
+    // SMTP transport (admin)
+
+    /** GET /admin/smtp - current SMTP config (password redacted). */
+    smtpConfig: () =>
+        apiFetch<SMTPConfig>("/admin/smtp"),
+
+    /**
+     * PUT /admin/smtp - update SMTP config. password is three-state: omit to
+     * leave unchanged, "" to clear, a value to set. Setting a password requires
+     * the server's encryption key to be configured.
+     */
+    updateSMTPConfig: (config: SMTPConfigUpdate) =>
+        apiFetch<SMTPConfig>("/admin/smtp", {
+            method: "PUT",
+            body: JSON.stringify(config),
+        }),
+
+    /**
+     * POST /admin/smtp/test - send a test message using the supplied config
+     * (live send). Resolves to {status:"sent"} or throws on failure.
+     */
+    testSMTPConfig: (config: SMTPConfigUpdate) =>
+        apiFetch<{ status: string }>("/admin/smtp/test", {
+            method: "POST",
+            body: JSON.stringify(config),
+        }),
 };
