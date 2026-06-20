@@ -73,12 +73,17 @@ func TestHandleCreateAlertChannel_Webhook(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status: got %d, want 201", rec.Code)
 	}
-	var got database.AlertChannel
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+	var resp struct {
+		ID     string          `json:"id"`
+		Name   string          `json:"name"`
+		Type   string          `json:"type"`
+		Config json.RawMessage `json:"config"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.Name != "ops-hook" || got.Type != "webhook" {
-		t.Errorf("unexpected channel: %+v", got)
+	if resp.Name != "ops-hook" || resp.Type != "webhook" {
+		t.Errorf("unexpected channel: %+v", resp)
 	}
 }
 
@@ -391,11 +396,16 @@ func TestHandleSetAlertRuleEnabled_Success(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
 	}
-	var got database.AlertRule
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+	var resp struct {
+		ID              string          `json:"id"`
+		Name            string          `json:"id"`
+		Enabled         bool            `json:"enabled"`
+		ConditionParams json.RawMessage `json:"condition_params"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got.Enabled {
+	if resp.Enabled {
 		t.Error("rule should be disabled after toggle")
 	}
 }
