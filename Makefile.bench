@@ -1,0 +1,47 @@
+BENCH_DIR = bench
+BENCH_COUNT ?= 10
+
+# Arch matrix for cross-compiled benchmark binaries: label -> GOARCH/GOARM.
+# Pi Zero / Pi 1 = armv6, Pi 2 = armv7, Pi 3/4 (64-bit OS) = arm64, x86 = amd64.
+BENCH_ARCHES = amd64 armv6 armv7 arm64
+
+.PHONY: bench bench-cross bench-clean
+
+# Native run on the current machine.
+bench:
+	@mkdir -p $(BENCH_DIR)
+	go test -bench=. -benchmem -run='^$$' -count=$(BENCH_COUNT) ./... \
+		| tee $(BENCH_DIR)/bench-$$(uname -m)-$$(hostname).txt
+
+# Cross-compile one test binary per (package-with-benchmarks, arch). Output goes
+# to bench/<arch>/<sanitized-pkg>.test. Copy the matching arch directory to each
+# target box and run each binary with -test.bench there.
+bench-cross:
+	@mkdir -p $(BENCH_DIR)
+	@pkgs=$$(for p in $$(go list ./...); do \
+		if go test -list='Benchmark.*' "$$p" 2>/dev/null | grep -q '^Benchmark'; then echo "$$p"; fi; \
+	done); \
+	echo "Packages with benchmarks:"; echo "$$pkgs" | sed 's/^/  /'; \
+	for arch in $(BENCH_ARCHES); do \
+		case $$arch in \
+			amd64) goarch=amd64; goarm=;; \
+			armv6) goarch=arm;   goarm=6;; \
+			armv7) goarch=arm;   goarm=7;; \
+			arm64) goarch=arm64; goarm=;; \
+		esac; \
+		outdir=$(BENCH_DIR)/$$arch; \
+		mkdir -p $$outdir; \
+		echo "==> building $$arch binaries"; \
+		for p in $$pkgs; do \
+			name=$$(echo $$p | sed 's#.*/spectra/##; s#/#_#g'); \
+			GOOS=linux GOARCH=$$goarch GOARM=$$goarm \
+				go test -c -o $$outdir/$$name.test "$$p" 2>/dev/null \
+				&& echo "    $$arch/$$name.test" || true; \
+		done; \
+	done
+	@echo ""
+	@echo "Run on a target box (example, armv6 / Pi Zero):"
+	@echo "    for b in bench/armv6/*.test; do \"./\$$b\" -test.bench=. -test.benchmem -test.count=$(BENCH_COUNT) -test.run='^\$$'; done | tee bench-pizero.txt"
+
+bench-clean:
+	rm -rf $(BENCH_DIR)

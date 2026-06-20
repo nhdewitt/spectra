@@ -147,3 +147,14 @@ func ParseLevel(s string) slog.Level {
 		return slog.LevelInfo
 	}
 }
+
+// NewDiscard returns a Logger that discards all output. For tests and benchmarks.
+func NewDiscard() *Logger {
+	level := &slog.LevelVar{}
+	level.Set(slog.LevelError)
+	return &Logger{
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: level})),
+		ConsoleLevel: level,
+		FileLevel:    level,
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"testing"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/labels"
@@ -86,7 +87,15 @@ func New(cfg Config, db DB) *Server {
 		logCfg.ConsoleLevel = logging.ParseLevel(cfg.LogLevel)
 	}
 
-	logger := logging.New(logCfg)
+	// Under `go test`, default to a discard logger so handler/queue benchmarks
+	// and tests don't flood output with per-iteration log lines. Production
+	// builds get the configured logger.
+	var logger *logging.Logger
+	if testing.Testing() {
+		logger = logging.NewDiscard()
+	} else {
+		logger = logging.New(logCfg)
+	}
 
 	s := &Server{
 		Config:       cfg,

@@ -27,3 +27,5 @@ bin/
 *.cov
 vite.config.ts
 !scripts/*.sh
+collector-bench*
+bench/*

@@ -1,6 +1,6 @@
 # Spectra
 
-Spectra is a system monitoring solution written in Go. Lightweight agents collect metrics from Linux, Windows, and FreeBSD hosts and transmit them to a central server backed by PostgreSQL with TimescaleDB for time-series storage. A React dashboard (in development) provides fleet-wide visibility and per-host drill-down.
+Spectra is a system monitoring solution written in Go. Lightweight agents collect metrics from Linux, Windows, and FreeBSD hosts and transmit them to a central server backed by PostgreSQL with TimescaleDB for time-series storage. A React dashboard provides fleet-wide visibility and per-host drill-down.
 
 ## Architecture
 
@@ -25,6 +25,8 @@ Spectra is a system monitoring solution written in Go. Lightweight agents collec
 
 Agents register with the server using one-time tokens, then collect metrics at configurable intervals aligned to minute boundaries. Metrics are sent in compressed batches with automatic retry and local caching when the server is unreachable. The server persists metrics to hypertables and maintains a `current_metrics` cache table for fast dashboard queries.
 
+The server authenticates dashboard users with session-based login and a three-tier role model (superadmin, admin, viewer), and supports TLS with a self-signed CA generated at setup. Agents authenticate to the server with a SHA-256 credential issued during registration.
+
 ## Motivation
 
 Most monitoring solutions treat all hosts the same—abstracting away the hardware until it becomes a "black box." Spectra was built to bridge the gap between high-level application monitoring and low-level hardware diagnostics.
@@ -35,48 +37,96 @@ Most monitoring solutions treat all hosts the same—abstracting away the hardwa
 
 ## Quick Start
 
-**Prerequisites:** Go 1.24+, PostgreSQL 16+ with TimescaleDB
+**Prerequisites:** Go 1.26+. PostgreSQL 16+ with TimescaleDB is installed automatically by the setup tool on supported platforms (Debian/Ubuntu, RHEL, etc.).
 
-1. **Set up the database:**
+Spectra ships a guided installer, `spectra-setup`, that provisions the database, runs migrations, creates the initial superadmin, generates TLS certificates (if requested) and the secret-encryption key, writes the server config, and starts the service.
+
+From a workstation, targeting a fresh host:
+
 ```bash
-createdb spectra
-psql spectra -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+make setup DEPLOY_HOST=10.10.107.1
 ```
 
-2. **Apply migrations:**
+On the box itself:
+
 ```bash
-psql spectra -f internal/database/migrations/001_core.up.sql
-psql spectra -f internal/database/migrations/002_metrics.up.sql
-psql spectra -f internal/database/migrations/003_retention_and_indexes.up.sql
-psql spectra -f internal/database/migrations/004_schema_additions.up.sql
-psql spectra -f internal/database/migrations/005_current_metrics.up.sql
+sudo make setup
 ```
 
-3. **Start the server:**
+`sudo` is scoped to the privileged install steps; the build runs as your user. Both forms build the server and setup binaries, install them along with the systemd unit, then run `spectra-setup` (interactively over SSH for the remote form) to configure the database, admin account, key, and TLS, and bring the service up.
+
+Once the server is running, provision agents from the dashboard, which issues a one-time registration token and the platform-appropriate install command. The agent registers, receives credentials, and begins collecting metrics aligned to the next minute boundary.
+
+### Unattended setup
+
+`spectra-setup` accepts a YAML file for non-interactive installs:
+
 ```bash
-go run ./cmd/server -db "postgres://localhost:5432/spectra?sslmode=disable"
+spectra-setup -from setup.yaml
 ```
 
-4. **Generate a registration token:**
-```bash
-curl -X POST http://localhost:8080/api/v1/admin/tokens
+```yaml
+database:
+  host: localhost
+  port: "5432"
+  name: spectra
+  user: spectra
+  password: <db-password>
+  ssl: disable
+  create: true
+admin:
+  username: admin
+  password: <admin-password>
+server:
+  port: 8080
+  migrations: internal/database/migrations
+  external_url: https://10.10.107.1:8080
+tls:
+  enabled: true
+  sans:
+    - 10.10.107.1
+skip_prerequisites: false
 ```
 
-5. **Start an agent:**
+> YAML key names follow the `SetupFile` struct tags; adjust to match if you have customized them.
+
+### Updating an existing install
+
 ```bash
-sudo go run ./cmd/agent -token <token>
+make deploy DEPLOY_HOST=10.10.107.1
 ```
 
-The agent registers, receives credentials, and begins collecting metrics aligned to the next minute boundary.
+Both `setup` and `deploy` run locally when `DEPLOY_HOST` is unset and over SSH when it is set.
 
 ## Configuration
 
-### Server Flags
+### Server
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-db` | (required) | PostgreSQL connection string (or `DATABASE_URL` env) |
-| `-port` | `8080` | HTTP listen port |
+The server reads its configuration from a JSON file written by `spectra-setup` (default `/etc/spectra/server.json`), passed via `-config`:
+
+```bash
+spectra-server -config /etc/spectra/server.json
+```
+
+The config holds the database URL, listen port, external URL, and TLS certificate paths. The systemd unit invokes the server this way; you do not normally run it by hand.
+
+### Secret encryption key
+
+Spectra encrypts recoverable secrets at rest (currently the SMTP password) using AES-256-GCM. The key is supplied via the `SPECTRA_SECRET_KEY` environment variable as a base64-encoded 32-byte value.
+
+`spectra-setup` generates this automatically and writes it to `/etc/spectra/spectra.env`, which the systemd unit loads:
+
+```ini
+EnvironmentFile=-/etc/spectra/spectra.env
+```
+
+The leading `-` makes the file optional: the server still starts without it, with email delivery disabled until a key is present. To generate one manually:
+
+```bash
+openssl rand -base64 32
+```
+
+The key is generated once and never rotated automatically — rotating it would render existing encrypted values unrecoverable. Setup will not overwrite an existing key file.
 
 ### Agent Environment Variables
 
@@ -121,6 +171,27 @@ Metrics are stored in TimescaleDB hypertables with automatic 30-day retention vi
 - **metrics_*** — per-metric-type hypertables (cpu, memory, disk, network, etc.)
 - **current_metrics** — single-row-per-agent cache for dashboard overview queries
 - **current_processes/services/applications/updates** — latest state tables
+- **users / sessions** — dashboard authentication and role assignment
+- **alert_rules / alert_channels / alert_rule_channels / alert_events** — alerting
+- **smtp_config** — server-wide email transport (single row)
+
+### Authentication & Roles
+
+Dashboard access is session-based. Three roles gate functionality:
+
+- **superadmin** — full control, including user role changes; the first user created at setup
+- **admin** — operational writes (agent config, provisioning, labels, SMTP setup)
+- **viewer** — read-only
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/auth/login` | Log in, set session cookie |
+| POST | `/api/v1/auth/logout` | Log out |
+| GET | `/api/v1/auth/me` | Current user and role |
+| GET | `/api/v1/admin/users` | List users |
+| POST | `/api/v1/admin/users` | Create user (admin+) |
+| DELETE | `/api/v1/admin/users/{id}` | Delete user (admin+) |
+| PUT | `/api/v1/admin/users/{id}/role` | Change role (superadmin) |
 
 ### API Endpoints
 
@@ -131,7 +202,7 @@ Metrics are stored in TimescaleDB hypertables with automatic 30-day retention vi
 | GET | `/api/v1/overview` | All agents with current metrics |
 | GET | `/api/v1/agents` | List registered agents |
 | GET | `/api/v1/agents/{id}` | Agent details |
-| DELETE | `/api/v1/agents/{id}` | Remove agent and cascade data |
+| DELETE | `/api/v1/agents/{id}` | Remove agent and cascade data (admin+) |
 | GET | `/api/v1/agents/{id}/cpu` | CPU metrics (time range) |
 | GET | `/api/v1/agents/{id}/memory` | Memory metrics (time range) |
 | GET | `/api/v1/agents/{id}/disk` | Disk metrics (time range) |
@@ -139,7 +210,7 @@ Metrics are stored in TimescaleDB hypertables with automatic 30-day retention vi
 | GET | `/api/v1/agents/{id}/network` | Network metrics (time range) |
 | GET | `/api/v1/agents/{id}/temperature` | Temperature metrics (time range) |
 | GET | `/api/v1/agents/{id}/system` | System metrics (time range) |
-| GET | `/api/v1/agents/{id}/container` | Container metrics (time range) |
+| GET | `/api/v1/agents/{id}/containers` | Container metrics (time range) |
 | GET | `/api/v1/agents/{id}/wifi` | WiFi metrics (time range) |
 | GET | `/api/v1/agents/{id}/pi` | Raspberry Pi metrics (time range) |
 | GET | `/api/v1/agents/{id}/processes` | Top processes (`?sort=cpu\|memory&limit=20`) |
@@ -157,15 +228,69 @@ Metrics are stored in TimescaleDB hypertables with automatic 30-day retention vi
 | POST | `/api/v1/agent/metrics` | Submit metric batch (gzip) |
 | GET | `/api/v1/agent/command` | Long-poll for commands |
 | POST | `/api/v1/agent/command/result` | Submit command results |
+| GET | `/api/v1/agent/config` | Fetch current agent config |
 
 #### Admin
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/v1/admin/tokens` | Generate registration token |
-| POST | `/api/v1/admin/logs` | Trigger log fetch from agent |
-| POST | `/api/v1/admin/disk` | Trigger disk usage scan |
-| POST | `/api/v1/admin/network` | Trigger network diagnostic |
+| POST | `/api/v1/admin/tokens` | Generate registration token (admin+) |
+| POST | `/api/v1/admin/provision` | Provision a new agent (admin+) |
+| POST | `/api/v1/admin/logs` | Trigger log fetch from agent (admin+) |
+| POST | `/api/v1/admin/disk` | Trigger disk usage scan (admin+) |
+| POST | `/api/v1/admin/network` | Trigger network diagnostic (admin+) |
+| POST | `/api/v1/admin/update` | Push agent self-update (admin+) |
+
+### Alerting
+
+Spectra evaluates alert rules fleet-wide on a background loop (every 60s) and delivers notifications through configurable channels. Rules and channels are global objects manageable by any authenticated user; SMTP transport setup is admin-only.
+
+**Condition types:**
+
+| Condition | Description | Parameters |
+|-----------|-------------|------------|
+| `agent_offline` | Agent has not reported within a timeout | `timeout_seconds` (default 300) |
+| `disk_prediction` | Disk projected to fill within a window, via linear regression over the last 6h | `mount`, `warn_hours` (default 72) |
+| `service_down` | A named service is not healthy | `service_name` |
+
+**Rule scope:** Rules are either `global` (every agent) or `agent` (one agent). Agent-scoped rules take precedence: for a given agent and condition type, an agent-scoped rule suppresses any global rule of the same condition type, allowing per-agent overrides of fleet defaults. `service_down` rules must be agent-scoped — a global service rule would fire on every agent not running that service.
+
+**Channels:**
+
+| Type | Config | Notes |
+|------|--------|-------|
+| `webhook` | `{"url": "..."}` | POSTs a JSON alert payload |
+| `email` | `{"to": "..."}` | Uses the server-wide SMTP transport |
+
+An alert fires once per incident and auto-resolves when the condition clears; it does not re-notify while firing. A per-rule `cooldown_seconds` suppresses re-firing after resolution.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/alerts/channels` | List channels |
+| POST | `/api/v1/alerts/channels` | Create channel |
+| PUT | `/api/v1/alerts/channels/{id}` | Update channel |
+| DELETE | `/api/v1/alerts/channels/{id}` | Delete channel |
+| GET | `/api/v1/alerts/rules` | List rules |
+| POST | `/api/v1/alerts/rules` | Create rule |
+| GET | `/api/v1/alerts/rules/{id}` | Rule with its channels |
+| PUT | `/api/v1/alerts/rules/{id}` | Update rule |
+| PUT | `/api/v1/alerts/rules/{id}/enabled` | Enable/disable a rule |
+| DELETE | `/api/v1/alerts/rules/{id}` | Delete rule |
+| GET | `/api/v1/alerts/active` | Currently firing alerts |
+| GET | `/api/v1/alerts/history` | Paginated event history (`?limit=&offset=`) |
+| GET | `/api/v1/agents/{id}/alerts/history` | Per-agent event history |
+
+**Email / SMTP:** SMTP transport is a single server-wide configuration, managed by admins. Regular users only set the recipient on email channels; they never handle transport credentials.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/admin/smtp` | Current config (password redacted) |
+| PUT | `/api/v1/admin/smtp` | Update config |
+| POST | `/api/v1/admin/smtp/test` | Send a test email without saving |
+
+Supported TLS modes: `starttls` (e.g. SES port 587), `implicit` (port 465), and `none` (unauthenticated LAN relay). The password is encrypted at rest with the `SPECTRA_SECRET_KEY`; setting a password requires the key to be configured. The test endpoint validates a configuration — including a live send — before it is saved.
+
+> **FreeBSD note:** the FreeBSD service collector reports enabled-state rather than live process state, so `service_down` on FreeBSD detects a service being disabled, not one that has crashed.
 
 ### On-Demand Diagnostics
 
@@ -183,20 +308,33 @@ Metrics are stored in TimescaleDB hypertables with automatic 30-day retention vi
 
 - **Token-based registration** — one-time tokens with configurable expiry
 - **Persistent identity** — credentials stored in `/etc/spectra/agent-id.json`
+- **TLS** — server-issued CA trust, optional `tls_skip_verify` for self-signed setups
 - **Clock alignment** — collectors start on minute boundaries for consistent charting
-- **Metric caching** — buffers up to 1000 envelopes when server is unreachable
-- **Retry with drain** — cached metrics sent first on reconnection
+- **Metric caching** — buffers envelopes when the server is unreachable
+- **Retry with drain** — cached metrics sent first on reconnection, with exponential backoff and jitter
 - **Gzip compression** — all metric batches compressed in transit
+- **Self-update** — server-pushed binary update with SHA-256 verification and atomic replacement
 - **Platform detection** — ARM board identification, Windows 11 build detection
 
 ## Building
 
 ```bash
+make build-server    # frontend assets + server binary
+make build-setup     # setup binary
+make release         # cross-compiled agent binaries + checksums
+```
+
+Or directly:
+
+```bash
 go build -o spectra-server ./cmd/server
 go build -o spectra-agent ./cmd/agent
+go build -o spectra-setup ./cmd/setup
 ```
 
 ### Cross-Compilation
+
+`make release` builds all agent targets. To build individually:
 
 ```bash
 # Linux amd64
@@ -215,7 +353,7 @@ GOOS=linux GOARCH=arm GOARM=6 go build -o spectra-agent ./cmd/agent
 GOOS=freebsd GOARCH=amd64 go build -o spectra-agent ./cmd/agent
 ```
 
-### Running as a Service
+### Running the Agent as a Service
 
 ```ini
 # /etc/systemd/system/spectra-agent.service
@@ -226,7 +364,7 @@ Wants=network-online.target
 
 [Service]
 ExecStart=/usr/local/bin/spectra-agent
-Environment=SPECTRA_SERVER=http://10.1.0.23:8080
+Environment=SPECTRA_SERVER=https://10.10.107.1:8080
 Restart=always
 RestartSec=5
 
@@ -238,6 +376,8 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 sudo systemctl enable --now spectra-agent
 ```
+
+The server's own unit is installed by `make setup` / `spectra-setup`; see [Quick Start](#quick-start).
 
 ## Testing
 
@@ -256,46 +396,82 @@ Tests use table-driven patterns with mock interfaces. Platform-specific tests us
 spectra/
 ├── cmd/
 │   ├── agent/              # Agent entry point
-│   └── server/             # Server entry point
+│   ├── server/             # Server entry point
+│   └── setup/              # Interactive / unattended installer
 ├── internal/
 │   ├── agent/              # Agent runtime, collector orchestration, caching
 │   ├── collector/          # Metric collectors (Linux, Windows, FreeBSD)
 │   ├── database/
-│   │   ├── migrations/     # SQL migrations (001-005)
+│   │   ├── migrations/     # SQL migrations
 │   │   └── queries/        # sqlc query definitions
 │   ├── diagnostics/        # On-demand diagnostic tools
 │   ├── platform/           # OS/hardware detection
 │   ├── protocol/           # Shared types and metric definitions
-│   └── server/             # HTTP handlers, routing, middleware
+│   ├── secret/             # AES-256-GCM encryption for stored secrets
+│   ├── server/             # HTTP handlers, routing, middleware, alert evaluator
+│   └── setup/              # Setup runner, prerequisites, TLS, migrations
+├── deploy/
+│   └── spectra-server.service   # Canonical systemd unit
 └── .github/
     └── workflows/          # CI configuration
 ```
 
 ## Performance
 
-Collector benchmarks on Intel i7-13700K (Windows) and Raspberry Pi 1 (Linux):
+Median time for one full collection cycle (the collector's `Collect` entry point)
+or operation, via `go test -bench`, `-count=10`. Lower is better. Each platform's
+collectors use native methods — Linux/ARM read `/proc`, sysfs, and syscalls; the
+Windows agent uses WMI and Win32 APIs — so cross-platform differences in the
+collection rows reflect those methods, not raw CPU alone. Pure-Go paths
+(marshaling, batching, header construction) are directly comparable. A dash means
+the benchmark does not apply on that platform: a collector that doesn't run there
+(Pi hardware sensors off-Pi), or one whose collection entry point differs in shape
+(the Linux temperature collector is constructed per host from its thermal-zone
+paths rather than exposing a single `Collect` call, so it has no directly
+comparable cycle benchmark).
 
-| Collector | i7-13700K | Pi 1 | Notes |
-|-----------|-----------|------|-------|
-| CPU | 30-60µs | 2.5ms | |
-| Memory | 420ns | 930µs | |
-| Disk | 0.7-1.6ms | 125µs | |
-| Disk I/O | 9-11µs | 2.2ms | |
-| Network | 1.1ms | 8.4ms | |
-| Processes | 58ms | 71ms | Parallel on Windows |
-| System | 45-52ms | – | WMI overhead on Windows |
+Collection benchmarks measure the full cycle including the underlying data source,
+so they include real I/O (e.g. walking `/proc` for every process) and carry more
+run-to-run variance than micro-benchmarks — which is the intent, as it reflects
+production cost.
 
-Database storage estimate: ~1-2 GB compressed for 11 agents with 30-day retention.
+| Operation | Desktop (Win) | i7-10700T | i5-6500T | Pi 4 | Pi Zero 2 W | Pi Zero W |
+|---|---|---|---|---|---|---|
+| CPU collect | 133.7 µs | 50.8 µs | 31.7 µs | 112.1 µs | 292.5 µs | 1.4 ms |
+| Memory collect | 900 ns | 11.7 µs | 14.8 µs | 52.4 µs | 128.5 µs | 541.9 µs |
+| Disk collect | 1.8 ms | 12.0 µs | 13.3 µs | 36.8 µs | 16.9 µs | 684.5 µs |
+| Disk I/O collect | 9.0 µs | 34.8 µs | 43.5 µs | 165.2 µs | 421.1 µs | 1.6 ms |
+| Network collect | 10.0 ms | 170.6 µs | 211.8 µs | 438.9 µs | 1.5 ms | 4.3 ms |
+| Processes collect | 61.4 ms | 2.6 ms | 2.1 ms | 8.1 ms | 15.1 ms | 51.7 ms |
+| Services collect | 92.2 µs | 7.3 ms | 7.0 ms | 21.2 ms | 50.2 ms | 161.7 ms |
+| Temperature collect | 32.7 ms | — | — | — | — | — |
+| WiFi collect | 3.9 ms | 9.4 µs | 12.5 µs | 41.1 µs | 79.4 µs | 26.3 ms |
+| System collect | 39.6 ms | 1.5 ms | 868.4 µs | 4.6 ms | 7.1 ms | 32.7 ms |
+| Docker collect | 7.2 ms | 89.0 µs | 99.4 µs | 334.0 µs | 868.1 µs | 3.6 ms |
+| Pi throttle decode | — | — | — | 2.2 ms | 4.5 ms | 12.9 ms |
+| Agent construct | 1.6 ms | 59.1 µs | 65.6 µs | 259.2 µs | 553.1 µs | 3.0 ms |
+| Set request headers | 268 ns | 478 ns | 647 ns | 3.2 µs | 9.4 µs | 26.7 µs |
+| Send batch (small) | 129.9 µs | 125.0 µs | 142.8 µs | 419.4 µs | 1.3 ms | 4.1 ms |
+| Marshal CPU envelope | 2.5 µs | 2.5 µs | 3.2 µs | 14.3 µs | 40.2 µs | 134.1 µs |
+| Handle /overview | — | 5.3 µs | 6.2 µs | 37.7 µs | 84.3 µs | 358.0 µs |
+| Handle metrics POST | — | 5.4 µs | 5.9 µs | 33.9 µs | 77.4 µs | 378.5 µs |
+
+Notable cross-platform differences are real and reflect the collection method:
+Windows service enumeration (Win32 API) is far faster than parsing `systemctl`
+output, while WMI-backed network, process, and thermal queries are
+correspondingly heavier than the Linux `/proc` equivalents. Server-package
+benchmarks (`/overview`, metrics ingest) are shown for Linux only, since the
+server deploys on Linux. Database storage runs roughly 1–2 GB compressed for 11
+agents at 30-day retention.
 
 ## TODO
 
-- [ ] React web dashboard (fleet overview, per-agent drill-down, charts)
-- [ ] User authentication for dashboard API
-- [ ] Alert rules engine with notifications
 - [ ] Metric aggregation and rollup for long-term trends
-- [ ] Agent auto-update mechanism
+- [ ] Network interface rate calculations
+- [ ] Proxmox host metrics via `pvesh`
 - [ ] Formal migration tool (golang-migrate or similar)
 - [ ] Log aggregation
+- [ ] OpenAPI specification
 
 ## Dependencies
 
@@ -304,7 +480,8 @@ Core:
 - `github.com/tklauser/go-sysconf` — System configuration values
 - `github.com/docker/docker` — Docker API client
 - `github.com/jackc/pgx/v5` — PostgreSQL driver
-- `golang.org/x/crypto` — bcrypt for agent secrets
+- `golang.org/x/crypto` — bcrypt for user passwords
+- `github.com/wneessen/go-mail` — SMTP delivery for alert email
 
 Windows-specific:
 - `github.com/yusufpapurcu/wmi` — WMI queries
