@@ -12,6 +12,7 @@ interface SidebarProps {
     onSelectAgent: (agent: OverviewAgent) => void;
     agents: OverviewAgent[];
     starredIds: string[];
+    version: string;
 }
 
 const NAV_ICON: Record<string, string> = {
@@ -38,6 +39,7 @@ export function Sidebar({
     onSelectAgent,
     agents,
     starredIds,
+    version,
 }: SidebarProps) {
     const [detailExpanded, setDetailExpanded] = useState(currentPage === "detail" || currentPage === "diagnostics");
 
@@ -263,7 +265,7 @@ export function Sidebar({
                 marginBottom: 6,
             }}
             >
-            v0.1.0
+                {version ? `v${version}` : "—"}
             </div>
             <button
             onClick={() => onNavigate("settings")}

@@ -22,6 +22,7 @@ export default function App() {
 	const [starredIds, setStarredIds] = useState<string[]>([]);
 	const [starredLoaded, setStarredLoaded] = useState(false);
 	const [logoutReason, setLogoutReason] = useState<string | null>(null);
+	const [version, setVersion] = useState<string>("");
 
 	const starredRef = useRef(starredIds);
 	starredRef.current = starredIds;
@@ -93,6 +94,12 @@ export default function App() {
 		};
 	}, [handleLogout]);
 
+	useEffect(() => {
+		api.version()
+			.then((v) => setVersion(v.version))
+			.catch(() => {});
+	}, []);
+
 	// Check existing session on mount
 	useEffect(() => {
 		api
@@ -153,6 +160,7 @@ export default function App() {
 				onSelectAgent={handleSelectAgent}
 				agents={agentList}
 				starredIds={starredIds}
+				version={version}
 			/>
 
 			<div style={{ flex: 1, minWidth: 0 }}>
