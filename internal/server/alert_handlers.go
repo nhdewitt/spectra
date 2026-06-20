@@ -63,7 +63,7 @@ func (s *Server) handleListAlertChannels(w http.ResponseWriter, r *http.Request)
 		s.dbError(w, err, "handleListAlertChannels")
 		return
 	}
-	respondJSON(w, http.StatusOK, channels)
+	respondJSON(w, http.StatusOK, toChannelResponses(channels))
 }
 
 // handleCreateAlertChannel creates a new alert channel.
@@ -91,7 +91,7 @@ func (s *Server) handleCreateAlertChannel(w http.ResponseWriter, r *http.Request
 	}
 
 	s.Logger.Info("alert channel created", "channel_id", formatUUID(ch.ID), "type", ch.Type)
-	respondJSON(w, http.StatusCreated, ch)
+	respondJSON(w, http.StatusCreated, toChannelResponse(ch))
 }
 
 // handleUpdateAlertChannel updates an existing alert channel.
@@ -126,7 +126,7 @@ func (s *Server) handleUpdateAlertChannel(w http.ResponseWriter, r *http.Request
 	}
 
 	s.Logger.Info("alert channel updated", "channel_id", id)
-	respondJSON(w, http.StatusOK, ch)
+	respondJSON(w, http.StatusOK, toChannelResponse(ch))
 }
 
 // handleDeleteAlertChannel deletes an alert channel. The alert_rule_channels
@@ -163,8 +163,8 @@ type ruleRequest struct {
 // ruleResponse wraps the created/updated rule plus any non-fatal warnings
 // (e.g. service_down targeting a service not currently reported).
 type ruleResponse struct {
-	Rule     database.AlertRule `json:"rule"`
-	Warnings []string           `json:"warnings,omitempty"`
+	Rule     ruleView `json:"rule"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 func validateRuleRequest(req ruleRequest) error {
@@ -266,7 +266,7 @@ func (s *Server) handleListAlertRules(w http.ResponseWriter, r *http.Request) {
 		s.dbError(w, err, "handleListAlertRules")
 		return
 	}
-	respondJSON(w, http.StatusOK, rules)
+	toRuleViews(rules)
 }
 
 // handleGetAlertRule returns a single rule plus its channel associations.
@@ -291,12 +291,12 @@ func (s *Server) handleGetAlertRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type resp struct {
-		Rule     database.AlertRule      `json:"rule"`
-		Channels []database.AlertChannel `json:"channels"`
+		Rule     ruleView          `json:"rule"`
+		Channels []channelResponse `json:"channels"`
 	}
 	respondJSON(w, http.StatusOK, resp{
-		Rule:     rule,
-		Channels: channels,
+		Rule:     toRuleView(rule),
+		Channels: toChannelResponses(channels),
 	})
 }
 
@@ -343,7 +343,7 @@ func (s *Server) handleCreateAlertRule(w http.ResponseWriter, r *http.Request) {
 	s.Logger.Info("alert rule created",
 		"rule_id", formatUUID(rule.ID), "scope", rule.Scope, "condition", rule.ConditionType)
 	respondJSON(w, http.StatusCreated, ruleResponse{
-		Rule:     rule,
+		Rule:     toRuleView(rule),
 		Warnings: s.serviceDownWarnings(r, req),
 	})
 }
@@ -403,7 +403,7 @@ func (s *Server) handleUpdateAlertRule(w http.ResponseWriter, r *http.Request) {
 
 	s.Logger.Info("alert rule updated", "rule_id", id)
 	respondJSON(w, http.StatusOK, ruleResponse{
-		Rule:     updated,
+		Rule:     toRuleView(updated),
 		Warnings: s.serviceDownWarnings(r, req),
 	})
 }
@@ -436,7 +436,7 @@ func (s *Server) handleSetAlertRuleEnabled(w http.ResponseWriter, r *http.Reques
 	}
 
 	s.Logger.Info("alert rule enabled toggled", "rule_id", id, "enabled", req.Enabled)
-	respondJSON(w, http.StatusOK, rule)
+	respondJSON(w, http.StatusOK, toRuleView(rule))
 }
 
 // handleDeleteAlertRule deletes a rule. Channel associations and events are
@@ -468,7 +468,7 @@ func (s *Server) handleListActiveAlerts(w http.ResponseWriter, r *http.Request) 
 		s.dbError(w, err, "handleListActiveAlerts")
 		return
 	}
-	respondJSON(w, http.StatusOK, events)
+	respondJSON(w, http.StatusOK, toActiveEventViews(events))
 }
 
 // parseLimitOffset reads limit/offset query params with defaults and bounds.
@@ -517,7 +517,7 @@ func (s *Server) handleListAlertHistory(w http.ResponseWriter, r *http.Request) 
 		s.dbError(w, err, "handleListAlertHistory")
 		return
 	}
-	respondJSON(w, http.StatusOK, events)
+	respondJSON(w, http.StatusOK, toHistoryEventViews(events))
 }
 
 // handleListAgentAlertHistory returns paginated alert event history for one agent.
@@ -544,5 +544,5 @@ func (s *Server) handleListAgentAlertHistory(w http.ResponseWriter, r *http.Requ
 		s.dbError(w, err, "handleListAgentAlertHistory")
 		return
 	}
-	respondJSON(w, http.StatusOK, events)
+	respondJSON(w, http.StatusOK, toAgentEventViews(events))
 }
