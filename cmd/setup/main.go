@@ -58,6 +58,7 @@ func main() {
 		Port:          port,
 		TLS:           tlsCfg,
 		ExternalURL:   externalURL,
+		Interactive:   true,
 	}
 
 	if err := setup.RunSetup(ctx, sc, *configPath); err != nil {

@@ -187,10 +187,10 @@ func sendMail(ctx context.Context, settings smtpSettings, msg *mail.Msg) error {
 		return fmt.Errorf("smtp client: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	sendCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	if err := client.DialAndSendWithContext(ctx, msg); err != nil {
+	if err := client.DialAndSendWithContext(sendCtx, msg); err != nil {
 		return fmt.Errorf("smtp send: %w", err)
 	}
 	return nil

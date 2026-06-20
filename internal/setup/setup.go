@@ -73,6 +73,7 @@ type SetupConfig struct {
 	TLS           *TLSSetupConfig // nil if TLS disabled
 	ExternalURL   string
 	SkipPrereqs   bool
+	Interactive   bool
 }
 
 // ConfigExists confirms that the config file is present.
@@ -401,4 +402,18 @@ func promptPasswordConfirm() (string, error) {
 
 		return pass, nil
 	}
+}
+
+// printPostSetupInstructions prints post-install guidance for interactive runs.
+// The service is already running by this point.
+func printPostSetupInstructions(externalURL string) {
+	fmt.Println()
+	fmt.Println("Setup complete. The Spectra server is now running.")
+	fmt.Println()
+	fmt.Println("Verify:")
+	fmt.Println("    systemctl status spectra-server")
+	fmt.Println("    journalctl -u spectra-server -f")
+	fmt.Println()
+	fmt.Printf("Dashboard: %s\n", externalURL)
+	fmt.Println("Provision agents from the dashboard.")
 }

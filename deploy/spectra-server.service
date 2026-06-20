@@ -1,0 +1,16 @@
+[Unit]
+Description=Spectra Monitoring Server
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/spectra
+EnvironmentFile=-/etc/spectra/spectra.env
+ExecStart=/opt/spectra/spectra-server -config /etc/spectra/server.json
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

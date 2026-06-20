@@ -146,9 +146,31 @@ func RunSetup(ctx context.Context, sc *SetupConfig, configPath string) error {
 		return fmt.Errorf("saving config: %w", err)
 	}
 	fmt.Println("OK")
-
 	fmt.Printf("\nConfiguration saved to %s\n", configPath)
-	fmt.Printf("Dashboard: %s\n", sc.ExternalURL)
+
+	created, err := GenerateSecretKeyFile(DefaultSecretEnvPath)
+	if err != nil {
+		return fmt.Errorf("generating secret key: %w", err)
+	}
+	if created {
+		fmt.Printf("Generated encryption key at %s\n", DefaultSecretEnvPath)
+	} else {
+		fmt.Printf("Encryption key already present at %s (left unchanged)\n", DefaultSecretEnvPath)
+	}
+
+	started, err := StartService()
+	if err != nil {
+		return fmt.Errorf("starting service: %w", err)
+	}
+	if started {
+		fmt.Println("Service enabled and started (spectra-server).")
+	} else {
+		fmt.Println("systemd not detected; start spectra-server manually.")
+	}
+
+	if sc.Interactive {
+		printPostSetupInstructions(sc.ExternalURL)
+	}
 
 	return nil
 }
