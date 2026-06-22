@@ -13,6 +13,7 @@ import { Tags } from "./pages/Tags";
 import type { User, Page, OverviewAgent } from "./types";
 import { usePolling } from "./hooks";
 import { statusColor } from "./utils";
+import { Alerts } from "./pages/Alerts";
 
 export default function App() {
 	const [user, setUser] = useState<User | null>(null);
@@ -290,6 +291,8 @@ export default function App() {
 				{page === "settings" && (
 					<Settings user={user} onLogout={handleLogout} />
 				)}
+
+				{page === "alerts" && <Alerts user={user} />}
 			</div>
 		</div>
 	);

@@ -16,12 +16,13 @@ interface SidebarProps {
 }
 
 const NAV_ICON: Record<string, string> = {
-  overview: "■",
-  detail: "◆",
-  diagnostics: "○",
-  agents: "☐",
-  tags: "▲",
-  users: "☐",
+    overview: "■",
+    detail: "◆",
+    diagnostics: "○",
+    agents: "☐",
+    tags: "▲",
+    alerts: "!",
+    users: "☐",
 };
 
 interface NavItem {
@@ -60,6 +61,7 @@ export function Sidebar({
         { key: "diagnostics", label: "Diagnostics", indent: true },
         { key: "agents", label: "Agent Mgmt" },
         { key: "tags", label: "Tags" },
+        { key: "alerts", label: "Alerts" },
         { key: "users", label: "User Mgmt", adminOnly: true },
     ];
 

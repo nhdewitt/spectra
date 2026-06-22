@@ -244,7 +244,7 @@ export interface Updates {
 
 export type TimeRange = "5m" | "15m" | "1h" | "6h" | "24h" | "7d" | "30d"
 export type ProcessSort = "cpu" | "memory";
-export type Page = "overview" | "detail" | "diagnostics" | "agents" | "users" | "settings" | "tags";
+export type Page = "overview" | "detail" | "diagnostics" | "agents" | "tags" | "users" | "settings" | "alerts";
 
 /* Unified time selection - either a quick preset or a custom start/end. */
 export type RangeSelection =
