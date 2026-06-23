@@ -424,6 +424,23 @@ export interface AlertEvent {
     hostname?: string;
 }
 
+export interface AgentOfflineSnapshot {
+    last_seen: string;
+    seconds_silent: number;
+}
+
+export interface DiskPredictionSnapshot {
+    mount: string;
+    used_pct: number;
+    predicted_full_at: string;
+    hours_remaining: number;
+}
+
+export interface ServiceDownSnapshot {
+    service_name: string;
+    last_status: string;
+}
+
 // SMTP transport (admin)
 
 export type TLSMode = "starttls" | "implicit" | "none";
