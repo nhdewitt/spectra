@@ -20,6 +20,6 @@ SET	enabled = EXCLUDED.enabled,
 	username = EXCLUDED.username,
 	password_encrypted = EXCLUDED.password_encrypted,
 	from_address = EXCLUDED.from_address,
-	tls_mode = EXCCLUDED.tls_mode,
+	tls_mode = EXCLUDED.tls_mode,
 	updated_at = NOW()
 RETURNING id, enabled, host, port, username, password_encrypted, from_address, tls_mode, updated_at;

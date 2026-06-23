@@ -398,7 +398,7 @@ func TestHandleSetAlertRuleEnabled_Success(t *testing.T) {
 	}
 	var resp struct {
 		ID              string          `json:"id"`
-		Name            string          `json:"id"`
+		Name            string          `json:"name"`
 		Enabled         bool            `json:"enabled"`
 		ConditionParams json.RawMessage `json:"condition_params"`
 	}

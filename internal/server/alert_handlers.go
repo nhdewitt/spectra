@@ -266,7 +266,7 @@ func (s *Server) handleListAlertRules(w http.ResponseWriter, r *http.Request) {
 		s.dbError(w, err, "handleListAlertRules")
 		return
 	}
-	toRuleViews(rules)
+	respondJSON(w, http.StatusOK, toRuleViews(rules))
 }
 
 // handleGetAlertRule returns a single rule plus its channel associations.

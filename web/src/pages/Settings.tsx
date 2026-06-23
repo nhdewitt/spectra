@@ -2,6 +2,7 @@ import { useState } from "react";
 import { themeVars, themes, getThemeName, applyTheme } from "../theme";
 import type { ThemeName } from "../theme";
 import type { User } from "../types";
+import { SMTPSettings } from "./SMTPSettings";
 
 interface SettingsProps {
     user: User;
@@ -11,6 +12,7 @@ interface SettingsProps {
 export function Settings({ user, onLogout }: SettingsProps) {
     const themeNames = Object.keys(themes) as ThemeName[];
     const [activeTheme, setActiveTheme] = useState<ThemeName>(getThemeName());
+    const isAdmin = user.role === "admin" || user.role === "superadmin";
 
     const handleThemeSelect = (name: ThemeName) => {
         applyTheme(name);
@@ -159,6 +161,9 @@ export function Settings({ user, onLogout }: SettingsProps) {
             ))}
             </div>
         </div>
+
+        {/* SMTP (admin only) */}
+        {isAdmin && <SMTPSettings />}
     </div>
   );
 }
