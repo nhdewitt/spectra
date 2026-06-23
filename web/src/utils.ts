@@ -223,7 +223,8 @@ function legacyCopy(text: string) {
     document.body.removeChild(textarea);
 }
 
-export function timeAgo(dateStr: string): string {
+export function timeAgo(dateStr: string | null): string {
+    if (!dateStr) return "—";
     const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
     if (seconds < 60) return "just now";
     const minutes = Math.floor(seconds / 60);
