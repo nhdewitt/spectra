@@ -389,7 +389,6 @@ export const api = {
     /** GET /version - server version, commit hash, build date. */
     version: () => apiFetch<{ version: string; commit: string; date: string; }>("/version"),
 
-
     // Labels
     
     /**
@@ -444,6 +443,9 @@ export const api = {
         validateLabelKey(key);
         return apiFetch(`/labels/values?key=${key}`);
     },
+
+    /** GET /agents - list registered agents. */
+    agents: () => apiFetch<Agent[]>("/agents"),
 
     // Alerting - channels
 
@@ -517,7 +519,7 @@ export const api = {
         }),
 
     /** PUT /alerts/rules/{id}/enabled - toggle a rule on or off. */
-    setRuleAlertEnabled: (id: string, enabled: boolean) =>
+    setAlertRuleEnabled: (id: string, enabled: boolean) =>
         apiFetch<AlertRule>(`/alerts/rules/${id}/enabled`, {
             method: "PUT",
             body: JSON.stringify({ enabled }),
