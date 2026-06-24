@@ -12,9 +12,10 @@ import type {
 	ConditionType,
 	ConditionParams,
 	DiskMetric,
+	Service,
 } from "../types";
 
-const CONDITION_LABELS: Record<ConditionType, String> = {
+const CONDITION_LABELS: Record<ConditionType, string> = {
 	agent_offline: "Agent Offline",
 	disk_prediction: "Disk Prediction",
 	service_down: "Service Down",
@@ -64,7 +65,7 @@ const disabledInputStyle: React.CSSProperties = {
 
 /**
  * Reads a typed param field out of a rule's condition_params for edit pre-fill,
- * tolerating shap mismatches. */
+ * tolerating shape mismatches. */
 function readParams(rule: AlertRule) {
 	const p = (rule.condition_params ?? {}) as unknown as Record<string, unknown>;
 	return {
@@ -120,6 +121,7 @@ function RuleModal({
 	const [serviceName, setServiceName] = useState(seed?.serviceName ?? "");
 
 	const [mountOptions, setMountOptions] = useState<string[]>([]);
+	const [serviceOptions, setServiceOptions] = useState<string[]>([]);
 	const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set());
 	const [channelsLoaded, setChannelsLoaded] = useState(!isEdit);
 	const [error, setError] = useState<string | null>(null);
@@ -158,6 +160,31 @@ function RuleModal({
 			cancelled = true;
 		};
 	}, [scope, conditionType, agentId, mount]);
+
+	// Offer the agent's reported services for service_down. Folds in the existing
+	// rule's service name so editing never loses a value the agent isn't currently
+	// reporting (e.g. the service is down).
+	useEffect(() => {
+		if (conditionType !== "service_down" || !agentId) {
+			setServiceOptions([]);
+			return;
+		}
+		let cancelled = false;
+		api.agentServices(agentId)
+			.then((services: Service[]) => {
+				if (cancelled) return;
+				const set = new Set<string>();
+				for (const s of services) if (s.name) set.add(s.name);
+				if (serviceName) set.add(serviceName);
+				setServiceOptions(Array.from(set).sort());
+			})
+			.catch(() => {
+				if (!cancelled) setServiceOptions(serviceName ? [serviceName] : []);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [conditionType, agentId, serviceName]);
 
 	// Force service_down to agent scope
 	const handleConditionChange = (next: ConditionType) => {
@@ -347,7 +374,7 @@ function RuleModal({
 							type="text"
 							value={name}
 							onChange={(e) => setName(e.target.value)}
-							placeholder="e.g. proxmox7 offline"
+							placeholder="Production web server offline"
 							style={inputStyle}
 						/>
 					</div>
@@ -428,25 +455,21 @@ function RuleModal({
 						<>
 							<div>
 								<div style={labelStyle}>Mount</div>
-								{scope === "agent" && mountOptions.length > 0 ? (
-									<select
-										value={mount}
-										onChange={(e) => setMount(e.target.value)}
-										style={{ ...inputStyle, cursor: "pointer" }}
-									>
-										<option value="">Select a mount…</option>
+								<input
+									type="text"
+									value={mount}
+									onChange={(e) => setMount(e.target.value)}
+									placeholder="/"
+									list="rule-mount-options"
+									style={inputStyle}
+									autoComplete="off"
+								/>
+								{mountOptions.length > 0 && (
+									<datalist id="rule-mount-options">
 										{mountOptions.map((m) => (
-											<option key={m} value={m}>{m}</option>
+											<option key={m} value={m} />
 										))}
-									</select>
-								) : (
-									<input
-										type="text"
-										value={mount}
-										onChange={(e) => setMount(e.target.value)}
-										placeholder="/"
-										style={inputStyle}
-									/>
+									</datalist>
 								)}
 								{scope === "global" && (
 									<div style={{ fontSize: 10, fontFamily: themeVars.font, color: themeVars.textDim, marginTop: 4 }}>
@@ -476,8 +499,20 @@ function RuleModal({
 								value={serviceName}
 								onChange={(e) => setServiceName(e.target.value)}
 								placeholder="nginx"
+								list="rule-service-options"
 								style={inputStyle}
+								autoComplete="off"
 							/>
+							{serviceOptions.length > 0 && (
+								<datalist id="rule-service-options">
+									{serviceOptions.map((s) => (
+										<option key={s} value={s} />
+									))}
+								</datalist>
+							)}
+							<div style={{ fontSize: 10, fontFamily: themeVars.font, color: themeVars.textDim, marginTop: 4 }}>
+								Start typing to filter the agent's services, or enter a service not currently running.
+							</div>
 						</div>
 					) : null}
  

@@ -356,7 +356,7 @@ func TestSaveAndLoadConfig_WithTLS(t *testing.T) {
 	cfg := &ServerConfig{
 		DatabaseURL: "postgres://user:pass@localhost:5432/spectra",
 		ListenPort:  8080,
-		ExternalURL: "https://10.10.107.1:8080",
+		ExternalURL: "https://203.0.113.10:8080",
 		TLSCert:     "/etc/spectra/tls/server.crt",
 		TLSKey:      "/etc/spectra/tls/server.key",
 		TLSCA:       "/etc/spectra/tls/ca.crt",

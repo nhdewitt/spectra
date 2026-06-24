@@ -13,8 +13,8 @@ Spectra is a system monitoring solution written in Go. Lightweight agents collec
        └────────────────────┼───────────────────┘
                             ▼
                     ┌───────────────┐
-                    │ Spectra Server │
-                    │   Go + Mux    │
+                    │ Spectra Server│
+                    │  Go net/http  │
                     └───────┬───────┘
                             │
                     ┌───────▼───────┐
@@ -44,7 +44,7 @@ Spectra ships a guided installer, `spectra-setup`, that provisions the database,
 From a workstation, targeting a fresh host:
 
 ```bash
-make setup DEPLOY_HOST=10.10.107.1
+make setup DEPLOY_HOST=<server-ip>
 ```
 
 On the box itself:
@@ -80,11 +80,11 @@ admin:
 server:
   port: 8080
   migrations: internal/database/migrations
-  external_url: https://10.10.107.1:8080
+  external_url: https://203.0.113.10:8080
 tls:
   enabled: true
   sans:
-    - 10.10.107.1
+    - 203.0.113.10
 skip_prerequisites: false
 ```
 
@@ -93,7 +93,7 @@ skip_prerequisites: false
 ### Updating an existing install
 
 ```bash
-make deploy DEPLOY_HOST=10.10.107.1
+make deploy DEPLOY_HOST=<server-ip>
 ```
 
 Both `setup` and `deploy` run locally when `DEPLOY_HOST` is unset and over SSH when it is set.
@@ -364,7 +364,7 @@ Wants=network-online.target
 
 [Service]
 ExecStart=/usr/local/bin/spectra-agent
-Environment=SPECTRA_SERVER=https://10.10.107.1:8080
+Environment=SPECTRA_SERVER=<server-ip>
 Restart=always
 RestartSec=5
 
