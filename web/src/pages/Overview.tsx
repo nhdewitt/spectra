@@ -897,7 +897,7 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 
 	useEffect(() => {
 		api.labelKeys().then(setKnownKeys).catch(() => {});
-	}, [labelsByAgent]);
+	}, []);
 
 	const osOptions = useMemo(() => {
 		const set = new Set(agents.map((a) => a.os).filter(Boolean));
@@ -936,7 +936,7 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 		}
 
 		if (archFilter !== "all") {
-			result = result.filter((a) => agentStatus(a).status === statusFilter);
+			result = result.filter((a) => a.arch === archFilter);
 		}
 
 		if (hardwareFilter !== "all") {
@@ -972,6 +972,7 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 	}, []);
 
 	const clearFilters = useCallback(() => setActiveFilters([]), []);
+	const starredSet = useMemo(() => new Set(starredIds), [starredIds]);
 
 	if (loading && agents.length === 0) return <LoadingSpinner />;
 
@@ -1066,7 +1067,7 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 									agent={agent}
 									sparkData={sparkHistory.get(agent.id)}
 									onClick={onSelectAgent}
-									isStarred={starredIds.includes(agent.id)}
+									isStarred={starredSet.has(agent.id)}
 									onToggleStar={onToggleStar}
 								/>
 							))}
@@ -1089,7 +1090,7 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 							key={agent.id}
 							agent={agent}
 							onClick={onSelectAgent}
-							isStarred={starredIds.includes(agent.id)}
+							isStarred={starredSet.has(agent.id)}
 							onToggleStar={onToggleStar}
 						/>
 					))}
