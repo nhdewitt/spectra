@@ -3,7 +3,7 @@ import { api } from "../api";
 import { themeVars } from "../theme";
 import { OSIcon } from "../icons";
 import { Sparkline } from "../Sparkline";
-import { usePolling, useSparkHistory } from "../hooks";
+import { useSparkHistory } from "../hooks";
 import type { SparkData } from "../hooks";
 import { StatBlock, LoadingSpinner } from "../components";
 import { LabelChip } from "../components/LabelChip";
@@ -20,6 +20,9 @@ import type { AgentStatus } from "../utils";
 type SortOption = "severity" | "status" | "hostname" | "cpu" | "memory" | "disk" | "temp";
 
 interface OverviewProps {
+	agents: OverviewAgent[];
+	loading: boolean;
+	error: string | null;
 	onSelectAgent: (agent: OverviewAgent) => void;
 	starredIds: string[];
 	onToggleStar: (agentId: string) => void;
@@ -854,7 +857,7 @@ function sortAgents(agents: OverviewAgent[], sort: SortOption): OverviewAgent[] 
 
 // --- Overview Page ---
 
-export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewProps) {
+export function Overview({ agents, loading, error, onSelectAgent, starredIds, onToggleStar }: OverviewProps) {
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<AgentStatus | "all">("all");
 	const [osFilter, setOsFilter] = useState("all");
@@ -867,9 +870,6 @@ export function Overview({ onSelectAgent, starredIds, onToggleStar }: OverviewPr
 	const [labelsByAgent, setLabelsByAgent] = useState<Map<string, AgentLabel[]>>(new Map());
 	const [knownKeys, setKnownKeys] = useState<LabelKey[]>([]);
 
-	const fetcher = useCallback(() => api.overview(), []);
-	const { data, loading, error } = usePolling(fetcher, 10_000);
-	const agents = data ?? [];
 	const sparkHistory = useSparkHistory(agents);
 
 	const agentIdsKey = useMemo(() => agents.map((a) => a.id).sort().join(","), [agents]);

@@ -69,7 +69,7 @@ export default function App() {
 
 	// Fetch agent list for sidebar quick access and online count
 	const agentFetcher = useCallback(() => user ? api.overview() : Promise.resolve([]), [user]);
-	const { data: agents } = usePolling(agentFetcher, 10_000);
+	const { data: agents, loading: agentsLoading, error: agentsError } = usePolling(agentFetcher, 10_000);
 	const agentList = agents ?? [];
 
 	const onlineCount = agentList.filter((a) => {
@@ -195,6 +195,9 @@ export default function App() {
 				{/* Page content */}
 				{page === "overview" && (
 					<Overview
+						agents={agentList}
+						loading={agentsLoading}
+						error={agentsError}
 						onSelectAgent={handleSelectAgent}
 						starredIds={starredIds}
 						onToggleStar={toggleStar}
