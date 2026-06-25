@@ -14,6 +14,13 @@ FROM agent_labels
 WHERE agent_id = @agent_id
 ORDER BY source DESC, key ASC;
 
+-- name: ListAllAgentLabels :many
+-- Every agent's labels in one query (for the overview/fleet pages). Caller
+-- groups by agent_id. Auto labels first for UI grouping.
+SELECT agent_id, key, value, source
+FROM agent_labels
+ORDER BY agent_id, source DESC, key ASC;
+
 -- name: GetAgentLabel :one
 -- Single label lookup; used by the API to disambiguate 404 vs 403 (auto label
 -- the caller tried to modify) before calling a write query.

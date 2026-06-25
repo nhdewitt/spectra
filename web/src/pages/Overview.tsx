@@ -877,19 +877,16 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 	useEffect(() => {
 		if (agents.length === 0) return;
 		let cancelled = false;
-		Promise.all(
-			agents.map((a) =>
-				api
-					.agentLabels(a.id)
-					.then((labels) => [a.id, labels] as const)
-					.catch(() => [a.id, [] as AgentLabel[]] as const)
-			)
-		).then((results) => {
-			if (cancelled) return;
-			const m = new Map<string, AgentLabel[]>();
-			for (const [id, labels] of results) m.set(id, labels);
-			setLabelsByAgent(m);
-		});
+		api.allAgentLabels()
+			.then((byId) => {
+				if (cancelled) return;
+				const m = new Map<string, AgentLabel[]>();
+				for (const [id, labels] of Object.entries(byId)) {
+					m.set(id, labels as AgentLabel[]);
+				}
+				setLabelsByAgent(m);
+			})
+			.catch(() => {});
 		return () => {
 			cancelled = true;
 		};

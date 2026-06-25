@@ -175,6 +175,8 @@ type MockDB struct {
 	SMTPConfig    *database.SmtpConfig
 	SMTPConfigErr error
 
+	ListAllAgentLabelsReturn []database.ListAllAgentLabelsRow
+
 	Err         error
 	QueryErr    error // errors for data queries (not auth)
 	GetAgentErr error
@@ -1570,4 +1572,16 @@ func (m *MockDB) UpsertSMTPConfig(_ context.Context, arg database.UpsertSMTPConf
 	}
 	m.SMTPConfig = &cfg
 	return cfg, nil
+}
+
+func (m *MockDB) ListAllAgentLabels(_ context.Context) ([]database.ListAllAgentLabelsRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.QueryErr != nil {
+		return nil, m.QueryErr
+	}
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	return m.ListAllAgentLabelsReturn, nil
 }

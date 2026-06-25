@@ -128,6 +128,7 @@ type DB interface {
 	ReplaceAutoLabels(ctx context.Context, arg database.ReplaceAutoLabelsParams) error
 	UpsertAutoLabel(ctx context.Context, arg database.UpsertAutoLabelParams) error
 	ListAgentLabels(ctx context.Context, id pgtype.UUID) ([]database.ListAgentLabelsRow, error)
+	ListAllAgentLabels(ctx context.Context) ([]database.ListAllAgentLabelsRow, error)
 	ListLabelKeys(ctx context.Context) ([]database.ListLabelKeysRow, error)
 	ListLabelValuesForKey(ctx context.Context, key string) ([]string, error)
 	UpsertUserLabel(ctx context.Context, arg database.UpsertUserLabelParams) (database.AgentLabel, error)

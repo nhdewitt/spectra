@@ -600,3 +600,94 @@ func TestForgetAgentLabels(t *testing.T) {
 		t.Error("after forget, version should look new")
 	}
 }
+
+func TestHandleListAllAgentLabels(t *testing.T) {
+	t.Run("db error", func(t *testing.T) {
+		s, _, _, mock := newTestServer()
+		setupTestSession(mock)
+		mock.QueryErr = errors.New("db down")
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/labels", nil)
+		authedRequest(req)
+		rec := httptest.NewRecorder()
+		s.Router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rec.Code)
+		}
+	})
+
+	t.Run("success groups by agent id", func(t *testing.T) {
+		s, _, _, mock := newTestServer()
+		setupTestSession(mock)
+
+		a1 := newTestUUID()
+		a2 := newTestUUID()
+		id1 := formatUUID(a1)
+		id2 := formatUUID(a2)
+
+		// Two agents, interleaved; auto first within each (as the query orders).
+		mock.ListAllAgentLabelsReturn = []database.ListAllAgentLabelsRow{
+			{AgentID: a1, Key: "os", Value: "linux", Source: "auto"},
+			{AgentID: a1, Key: "env", Value: "prod", Source: "user"},
+			{AgentID: a2, Key: "os", Value: "windows", Source: "auto"},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/labels", nil)
+		authedRequest(req)
+		rec := httptest.NewRecorder()
+		s.Router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+
+		var got map[string][]bulkLabelDTO
+		if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("got %d agents, want 2", len(got))
+		}
+		if len(got[id1]) != 2 {
+			t.Fatalf("agent1 labels = %d, want 2", len(got[id1]))
+		}
+		// Order within an agent is preserved from the query.
+		if got[id1][0].Key != "os" || got[id1][0].Source != "auto" {
+			t.Errorf("agent1[0] = %+v, want os/auto", got[id1][0])
+		}
+		if got[id1][1].Key != "env" || got[id1][1].Source != "user" {
+			t.Errorf("agent1[1] = %+v, want env/user", got[id1][1])
+		}
+		if len(got[id2]) != 1 || got[id2][0].Value != "windows" {
+			t.Errorf("agent2 = %+v, want one windows label", got[id2])
+		}
+	})
+
+	t.Run("empty returns 200 with object", func(t *testing.T) {
+		s, _, _, mock := newTestServer()
+		setupTestSession(mock)
+		// ListAllAgentLabelsReturn is nil by default
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/labels", nil)
+		authedRequest(req)
+		rec := httptest.NewRecorder()
+		s.Router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		// Body should be "{}", not "null" (the handler inits a non-nil map).
+		body := rec.Body.String()
+		if len(body) == 0 || body[0] != '{' {
+			t.Errorf("body should start with '{', got %q", body)
+		}
+		var got map[string][]bulkLabelDTO
+		if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if got == nil {
+			t.Errorf("response should be an empty object, not null")
+		}
+	})
+}

@@ -444,6 +444,12 @@ export const api = {
         return apiFetch(`/labels/values?key=${key}`);
     },
 
+    /** GET /agents/labels - all agents' labels keyed by agent id, in one request.
+     * Bulk form of agentLabels(), used by the overview page to avoid N+1.
+     */
+    allAgentLabels: (): Promise<Record<string, AgentLabel[]>> =>
+        apiFetch(`/agents/labels`),
+
     /** GET /agents - list registered agents. */
     agents: () => apiFetch<Agent[]>("/agents"),
 

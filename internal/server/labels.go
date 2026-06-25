@@ -54,6 +54,39 @@ func (s *Server) handleListAgentLabels(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, out)
 }
 
+// bulkLabelDTO is one label in the bulk agent-labels respopnse. The batch query
+// omits updated_at, the consumer only needs key/value/source.
+type bulkLabelDTO struct {
+	Key    string `json:"key"`
+	Value  string `json:"value"`
+	Source string `json:"source"`
+}
+
+// handleListAllAgentLabels returns every agen't labels grouped by agent id,
+// as {agent_id: [{key,value,source}, ...]}. Replaces the overview page's N+1
+// per-agent label fetch with a single request.
+//
+// GET /api/v1/agents/labels
+func (s *Server) handleListAllAgentLabels(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.DB.ListAllAgentLabels(r.Context())
+	if err != nil {
+		s.dbError(w, err, "handleListAllAgentLabels")
+		return
+	}
+
+	out := make(map[string][]bulkLabelDTO, len(rows))
+	for _, row := range rows {
+		id := formatUUID(row.AgentID)
+		out[id] = append(out[id], bulkLabelDTO{
+			Key:    row.Key,
+			Value:  row.Value,
+			Source: row.Source,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, out)
+}
+
 // handleListLabelKeys returns the distinct set of label keys across the
 // fleet. Used by the rule-editor key picker; source is included so the UI
 // can flag auto keys as read-only.

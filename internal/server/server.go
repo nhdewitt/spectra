@@ -174,6 +174,7 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/labels", s.requireUserAuth(s.rateLimitAuthed(s.handleListAgentLabels)))
 	s.Router.HandleFunc("GET /api/v1/labels/keys", s.requireUserAuth(s.rateLimitAuthed(s.handleListLabelKeys)))
 	s.Router.HandleFunc("GET /api/v1/labels/values", s.requireUserAuth(s.rateLimitAuthed(s.handleListLabelValues)))
+	s.Router.HandleFunc("GET /api/v1/agents/labels", s.requireUserAuth(s.rateLimitAuthed(s.handleListAllAgentLabels)))
 
 	// Label writes (admin+)
 	s.Router.HandleFunc("PUT /api/v1/admin/agents/{id}/labels/{key}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handlePutAgentLabel))))

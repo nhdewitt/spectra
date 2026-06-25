@@ -263,6 +263,46 @@ func (q *Queries) ListAgentsByLabels(ctx context.Context, arg ListAgentsByLabels
 	return items, nil
 }
 
+const listAllAgentLabels = `-- name: ListAllAgentLabels :many
+SELECT agent_id, key, value, source
+FROM agent_labels
+ORDER BY agent_id, source DESC, key ASC
+`
+
+type ListAllAgentLabelsRow struct {
+	AgentID pgtype.UUID `json:"agent_id"`
+	Key     string      `json:"key"`
+	Value   string      `json:"value"`
+	Source  string      `json:"source"`
+}
+
+// Every agent's labels in one query (for the overview/fleet pages). Caller
+// groups by agent_id. Auto labels first for UI grouping.
+func (q *Queries) ListAllAgentLabels(ctx context.Context) ([]ListAllAgentLabelsRow, error) {
+	rows, err := q.db.Query(ctx, listAllAgentLabels)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllAgentLabelsRow{}
+	for rows.Next() {
+		var i ListAllAgentLabelsRow
+		if err := rows.Scan(
+			&i.AgentID,
+			&i.Key,
+			&i.Value,
+			&i.Source,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLabelKeys = `-- name: ListLabelKeys :many
 SELECT DISTINCT key, source
 FROM agent_labels
