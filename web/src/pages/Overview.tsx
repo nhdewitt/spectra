@@ -4,6 +4,7 @@ import { themeVars } from "../theme";
 import { OSIcon } from "../icons";
 import { Sparkline } from "../Sparkline";
 import { useSparkHistory } from "../hooks";
+import { usePagination, Pagination } from "../hooks/usePagination";
 import type { SparkData } from "../hooks";
 import { StatBlock, LoadingSpinner } from "../components";
 import { LabelChip } from "../components/LabelChip";
@@ -18,6 +19,9 @@ import {
 import type { AgentStatus } from "../utils";
 
 type SortOption = "severity" | "status" | "hostname" | "cpu" | "memory" | "disk" | "temp";
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 250];
+const DEFAULT_PAGE_SIZE = 25;
 
 interface OverviewProps {
 	agents: OverviewAgent[];
@@ -865,6 +869,7 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 	const [hardwareFilter, setHardwareFilter] = useState("all");
 	const [sort, setSort] = useState<SortOption>("severity");
 	const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+	const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
 	const [activeFilters, setActiveFilters] = useState<LabelFilter[]>([]);
 	const [labelsByAgent, setLabelsByAgent] = useState<Map<string, AgentLabel[]>>(new Map());
@@ -954,6 +959,13 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 
 		return sortAgents(result, sort);
 	}, [agents, search, statusFilter, osFilter, archFilter, hardwareFilter, sort, activeFilters, labelsByAgent]);
+
+	const { paged, page, setPage, totalPages, total, reset: resetPage } = usePagination(filtered, pageSize);
+
+	// Reset to the first page when the query changes. A polling data refresh does not refresh the page
+	useEffect(() => {
+		resetPage();
+	}, [search, statusFilter, osFilter, archFilter, hardwareFilter, sort, activeFilters, pageSize, resetPage]);
 
 	const addFilter = useCallback((key: string, value: string) => {
 		setActiveFilters((prev) => {
@@ -1058,7 +1070,7 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 							<TableHeader />
 						</thead>
 						<tbody>
-							{filtered.map((agent) => (
+							{paged.map((agent) => (
 								<AgentRow
 									key={agent.id}
 									agent={agent}
@@ -1082,7 +1094,7 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 						gap: 12,
 					}}
 				>
-					{filtered.map((agent) => (
+					{paged.map((agent) => (
 						<AgentCard
 							key={agent.id}
 							agent={agent}
@@ -1091,6 +1103,41 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 							onToggleStar={onToggleStar}
 						/>
 					))}
+				</div>
+			)}
+ 
+			{/* Pagination + page size */}
+			{filtered.length > 0 && (
+				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+					<Pagination
+						page={page}
+						totalPages={totalPages}
+						total={total}
+						pageSize={pageSize}
+						onPageChange={setPage}
+					/>
+					<label
+						style={{
+							display: "flex",
+							alignItems: "center",
+							gap: 6,
+							fontSize: 11,
+							fontFamily: themeVars.font,
+							color: themeVars.textDim,
+							marginLeft: "auto",
+						}}
+					>
+						Per page
+						<select
+							value={pageSize}
+							onChange={(e) => setPageSize(Number(e.target.value))}
+							style={selectStyle}
+						>
+							{PAGE_SIZE_OPTIONS.map((n) => (
+								<option key={n} value={n}>{n}</option>
+							))}
+						</select>
+					</label>
 				</div>
 			)}
  

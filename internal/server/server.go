@@ -235,7 +235,7 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.Config.Port)
 	s.httpServer = &http.Server{
 		Addr:              addr,
-		Handler:           s.requestLogger(s.Router),
+		Handler:           gzipMiddleware(s.requestLogger(s.Router)),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      40 * time.Second,
