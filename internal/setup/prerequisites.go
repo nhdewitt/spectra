@@ -564,3 +564,16 @@ func runCmd(name string, args ...string) (string, error) {
 	}
 	return strings.TrimSpace(string(out)), nil
 }
+
+// inContainer reports whether the process is running inside a container, so
+// setup can skip systemd service management.
+func inContainer() bool {
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+	// Podman and systemd-nspawn set this
+	if os.Getenv("container") != "" {
+		return true
+	}
+	return false
+}

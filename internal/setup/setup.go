@@ -65,15 +65,16 @@ type TLSSetupConfig struct {
 
 // SetupConfig is the shared configuration for both interactive and unattended setup.
 type SetupConfig struct {
-	DBConfig      *DBConfig
-	CreateDB      bool
-	MigrationsDir string
-	Admin         *AdminCredentials
-	Port          int
-	TLS           *TLSSetupConfig // nil if TLS disabled
-	ExternalURL   string
-	SkipPrereqs   bool
-	Interactive   bool
+	DBConfig         *DBConfig
+	CreateDB         bool
+	MigrationsDir    string
+	Admin            *AdminCredentials
+	Port             int
+	TLS              *TLSSetupConfig // nil if TLS disabled
+	ExternalURL      string
+	SkipPrereqs      bool
+	SkipServiceStart bool
+	Interactive      bool
 }
 
 // ConfigExists confirms that the config file is present.

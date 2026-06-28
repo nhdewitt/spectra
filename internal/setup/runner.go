@@ -158,14 +158,20 @@ func RunSetup(ctx context.Context, sc *SetupConfig, configPath string) error {
 		fmt.Printf("Encryption key already present at %s (left unchanged)\n", DefaultSecretEnvPath)
 	}
 
-	started, err := StartService()
-	if err != nil {
-		return fmt.Errorf("starting service: %w", err)
-	}
-	if started {
-		fmt.Println("Service enabled and started (spectra-server).")
+	if inContainer() {
+		fmt.Println("Skipping service start; the container entrypoint runs spectra-server directly.")
+	} else if sc.SkipServiceStart {
+		fmt.Println("Skipping service start; disabled via configuration.")
 	} else {
-		fmt.Println("systemd not detected; start spectra-server manually.")
+		started, err := StartService()
+		if err != nil {
+			return fmt.Errorf("starting service: %w", err)
+		}
+		if started {
+			fmt.Println("Service enabled and started (spectra-server).")
+		} else {
+			fmt.Println("systemd not detected; start spectra-server manually.")
+		}
 	}
 
 	if sc.Interactive {

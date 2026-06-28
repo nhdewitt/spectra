@@ -30,3 +30,6 @@ vite.config.ts
 collector-bench*
 bench/*
 cookies.txt
+server.json
+perf/node_modules/
+perf/*.png

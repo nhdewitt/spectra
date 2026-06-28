@@ -1,0 +1,13 @@
+{
+  "name": "spectra-perf",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playwright performance harness for the Spectra overview page.",
+  "type": "module",
+  "scripts": {
+    "perf": "node overview-perf.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

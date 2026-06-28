@@ -1,0 +1,20 @@
+# Unattended setup for the disposable Docker stack. Not production config.
+database:
+  host: db
+  port: "5432"
+  name: spectra
+  user: spectra
+  password: spectra
+  ssl: disable
+  create: false
+admin:
+  username: admin
+  password: changeme123
+server:
+  port: 8080
+  migrations: /app/internal/database/migrations
+  external_url: http://localhost:8080
+tls:
+  enabled: false
+skip_prerequisites: true
+skip_service_start: true

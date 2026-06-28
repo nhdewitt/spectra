@@ -44,7 +44,7 @@ PLATFORMS = \
 	freebsd/amd64/ \
 	windows/amd64/
 
-.PHONY: release build-server build-setup setup deploy-server deploy-releases deploy clean
+.PHONY: release build-server build-setup build-seed setup deploy-server deploy-releases deploy clean
 
 build-server:
 	@mkdir -p $(RELEASE_DIR)
@@ -54,6 +54,10 @@ build-server:
 build-setup:
 	@mkdir -p $(RELEASE_DIR)
 	go build -ldflags "$(BASE_LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-setup ./cmd/setup
+
+build-seed:
+	@mkdir -p $(RELEASE_DIR)
+	go build -ldflags "$(BASE_LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-seed ./cmd/seed
 
 # setup — first-time stand-up. Builds binaries, installs them + the systemd unit,
 # then runs spectra-setup (which configures DB/admin/key and starts the service).

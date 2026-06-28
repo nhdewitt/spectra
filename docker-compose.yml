@@ -1,0 +1,39 @@
+# Disposable Spectra stack for frontend performance testing.
+#
+#   docker compose up --build       # build, migrate, seed, serve
+#   SEED_N=2000 docker compose up   # seed a larger fleet
+#   docker compose down -v          # tear down and wipe the database
+#
+# Not for production: TLS is disabled and the admin password is throwaway.
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: spectra
+      POSTGRES_PASSWORD: spectra
+      POSTGRES_DB: spectra
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spectra -d spectra"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  spectra:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SEED_N: ${SEED_N:-500}
+      SEED_DB_URL: "postgres://spectra:spectra@db:5432/spectra?sslmode=disable"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/setup.yaml:/app/setup.yaml:ro
+      - ./docker/entrypoint.sh:/app/entrypoint.sh:ro
+    entrypoint: ["sh", "/app/entrypoint.sh"]

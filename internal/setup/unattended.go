@@ -34,6 +34,7 @@ type SetupFile struct {
 		SANs    []string `yaml:"sans"`
 	} `yaml:"tls"`
 	SkipPrerequisites bool `yaml:"skip_prerequisites"`
+	SkipServiceStart  bool `yaml:"skip_service_start"`
 }
 
 var validSSLModes = map[string]bool{
@@ -128,9 +129,10 @@ func RunNonInteractive(ctx context.Context, sf *SetupFile, configPath string) er
 			Username: sf.Admin.Username,
 			Password: sf.Admin.Password,
 		},
-		Port:        sf.Server.Port,
-		ExternalURL: sf.Server.ExternalURL,
-		SkipPrereqs: sf.SkipPrerequisites,
+		Port:             sf.Server.Port,
+		ExternalURL:      sf.Server.ExternalURL,
+		SkipPrereqs:      sf.SkipPrerequisites,
+		SkipServiceStart: sf.SkipServiceStart,
 	}
 
 	if sf.TLS.Enabled {
