@@ -1,0 +1,18 @@
+CREATE TABLE status_thresholds (
+	id				INTEGER PRIMARY KEY DEFAULT 1,
+	cpu_warn		DOUBLE PRECISION NOT NULL DEFAULT 80,
+	cpu_crit		DOUBLE PRECISION NOT NULL DEFAULT 95,
+	mem_warn		DOUBLE PRECISION NOT NULL DEFAULT 80,
+	mem_crit		DOUBLE PRECISION NOT NULL DEFAULT 95,
+	disk_warn		DOUBLE PRECISION NOT NULL DEFAULT 98,
+	disk_crit		DOUBLE PRECISION NOT NULL DEFAULT 99,
+	temp_warn		DOUBLE PRECISION NOT NULL DEFAULT 70,
+	temp_crit		DOUBLE PRECISION NOT NULL DEFAULT 85,
+	stale_seconds	INTEGER NOT NULL DEFAULT 120,
+	offline_seconds	INTEGER NOT NULL DEFAULT 600,
+	updated_at		TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	CONSTRAINT status_thresholds_singleton CHECK (id = 1)
+);
+
+-- Seed the singleton with defaults so reads always find a row.
+INSERT INTO status_thresholds (id) VALUES (1) ON CONFLICT (id) DO NOTHING;

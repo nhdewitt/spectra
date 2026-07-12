@@ -298,6 +298,21 @@ type SmtpConfig struct {
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 }
 
+type StatusThreshold struct {
+	ID             int32              `json:"id"`
+	CpuWarn        float64            `json:"cpu_warn"`
+	CpuCrit        float64            `json:"cpu_crit"`
+	MemWarn        float64            `json:"mem_warn"`
+	MemCrit        float64            `json:"mem_crit"`
+	DiskWarn       float64            `json:"disk_warn"`
+	DiskCrit       float64            `json:"disk_crit"`
+	TempWarn       float64            `json:"temp_warn"`
+	TempCrit       float64            `json:"temp_crit"`
+	StaleSeconds   int32              `json:"stale_seconds"`
+	OfflineSeconds int32              `json:"offline_seconds"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type User struct {
 	ID        pgtype.UUID        `json:"id"`
 	Username  string             `json:"username"`

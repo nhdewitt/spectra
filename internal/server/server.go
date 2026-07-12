@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -70,6 +71,7 @@ type Server struct {
 	Commands     *commandResultStore
 	versionCache *labels.VersionCache
 	Cipher       *secret.Cipher
+	thresholds   atomic.Pointer[thresholdValues]
 
 	done chan struct{}
 }
@@ -132,6 +134,8 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/overview", s.requireUserAuth(s.rateLimitAuthed(s.handleOverview)))
 	s.Router.HandleFunc("GET /api/v1/overview/sparklines", s.requireUserAuth(s.rateLimitAuthed(s.handleGetSparklines)))
 	s.Router.HandleFunc("GET /api/v1/overview/fleet/chart", s.requireUserAuth(s.rateLimitAuthed(s.handleFleetChart)))
+	s.Router.HandleFunc("GET /api/v1/overview/page", s.requireUserAuth(s.rateLimitAuthed(s.handleOverviewPage)))
+	s.Router.HandleFunc("GET /api/v1/overview/stats", s.requireUserAuth(s.rateLimitAuthed(s.handleOverviewStats)))
 	s.Router.HandleFunc("GET /api/v1/agents", s.requireUserAuth(s.rateLimitAuthed(s.handleListAgents)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAgent)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/config", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAgentConfig)))
@@ -221,6 +225,10 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/admin/smtp", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleGetSMTPConfig))))
 	s.Router.HandleFunc("PUT /api/v1/admin/smtp", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleUpdateSMTPConfig))))
 	s.Router.HandleFunc("POST /api/v1/admin/smtp/test", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleTestSMTPConfig))))
+
+	// Status thresholds (read: any authed user; write: admin+)
+	s.Router.HandleFunc("GET /api/v1/thresholds", s.requireUserAuth(s.rateLimitAuthed(s.handleGetThresholds)))
+	s.Router.HandleFunc("PUT /api/v1/admin/thresholds", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleUpdateThresholds))))
 
 	// API catch-all: reject unmatched /api/ routes before SPA fallback
 	s.Router.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
