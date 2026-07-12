@@ -175,6 +175,14 @@ type MockDB struct {
 	SMTPConfig    *database.SmtpConfig
 	SMTPConfigErr error
 
+	StatusThresholds    *database.GetStatusThresholdsRow
+	StatusThresholdsErr error
+
+	GetOverviewPageResult  database.GetOverviewPageResult
+	GetOverviewPageErr     error
+	GetOverviewStatsResult database.OverviewStats
+	GetOverviewStatsErr    error
+
 	ListAllAgentLabelsReturn []database.ListAllAgentLabelsRow
 
 	Err         error
@@ -1584,4 +1592,57 @@ func (m *MockDB) ListAllAgentLabels(_ context.Context) ([]database.ListAllAgentL
 		return nil, m.Err
 	}
 	return m.ListAllAgentLabelsReturn, nil
+}
+
+func (m *MockDB) GetStatusThresholds(_ context.Context) (database.GetStatusThresholdsRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.StatusThresholdsErr != nil {
+		return database.GetStatusThresholdsRow{}, m.StatusThresholdsErr
+	}
+	if m.StatusThresholds == nil {
+		return database.GetStatusThresholdsRow{}, pgx.ErrNoRows
+	}
+	return *m.StatusThresholds, nil
+}
+
+func (m *MockDB) UpsertStatusThresholds(_ context.Context, arg database.UpsertStatusThresholdsParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.StatusThresholdsErr != nil {
+		return m.StatusThresholdsErr
+	}
+	row := database.GetStatusThresholdsRow{
+		CpuWarn:        arg.CpuWarn,
+		CpuCrit:        arg.CpuCrit,
+		MemWarn:        arg.MemWarn,
+		MemCrit:        arg.MemCrit,
+		DiskWarn:       arg.DiskWarn,
+		DiskCrit:       arg.DiskCrit,
+		TempWarn:       arg.TempWarn,
+		TempCrit:       arg.TempCrit,
+		StaleSeconds:   arg.StaleSeconds,
+		OfflineSeconds: arg.OfflineSeconds,
+		UpdatedAt:      pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}
+	m.StatusThresholds = &row
+	return nil
+}
+
+func (m *MockDB) GetOverviewPage(_ context.Context, _ database.GetOverviewPageParams) (database.GetOverviewPageResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.GetOverviewPageErr != nil {
+		return database.GetOverviewPageResult{}, m.GetOverviewPageErr
+	}
+	return m.GetOverviewPageResult, nil
+}
+
+func (m *MockDB) GetOverviewStats(_ context.Context, _ database.GetOverviewStatsParams) (database.OverviewStats, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.GetOverviewStatsErr != nil {
+		return database.OverviewStats{}, m.GetOverviewStatsErr
+	}
+	return m.GetOverviewStatsResult, nil
 }

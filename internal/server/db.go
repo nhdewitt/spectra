@@ -55,6 +55,8 @@ type DB interface {
 
 	// Read API - overview
 	GetOverview(ctx context.Context) ([]database.GetOverviewRow, error)
+	GetOverviewPage(ctx context.Context, arg database.GetOverviewPageParams) (database.GetOverviewPageResult, error)
+	GetOverviewStats(ctx context.Context, arg database.GetOverviewStatsParams) (database.OverviewStats, error)
 
 	// Read API - agent management
 	GetAgent(ctx context.Context, id pgtype.UUID) (database.GetAgentRow, error)
@@ -180,6 +182,10 @@ type DB interface {
 	// SMTP Config
 	GetSMTPConfig(ctx context.Context) (database.SmtpConfig, error)
 	UpsertSMTPConfig(ctx context.Context, arg database.UpsertSMTPConfigParams) (database.SmtpConfig, error)
+
+	// Status thresholds
+	GetStatusThresholds(ctx context.Context) (database.GetStatusThresholdsRow, error)
+	UpsertStatusThresholds(ctx context.Context, arg database.UpsertStatusThresholdsParams) error
 }
 
 // Compile-time check that *database.Queries satisfies the DB interface.
