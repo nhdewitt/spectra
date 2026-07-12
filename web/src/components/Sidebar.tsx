@@ -3,6 +3,7 @@ import { themeVars } from "../theme";
 import { SpectraLogo } from "./SpectraLogo";
 import { statusColor } from "../utils";
 import type { Page, OverviewAgent, User } from "../types";
+import { useThresholds } from "../ThresholdsContext";
 
 interface SidebarProps {
     user: User;
@@ -43,6 +44,7 @@ export function Sidebar({
     version,
 }: SidebarProps) {
     const [detailExpanded, setDetailExpanded] = useState(currentPage === "detail" || currentPage === "diagnostics");
+    const thresholds = useThresholds();
 
     // Expand detail section when navigating to detail or diagnostics
     useEffect(() => {
@@ -237,7 +239,7 @@ export function Sidebar({
                     width: 6,
                     height: 6,
                     borderRadius: "50%",
-                    background: statusColor(agent),
+                    background: statusColor(agent, thresholds),
                     flexShrink: 0,
                     }}
                 />

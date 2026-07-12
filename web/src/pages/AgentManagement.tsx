@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { api } from "../api";
 import { statusColor, formatUptime, copyToClipboard } from "../utils";
+import { useThresholds } from "../ThresholdsContext";
 import {
     StatBlock,
     tableHeaderStyle,
@@ -964,6 +965,8 @@ export function AgentManagement({ user }: AgentManagementProps) {
  
     const isAdmin = user.role === "admin" || user.role === "superadmin";
 
+    const thresholds = useThresholds();
+
     const hasPendingUpdates = useMemo(() => {
         for (const status of updateStatuses.values()) {
             if (status === "queued" || status === "updating" || status === "restarting") return true;
@@ -1330,7 +1333,7 @@ export function AgentManagement({ user }: AgentManagementProps) {
                                                 width: 8,
                                                 height: 8,
                                                 borderRadius: "50%",
-                                                background: statusColor(a),
+                                                background: statusColor(a, thresholds),
                                                 display: "inline-block",
                                             }}
                                         />

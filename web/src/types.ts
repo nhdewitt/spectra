@@ -466,3 +466,31 @@ export interface SMTPConfigUpdate {
     tls_mode: TLSMode;
     test_to?: string;
 }
+
+// Status thresholds
+
+export interface Thresholds {
+	cpu_warn: number;
+	cpu_crit: number;
+	mem_warn: number;
+	mem_crit: number;
+	disk_warn: number;
+	disk_crit: number;
+	temp_warn: number;
+	temp_crit: number;
+	stale_seconds: number;
+	offline_seconds: number;    
+}
+
+export const DEFAULT_THRESHOLDS: Thresholds = {
+	cpu_warn: 80,
+	cpu_crit: 95,
+	mem_warn: 80,
+	mem_crit: 95,
+	disk_warn: 98,
+	disk_crit: 99,
+	temp_warn: 70,
+	temp_crit: 85,
+	stale_seconds: 120,
+	offline_seconds: 600,    
+};

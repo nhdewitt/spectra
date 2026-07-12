@@ -37,6 +37,7 @@ import type {
     AlertEvent,
     SMTPConfig,
     SMTPConfigUpdate,
+    Thresholds,
 } from "./types";
 
 declare global {
@@ -574,5 +575,17 @@ export const api = {
         apiFetch<{ status: string }>("/admin/smtp/test", {
             method: "POST",
             body: JSON.stringify(config),
+        }),
+
+    // Status thresholds
+
+    /** GET /thresholds - global status thresholds (any authed user).  */
+    thresholds: () => apiFetch<Thresholds>("/thresholds"),
+
+    /** PUT /admin/thresholds - admin+. Replace the global status thresholds. */
+    updateThresholds: (t: Thresholds) =>
+        apiFetch<Thresholds>("/admin/thresholds", {
+            method: "PUT",
+            body: JSON.stringify(t),
         }),
 };

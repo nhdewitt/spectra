@@ -5,10 +5,11 @@ import { OSIcon } from "../icons";
 import { Sparkline } from "../Sparkline";
 import { useSparkHistory } from "../hooks";
 import { usePagination, Pagination } from "../hooks/usePagination";
+import { useThresholds } from "../ThresholdsContext";
 import type { SparkData } from "../hooks";
 import { StatBlock, LoadingSpinner } from "../components";
 import { LabelChip } from "../components/LabelChip";
-import type { OverviewAgent, AgentLabel, LabelKey } from "../types";
+import type { OverviewAgent, AgentLabel, LabelKey, Thresholds } from "../types";
 import {
 	formatBytes,
 	formatUptime,
@@ -40,10 +41,11 @@ interface LabelFilter {
 // --- Stat Bar ---
 
 function StatBar({ agents }: { agents: OverviewAgent[] }) {
+	const thresholds = useThresholds();
 	const counts = useMemo(() => {
 		const c = { total: agents.length, online: 0, stale: 0, offline: 0, warn: 0, crit: 0, reboot: 0 };
 		for (const a of agents) {
-			const { status } = agentStatus(a);
+			const { status } = agentStatus(a, thresholds);
 			switch (status) {
 				case "online": c.online++; break;
 				case "warn": c.warn++; break;
@@ -54,7 +56,7 @@ function StatBar({ agents }: { agents: OverviewAgent[] }) {
 			if (a.reboot_required) c.reboot++;
 		}
 		return c;
-	}, [agents]);
+	}, [agents, thresholds]);
 
 	return (
 		<div
@@ -141,7 +143,8 @@ function PercentBar({ value, thresholds }: { value: number; thresholds: [number,
 // --- Status Badge ---
 
 function StatusBadge({ agent }: { agent: OverviewAgent }) {
-	const { status, reasons } = agentStatus(agent);
+	const thresholds = useThresholds();
+	const { status, reasons } = agentStatus(agent, thresholds);
 	const color = agentStatusColor(status);
 
 	return (
@@ -558,6 +561,7 @@ function AgentRow({
 	onToggleStar: (agentId: string) => void;
 }) {
 	const [hovered, setHovered] = useState(false);
+	const thresholds = useThresholds();
 
 	const cpu = agent.cpu_usage ?? 0;
 	const mem = agent.ram_percent ?? 0;
@@ -589,7 +593,7 @@ function AgentRow({
 						width: 7,
 						height: 7,
 						borderRadius: "50%",
-						background: agentStatusColor(agentStatus(agent).status),
+						background: agentStatusColor(agentStatus(agent, thresholds).status),
 					}}
 				/>
 			</td>
@@ -717,7 +721,8 @@ function AgentCard({
 	onToggleStar: (agentId: string) => void;
 }) {
 	const [hovered, setHovered] = useState(false);
-	const { status, reasons } = agentStatus(agent);
+	const thresholds = useThresholds();
+	const { status, reasons } = agentStatus(agent, thresholds);
 
 	const cpu = agent.cpu_usage ?? 0;
 	const mem = agent.ram_percent ?? 0;
@@ -829,7 +834,7 @@ function AgentCard({
 
 // --- Sorting ---
 
-function sortAgents(agents: OverviewAgent[], sort: SortOption): OverviewAgent[] {
+function sortAgents(agents: OverviewAgent[], sort: SortOption, t: Thresholds): OverviewAgent[] {
 	return [...agents].sort((a, b) => {
 		switch (sort) {
 			case "severity": {
@@ -839,7 +844,7 @@ function sortAgents(agents: OverviewAgent[], sort: SortOption): OverviewAgent[] 
 			}
 			case "status": {
 				const order: Record<AgentStatus, number> = { crit: 0, warn: 1, stale: 2, offline: 3, online: 4 };
-				const diff = order[agentStatus(a).status] - order[agentStatus(b).status];
+				const diff = order[agentStatus(a, t).status] - order[agentStatus(b, t).status];
 				if (diff !== 0) return diff;
 				return a.hostname.localeCompare(b.hostname);
 			}
@@ -876,6 +881,7 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 	const [knownKeys, setKnownKeys] = useState<LabelKey[]>([]);
 
 	const sparkHistory = useSparkHistory(agents);
+	const thresholds = useThresholds();
 
 	const agentIdsKey = useMemo(() => agents.map((a) => a.id).sort().join(","), [agents]);
 
@@ -930,7 +936,7 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 		}
 
 		if (statusFilter !== "all") {
-			result = result.filter((a) => agentStatus(a).status === statusFilter);
+			result = result.filter((a) => agentStatus(a, thresholds).status === statusFilter);
 		}
 
 		if (osFilter !== "all") {
@@ -957,8 +963,8 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 			});
 		}
 
-		return sortAgents(result, sort);
-	}, [agents, search, statusFilter, osFilter, archFilter, hardwareFilter, sort, activeFilters, labelsByAgent]);
+		return sortAgents(result, sort, thresholds);
+	}, [agents, search, statusFilter, osFilter, archFilter, hardwareFilter, sort, activeFilters, labelsByAgent, thresholds]);
 
 	const { paged, page, setPage, totalPages, total, reset: resetPage } = usePagination(filtered, pageSize);
 

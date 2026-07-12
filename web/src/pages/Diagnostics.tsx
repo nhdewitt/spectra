@@ -5,6 +5,7 @@ import { formatBytes, statusColor } from "../utils";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "../components/ui";
 import type { OverviewAgent, CommandResponse, CommandEntry } from "../types";
 import { Pagination, usePagination } from "../hooks/usePagination";
+import { useThresholds } from "../ThresholdsContext";
 
 interface DiagnosticsProps {
 	agents: OverviewAgent[];
@@ -600,6 +601,7 @@ export function Diagnostics({ agents, selectedAgent, onSelectAgent }: Diagnostic
 
 	const confirmedTarget = useRef(false);
 	const pendingTool = useRef<DiagTool | null>(null);
+	const thresholds = useThresholds();
 
 	useEffect(() => {
 		if (!entry || !activeTool) return;
@@ -802,7 +804,7 @@ export function Diagnostics({ agents, selectedAgent, onSelectAgent }: Diagnostic
                             </select>
                             {selectedAgent && (
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontFamily: themeVars.font, color: themeVars.text }}>
-                                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: statusColor(selectedAgent) }} />
+                                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: statusColor(selectedAgent, thresholds) }} />
                                     {selectedAgent.hostname}
                                 </span>
                             )}

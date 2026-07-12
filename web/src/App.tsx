@@ -10,9 +10,11 @@ import { Diagnostics } from "./pages/Diagnostics";
 import { UserManagement } from "./pages/UserManagement";
 import { Settings } from "./pages/Settings";
 import { Tags } from "./pages/Tags";
-import type { User, Page, OverviewAgent } from "./types";
+import type { User, Page, OverviewAgent, Thresholds } from "./types";
 import { usePolling } from "./hooks";
 import { statusColor } from "./utils";
+import { ThresholdsProvider } from "./ThresholdsContext";
+import { DEFAULT_THRESHOLDS } from "./types";
 import { Alerts } from "./pages/Alerts";
 
 export default function App() {
@@ -24,6 +26,7 @@ export default function App() {
 	const [starredLoaded, setStarredLoaded] = useState(false);
 	const [logoutReason, setLogoutReason] = useState<string | null>(null);
 	const [version, setVersion] = useState<string>("");
+	const [thresholds, setThresholds] = useState<Thresholds>(DEFAULT_THRESHOLDS);
 
 	const starredRef = useRef(starredIds);
 	starredRef.current = starredIds;
@@ -111,6 +114,11 @@ export default function App() {
 	}, []);
 
 	useEffect(() => {
+		if (!user) return;
+		api.thresholds().then(setThresholds).catch(() => {});
+	}, [user]);
+
+	useEffect(() => {
 		initTheme();
 	}, []);
 
@@ -152,151 +160,153 @@ export default function App() {
 
 	// Authenticated shell
 	return (
-		<div style={{ display: "flex", minHeight: "100vh", background: themeVars.bg }}>
-			<Sidebar
-				user={user}
-				currentPage={page}
-				onNavigate={handleNavigate}
-				selectedAgent={selectedAgent}
-				onSelectAgent={handleSelectAgent}
-				agents={agentList}
-				starredIds={starredIds}
-				version={version}
-			/>
+		<ThresholdsProvider value = {thresholds}>
+			<div style={{ display: "flex", minHeight: "100vh", background: themeVars.bg }}>
+				<Sidebar
+					user={user}
+					currentPage={page}
+					onNavigate={handleNavigate}
+					selectedAgent={selectedAgent}
+					onSelectAgent={handleSelectAgent}
+					agents={agentList}
+					starredIds={starredIds}
+					version={version}
+				/>
 
-			<div style={{ flex: 1, minWidth: 0 }}>
-				{/* Content header */}
-				<div
-					style={{
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "flex-end",
-						padding: "8px 24px",
-						fontSize: 12,
-						fontFamily: themeVars.font,
-						color: themeVars.textMuted,
-						borderBottom: `1px solid ${themeVars.border}`,
-					}}
-				>
-					<span>
-						{new Date().toLocaleDateString(undefined, {
-							month: "short",
-							day: "numeric",
-							year: "numeric",
-						})}
-					</span>
-					<span style={{ margin: "0 12px", color: themeVars.border }}>|</span>
-					<span style={{ color: themeVars.ok }}>●</span>
-					<span style={{ marginLeft: 4 }}>
-						{onlineCount}/{agentList.length} online
-					</span>
-				</div>
-
-				{/* Page content */}
-				{page === "overview" && (
-					<Overview
-						agents={agentList}
-						loading={agentsLoading}
-						error={agentsError}
-						onSelectAgent={handleSelectAgent}
-						starredIds={starredIds}
-						onToggleStar={toggleStar}
-					/>
-				)}
-
-				{page === "detail" && selectedAgent && (
-					<AgentDetail
-						agent={selectedAgent}
-						agents={agentList}
-						user={user}
-						onSelectAgent={handleSelectAgent}
-						onBack={() => { setSelectedAgent(null); setPage("overview"); }}
-						starredIds={starredIds}
-						onToggleStar={toggleStar}
-					/>
-				)}
-
-				{page === "detail" && !selectedAgent && (
-					<div style={{ padding: 24}}>
-						<div
-							style={{
-								fontFamily: themeVars.font,
-								fontSize: 16,
-								fontWeight: 600,
-								color: themeVars.text,
-								marginBottom: 16,
-							}}
-						>
-							Agent Detail
-						</div>
-						<div
-							style={{
-								fontSize: 12,
-								fontFamily: themeVars.font,
-								color: themeVars.textDim,
-								marginBottom: 16,
-							}}
-						>
-							Select an agent to view details.
-						</div>
-						<div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-							{agentList.map((a) => (
-								<button
-									key={a.id}
-									onClick={() => handleSelectAgent(a)}
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: 10,
-										padding: "8px 12px",
-										fontSize: 12,
-										fontFamily: themeVars.font,
-										color: themeVars.text,
-										background: themeVars.surface,
-										border: `1px solid ${themeVars.border}`,
-										cursor: "pointer",
-										textAlign: "left",
-									}}
-								>
-									<span
-										style={{
-											width: 7,
-											height: 7,
-											borderRadius: "50%",
-											background: statusColor(a),
-											flexShrink: 0,
-										}}
-									/>
-									<span style={{ fontWeight: 500 }}>{a.hostname}</span>
-									<span style={{ color: themeVars.textDim, marginLeft: "auto", fontSize: 11 }}>
-										{a.os} · {a.platform} · {a.arch}
-									</span>
-								</button>
-							))}
-						</div>
+				<div style={{ flex: 1, minWidth: 0 }}>
+					{/* Content header */}
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "flex-end",
+							padding: "8px 24px",
+							fontSize: 12,
+							fontFamily: themeVars.font,
+							color: themeVars.textMuted,
+							borderBottom: `1px solid ${themeVars.border}`,
+						}}
+					>
+						<span>
+							{new Date().toLocaleDateString(undefined, {
+								month: "short",
+								day: "numeric",
+								year: "numeric",
+							})}
+						</span>
+						<span style={{ margin: "0 12px", color: themeVars.border }}>|</span>
+						<span style={{ color: themeVars.ok }}>●</span>
+						<span style={{ marginLeft: 4 }}>
+							{onlineCount}/{agentList.length} online
+						</span>
 					</div>
-				)}
 
-				{page === "diagnostics" && (
-					<Diagnostics
-						agents={agentList}
-						selectedAgent={selectedAgent}
-						onSelectAgent={handleSelectAgent}
-					/>
-				)}
+					{/* Page content */}
+					{page === "overview" && (
+						<Overview
+							agents={agentList}
+							loading={agentsLoading}
+							error={agentsError}
+							onSelectAgent={handleSelectAgent}
+							starredIds={starredIds}
+							onToggleStar={toggleStar}
+						/>
+					)}
 
-				{page === "agents" && <AgentManagement user={user}/>}
+					{page === "detail" && selectedAgent && (
+						<AgentDetail
+							agent={selectedAgent}
+							agents={agentList}
+							user={user}
+							onSelectAgent={handleSelectAgent}
+							onBack={() => { setSelectedAgent(null); setPage("overview"); }}
+							starredIds={starredIds}
+							onToggleStar={toggleStar}
+						/>
+					)}
 
-				{page === "tags" && <Tags user={user} />}
+					{page === "detail" && !selectedAgent && (
+						<div style={{ padding: 24}}>
+							<div
+								style={{
+									fontFamily: themeVars.font,
+									fontSize: 16,
+									fontWeight: 600,
+									color: themeVars.text,
+									marginBottom: 16,
+								}}
+							>
+								Agent Detail
+							</div>
+							<div
+								style={{
+									fontSize: 12,
+									fontFamily: themeVars.font,
+									color: themeVars.textDim,
+									marginBottom: 16,
+								}}
+							>
+								Select an agent to view details.
+							</div>
+							<div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+								{agentList.map((a) => (
+									<button
+										key={a.id}
+										onClick={() => handleSelectAgent(a)}
+										style={{
+											display: "flex",
+											alignItems: "center",
+											gap: 10,
+											padding: "8px 12px",
+											fontSize: 12,
+											fontFamily: themeVars.font,
+											color: themeVars.text,
+											background: themeVars.surface,
+											border: `1px solid ${themeVars.border}`,
+											cursor: "pointer",
+											textAlign: "left",
+										}}
+									>
+										<span
+											style={{
+												width: 7,
+												height: 7,
+												borderRadius: "50%",
+												background: statusColor(a, thresholds),
+												flexShrink: 0,
+											}}
+										/>
+										<span style={{ fontWeight: 500 }}>{a.hostname}</span>
+										<span style={{ color: themeVars.textDim, marginLeft: "auto", fontSize: 11 }}>
+											{a.os} · {a.platform} · {a.arch}
+										</span>
+									</button>
+								))}
+							</div>
+						</div>
+					)}
 
-				{page === "users" && <UserManagement user={user} />}
+					{page === "diagnostics" && (
+						<Diagnostics
+							agents={agentList}
+							selectedAgent={selectedAgent}
+							onSelectAgent={handleSelectAgent}
+						/>
+					)}
 
-				{page === "settings" && (
-					<Settings user={user} onLogout={handleLogout} />
-				)}
+					{page === "agents" && <AgentManagement user={user}/>}
 
-				{page === "alerts" && <Alerts user={user} />}
+					{page === "tags" && <Tags user={user} />}
+
+					{page === "users" && <UserManagement user={user} />}
+
+					{page === "settings" && (
+						<Settings user={user} onLogout={handleLogout} />
+					)}
+
+					{page === "alerts" && <Alerts user={user} />}
+				</div>
 			</div>
-		</div>
+		</ThresholdsProvider>
 	);
 }

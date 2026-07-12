@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
     formatBytes,
     formatUptime,
@@ -6,9 +6,10 @@ import {
     severityColor,
     sortAgentsBySeverity,
     sortAgentsByStatus
-} from '../utils'
-import { themeVars } from '../theme'
-import type { OverviewAgent } from '../types'
+} from '../utils';
+import { themeVars } from '../theme';
+import type { OverviewAgent } from '../types';
+import { DEFAULT_THRESHOLDS } from '../types';
 
 describe('formatBytes', () => {
     it('returns "0 B" for null/undefined/zero', () => {
@@ -74,44 +75,44 @@ describe('statusColor', () => {
     })
 
     it('returns textDim for null last_seen', () => {
-        expect(statusColor({ last_seen: null })).toBe(themeVars.textDim)
+        expect(statusColor({ last_seen: null }, DEFAULT_THRESHOLDS)).toBe(themeVars.textDim)
     })
 
     it('returns ok for recent heartbeat', () => {
         const recent = new Date(Date.now() - 30_000).toISOString()
-        expect(statusColor({ last_seen: recent })).toBe(themeVars.ok)
+        expect(statusColor({ last_seen: recent }, DEFAULT_THRESHOLDS)).toBe(themeVars.ok)
     })
 
     it('returns ok at exactly 119 seconds ago', () => {
         const ts = new Date(Date.now() - 119_000).toISOString()
-        expect(statusColor({ last_seen: ts })).toBe(themeVars.ok)
+        expect(statusColor({ last_seen: ts }, DEFAULT_THRESHOLDS)).toBe(themeVars.ok)
     })
 
     it('returns warn at exactly 120 seconds ago', () => {
         const ts = new Date(Date.now() - 120_000).toISOString()
-        expect(statusColor({ last_seen: ts })).toBe(themeVars.warn)
+        expect(statusColor({ last_seen: ts }, DEFAULT_THRESHOLDS)).toBe(themeVars.warn)
     })
 
     it('returns warn for stale heartbeat', () => {
         const stale_2m = new Date(Date.now() - 2 * 60_000).toISOString()
         const stale_9m = new Date(Date.now() - 9 * 60_000).toISOString()
-        expect(statusColor({ last_seen: stale_2m })).toBe(themeVars.warn)
-        expect(statusColor({ last_seen: stale_9m })).toBe(themeVars.warn)
+        expect(statusColor({ last_seen: stale_2m }, DEFAULT_THRESHOLDS)).toBe(themeVars.warn)
+        expect(statusColor({ last_seen: stale_9m }, DEFAULT_THRESHOLDS)).toBe(themeVars.warn)
     })
 
     it('returns warn at exactly 599 seconds ago', () => {
         const ts = new Date(Date.now() - 599_000).toISOString()
-        expect(statusColor({ last_seen: ts })).toBe(themeVars.warn)
+        expect(statusColor({ last_seen: ts }, DEFAULT_THRESHOLDS)).toBe(themeVars.warn)
     })
 
     it('returns danger at exactly 600 seconds ago', () => {
         const ts = new Date(Date.now() - 600_000).toISOString()
-        expect(statusColor({ last_seen: ts })).toBe(themeVars.danger)
+        expect(statusColor({ last_seen: ts }, DEFAULT_THRESHOLDS)).toBe(themeVars.danger)
     })
 
     it('returns danger for old heartbeat', () => {
         const old = new Date(Date.now() - 15 * 60_000).toISOString()
-        expect(statusColor({ last_seen: old })).toBe(themeVars.danger)
+        expect(statusColor({ last_seen: old }, DEFAULT_THRESHOLDS)).toBe(themeVars.danger)
     })
 })
 
@@ -191,7 +192,7 @@ describe('sortAgentsByStatus', () => {
         const stale = makeAgent({ id: 'stale', last_seen: new Date(Date.now() - 5 * 60_000).toISOString() })
         const offline = makeAgent({ id: 'offline', last_seen: null })
 
-        const result = sortAgentsByStatus([offline, online, stale])
+        const result = sortAgentsByStatus([offline, online, stale], DEFAULT_THRESHOLDS)
         expect(result.map(a => a.id)).toEqual(['online', 'stale', 'offline'])
     })
 
@@ -201,7 +202,7 @@ describe('sortAgentsByStatus', () => {
         const a = makeAgent({ id: 'a', hostname: 'alpha', last_seen: now })
         const c = makeAgent({ id: 'c', hostname: 'charlie', last_seen: now })
 
-        const result = sortAgentsByStatus([c, a, b])
+        const result = sortAgentsByStatus([c, a, b], DEFAULT_THRESHOLDS)
         expect(result.map(a => a.hostname)).toEqual(['alpha', 'bravo', 'charlie'])
     })
 
@@ -210,7 +211,7 @@ describe('sortAgentsByStatus', () => {
         const a = makeAgent({ id: '2', hostname: 'same', os: 'linux', arch: 'amd64', last_seen: now })
         const b = makeAgent({ id: '1', hostname: 'same', os: 'linux', arch: 'amd64', last_seen: now })
 
-        const result = sortAgentsByStatus([a, b])
+        const result = sortAgentsByStatus([a, b], DEFAULT_THRESHOLDS)
         expect(result.map(a => a.id)).toEqual(['1', '2'])
     })
 
@@ -220,7 +221,7 @@ describe('sortAgentsByStatus', () => {
             makeAgent({ id: 'a', hostname: 'alpha' }),
         ]
         const original = [...agents]
-        sortAgentsByStatus(agents)
+        sortAgentsByStatus(agents, DEFAULT_THRESHOLDS)
         expect(agents.map(a => a.id)).toEqual(original.map(a => a.id))
     })
 })

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { themeVars } from "../theme";
 import { formatBytes, formatUptime, agentStatus, agentStatusColor } from "../utils";
+import { useThresholds } from "../ThresholdsContext";
 import { StatBlock, TimeRangePicker } from "../components";
 import { MetricsTab } from "../components/MetricsTab";
 import { OSIcon } from "../icons";
@@ -41,8 +42,9 @@ export function AgentDetail({
 
     const { data: liveAgent } = usePolling(useCallback(() => api.agent(agent.id), [agent.id]), 30_000);
     const { data: systemInfo } = usePolling(useCallback(() => api.agentSystemLatest(agent.id), [agent.id]), 30_000);
+    const thresholds = useThresholds();
     
-    const { status } = agentStatus(agent);
+    const { status } = agentStatus(agent, thresholds);
     const isStarred = starredIds.includes(agent.id);
     const isTimeSeriesTab = activeTab === "metrics" || activeTab === "containers";
     const isAdmin = user.role === "admin" || user.role === "superadmin";
@@ -173,7 +175,7 @@ export function AgentDetail({
                                                     width: 6,
                                                     height: 6,
                                                     borderRadius: "50%",
-                                                    background: agentStatusColor(agentStatus(a).status),
+                                                    background: agentStatusColor(agentStatus(a, thresholds).status),
                                                     flexShrink: 0,
                                                 }}
                                             />
