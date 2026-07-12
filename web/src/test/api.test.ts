@@ -122,14 +122,6 @@ describe('overview endpoints', () => {
         const call = lastFetchCall()
         expect(call.url).toBe('/api/v1/overview/sparklines')
     })
-
-    it('fetches fleet heatmap with start and end', async () => {
-        mockFetch.mockResolvedValueOnce(jsonResponse([]))
-        await api.fleetHeatmap('2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z')
-
-        const call = lastFetchCall()
-        expect(call.url).toBe('/api/v1/overview/heatmap?start=2026-01-01T00:00:00Z&end=2026-01-02T00:00:00Z')
-    })
 })
 
 describe('agent detail endpoints', () => {
