@@ -774,11 +774,13 @@ function ValueRow({
  
 function KeyRow({
     summary,
+    isAdmin,
     expanded,
     onToggleExpand,
     onDeleteValue,
 }: {
     summary: KeySummary;
+    isAdmin: boolean;
     expanded: boolean;
     onToggleExpand: () => void;
     onDeleteValue: (value: string, agentIds: string[]) => Promise<void>;
@@ -857,7 +859,7 @@ function KeyRow({
                             value={v.value}
                             agentIds={v.agentIds}
                             agentHostnames={v.agentHostnames}
-                            canDelete={!isAuto}
+                            canDelete={!isAuto && isAdmin}
                             onDelete={() => onDeleteValue(v.value, v.agentIds)}
                         />
                     ))}
@@ -869,9 +871,11 @@ function KeyRow({
  
 function AllTagsPanel({
     summaries,
+    isAdmin,
     onDeleteValue,
 }: {
     summaries: KeySummary[];
+    isAdmin: boolean;
     onDeleteValue: (key: string, value: string, agentIds: string[]) => Promise<void>;
 }) {
     const [filter, setFilter] = useState("");
@@ -947,6 +951,7 @@ function AllTagsPanel({
                 <KeyRow
                     key={s.key}
                     summary={s}
+                    isAdmin={isAdmin}
                     expanded={expanded.has(s.key)}
                     onToggleExpand={() => toggleKey(s.key)}
                     onDeleteValue={(value, agentIds) =>
@@ -1145,6 +1150,7 @@ export function Tags({ user }: TagsProps) {
  
             <AllTagsPanel
                 summaries={summaries}
+                isAdmin={isAdmin}
                 onDeleteValue={isAdmin ? handleDeleteValue : (async () => {})}
             />
         </div>
