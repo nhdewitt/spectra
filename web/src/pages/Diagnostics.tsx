@@ -207,14 +207,16 @@ function LogResultsInline({ entries }: { entries: LogEntry[] }) {
                 {filterBtn(`All (${entries.length})`, !activeLevel, () => setActiveLevel(null))}
                 {Object.entries(levels)
                     .sort(([a], [b]) => severityOrder(a) - severityOrder(b))
-                    .map(([level, count]) =>
-                        filterBtn(
-                            `${level} (${count})`,
-                            activeLevel === level,
-                            () => setActiveLevel(activeLevel === level ? null : level),
-                            levelColor(level)
-                        )
-                    )}
+                    .map(([level, count]) => (
+						<span key={level}>
+							{filterBtn(
+								`${level} (${count})`,
+								activeLevel === level,
+								() => setActiveLevel(activeLevel === level ? null : level),
+								levelColor(level)
+							)}
+						</span>
+					))}
                 <span style={{ fontSize: 10, fontFamily: themeVars.font, color: themeVars.textDim, marginLeft: 8 }}>
                     {filtered.length} entries
                 </span>
