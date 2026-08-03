@@ -159,7 +159,7 @@ export function AgentLabelChips({ agentId, isAdmin }: AgentLabelChipsProps) {
         setLoading(true);
         api.agentLabels(agentId)
             .then((data) => {
-                if (!cancelled) setLabels(data);
+                if (!cancelled) setLabels(sortLabels(data));
             })
             .catch(() => {})
             .finally(() => {
