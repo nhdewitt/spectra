@@ -26,7 +26,6 @@ type SetupFile struct {
 	} `yaml:"admin"`
 	Server struct {
 		Port        int    `yaml:"port"`
-		Migrations  string `yaml:"migrations"`
 		ExternalURL string `yaml:"external_url"`
 	} `yaml:"server"`
 	TLS struct {
@@ -76,9 +75,6 @@ func LoadSetupFile(path string) (*SetupFile, error) {
 	if sf.Server.Port == 0 {
 		sf.Server.Port = 8080
 	}
-	if sf.Server.Migrations == "" {
-		sf.Server.Migrations = DefaultMigrationsPath
-	}
 
 	if sf.Database.Password == "" {
 		return nil, fmt.Errorf("database.password is required")
@@ -123,8 +119,7 @@ func RunNonInteractive(ctx context.Context, sf *SetupFile, configPath string) er
 			Pass:    sf.Database.Password,
 			SSLMode: sf.Database.SSL,
 		},
-		CreateDB:      sf.Database.Create,
-		MigrationsDir: sf.Server.Migrations,
+		CreateDB: sf.Database.Create,
 		Admin: &AdminCredentials{
 			Username: sf.Admin.Username,
 			Password: sf.Admin.Password,

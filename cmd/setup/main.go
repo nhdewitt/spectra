@@ -39,26 +39,19 @@ func main() {
 	local := setup.PromptYesNo(reader, "Use local database", true)
 	dbCfg := setup.PromptDBConfig(reader, local)
 
-	migrationsDir := setup.DefaultMigrationsPath
-	if _, err := os.Stat(migrationsDir); err != nil {
-		fmt.Printf("  [!] Default migrations path not found: %s\n", migrationsDir)
-		migrationsDir = setup.PromptMigrationsDir(reader)
-	}
-
 	admin := setup.PromptAdmin(reader)
 	port := setup.PromptPort(reader)
 	tlsCfg := setup.PromptTLS(reader)
 	externalURL := setup.PromptExternalURL(reader, port, tlsCfg != nil)
 
 	sc := &setup.SetupConfig{
-		DBConfig:      dbCfg,
-		CreateDB:      local,
-		MigrationsDir: migrationsDir,
-		Admin:         admin,
-		Port:          port,
-		TLS:           tlsCfg,
-		ExternalURL:   externalURL,
-		Interactive:   true,
+		DBConfig:    dbCfg,
+		CreateDB:    local,
+		Admin:       admin,
+		Port:        port,
+		TLS:         tlsCfg,
+		ExternalURL: externalURL,
+		Interactive: true,
 	}
 
 	if err := setup.RunSetup(ctx, sc, *configPath); err != nil {

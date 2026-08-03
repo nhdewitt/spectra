@@ -42,9 +42,6 @@ admin:
 	if sf.Server.Port != 8080 {
 		t.Errorf("Port = %d, want 8080", sf.Server.Port)
 	}
-	if sf.Server.Migrations != DefaultMigrationsPath {
-		t.Errorf("Migrations = %s, want %s", sf.Server.Migrations, DefaultMigrationsPath)
-	}
 }
 
 func TestLoadSetupFile_Validation(t *testing.T) {

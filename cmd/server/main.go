@@ -50,6 +50,15 @@ func main() {
 
 	srv := server.New(srvCfg, queries)
 
+	if applied, err := setup.RunMigrations(ctx, pool); err != nil {
+		srv.Logger.Error("migration failed", "error", err)
+		os.Exit(1)
+	} else if applied > 0 {
+		srv.Logger.Info("applied pending migrations", "count", applied)
+	} else {
+		srv.Logger.Debug("no pending migrations")
+	}
+
 	cipher, err := secret.NewFromEnv()
 	switch {
 	case errors.Is(err, secret.ErrNoKey):

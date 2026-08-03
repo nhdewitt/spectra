@@ -16,10 +16,7 @@ import (
 	"golang.org/x/term"
 )
 
-const (
-	DefaultConfigPath     = "/etc/spectra/server.json"
-	DefaultMigrationsPath = "internal/database/migrations"
-)
+const DefaultConfigPath = "/etc/spectra/server.json"
 
 // ServerConfig is the persistent server configuration.
 type ServerConfig struct {
@@ -213,19 +210,6 @@ func PromptPort(reader *bufio.Reader) int {
 			fmt.Printf("  [!] Port %d requires root.\n", port)
 		}
 		return port
-	}
-}
-
-// PromptMigrationsDir collects the directory containing the DB migrations.
-func PromptMigrationsDir(reader *bufio.Reader) string {
-	var migDir string
-	for {
-		migDir = prompt(reader, "Migrations directory", "internal/database/migrations")
-		if _, err := os.Stat(migDir); os.IsNotExist(err) {
-			fmt.Printf("  [x] Directory not found: %s", migDir)
-			continue
-		}
-		return migDir
 	}
 }
 

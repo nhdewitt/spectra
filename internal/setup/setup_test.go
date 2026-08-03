@@ -184,32 +184,19 @@ func TestPromptRequired_RetriesOnEmpty(t *testing.T) {
 	}
 }
 
-func TestFindMigrations(t *testing.T) {
-	dir := t.TempDir()
-
-	// Create test migration files
-	files := []string{
+func TestFilterAndSortMigrations(t *testing.T) {
+	got := filterAndSortMigrations([]string{
 		"003_third.up.sql",
 		"001_first.up.sql",
 		"002_second.up.sql",
 		"001_first.down.sql", // should be excluded
 		"readme.md",          // should be excluded
-	}
-	for _, f := range files {
-		os.WriteFile(filepath.Join(dir, f), []byte("-- test"), 0644)
-	}
+	})
 
-	got, err := findMigrations(dir)
-	if err != nil {
-		t.Fatalf("findMigrations: %v", err)
-	}
-
-	if len(got) != 3 {
-		t.Fatalf("found %d migrations, want 3", len(got))
-	}
-
-	// Should be sorted
 	want := []string{"001_first.up.sql", "002_second.up.sql", "003_third.up.sql"}
+	if len(got) != len(want) {
+		t.Fatalf("found %d migrations, want %d", len(got), len(want))
+	}
 	for i, f := range got {
 		if f != want[i] {
 			t.Errorf("migration[%d] = %s, want %s", i, f, want[i])
@@ -217,22 +204,30 @@ func TestFindMigrations(t *testing.T) {
 	}
 }
 
-func TestFindMigrations_EmptyDir(t *testing.T) {
-	dir := t.TempDir()
-
-	got, err := findMigrations(dir)
-	if err != nil {
-		t.Fatalf("findMigrations: %v", err)
-	}
+func TestFilterAndSortMigrations_Empty(t *testing.T) {
+	got := filterAndSortMigrations(nil)
 	if len(got) != 0 {
 		t.Errorf("found %d migrations, want 0", len(got))
 	}
 }
 
-func TestFindMigrations_BadDir(t *testing.T) {
-	_, err := findMigrations("/nonexistent/path")
-	if err == nil {
-		t.Error("expected error for missing directory")
+func TestFindMigrations(t *testing.T) {
+	got, err := findMigrations()
+	if err != nil {
+		t.Fatalf("findMigrations: %v", err)
+	}
+	if len(got) == 0 {
+		t.Fatal("expected at least one embedded migration")
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i-1] >= got[i] {
+			t.Errorf("migrations not sorted: %s >= %s", got[i-1], got[i])
+		}
+	}
+	for _, f := range got {
+		if !strings.HasSuffix(f, "up.sql") {
+			t.Errorf("non-migration file returned: %s", f)
+		}
 	}
 }
 

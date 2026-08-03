@@ -18,9 +18,6 @@ func RunSetup(ctx context.Context, sc *SetupConfig, configPath string) error {
 	if sc.Admin == nil {
 		return fmt.Errorf("admin credentials are required")
 	}
-	if sc.MigrationsDir == "" {
-		return fmt.Errorf("migrations directory is required")
-	}
 	if sc.Port < 1 || sc.Port > 65535 {
 		return fmt.Errorf("listen port must be 1-65535")
 	}
@@ -73,7 +70,7 @@ func RunSetup(ctx context.Context, sc *SetupConfig, configPath string) error {
 
 	// Migrations
 	fmt.Print("Running migrations... ")
-	applied, err := RunMigrationsTx(ctx, tx, sc.MigrationsDir)
+	applied, err := RunMigrationsTx(ctx, tx)
 	if err != nil {
 		fmt.Println("FAILED")
 		return fmt.Errorf("migration failed: %w", err)
