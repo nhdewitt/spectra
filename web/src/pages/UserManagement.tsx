@@ -35,7 +35,7 @@ const roleBadge = (role: string): React.CSSProperties => {
 		fontFamily: themeVars.font,
 		fontWeight: 600,
 		color,
-		background: `color-mix(in-srgb, ${color} 15%, transparent)`,
+		background: `color-mix(in srgb, ${color} 15%, transparent)`,
 		border: `1px solid ${color}`,
 		padding: "1px 6px",
 		letterSpacing: "0.04em",
