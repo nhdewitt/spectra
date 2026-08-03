@@ -1,15 +1,16 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { api } from "../api";
+import type { OverviewStats, OverviewLabelFilter } from "../api";
 import { themeVars } from "../theme";
 import { OSIcon } from "../icons";
 import { Sparkline } from "../Sparkline";
 import { useSparkHistory } from "../hooks";
-import { usePagination, Pagination } from "../hooks/usePagination";
+import { Pagination } from "../hooks/usePagination";
 import { useThresholds } from "../ThresholdsContext";
 import type { SparkData } from "../hooks";
 import { StatBlock, LoadingSpinner } from "../components";
 import { LabelChip } from "../components/LabelChip";
-import type { OverviewAgent, AgentLabel, LabelKey, Thresholds } from "../types";
+import type { OverviewAgent, AgentLabel, LabelKey } from "../types";
 import {
 	formatBytes,
 	formatUptime,
@@ -23,11 +24,25 @@ type SortOption = "severity" | "status" | "hostname" | "cpu" | "memory" | "disk"
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 250];
 const DEFAULT_PAGE_SIZE = 25;
+const SEARCH_DEBOUNCE_MS = 300;
+const POLL_INTERVAL_MS = 10_000;
+
+// Direction each sort column is displayed in - "worst/highest first" for
+// everything except hostname. Matches the server's own severity/status
+// ordering (offline=0, crit=1, warn=2, stale=3, online=4 - ascending
+// on "status" surfaces the worst case first).
+const SORT_ORDER: Record<SortOption, "asc" | "desc"> = {
+	severity: "desc",
+	status: "asc",
+	hostname: "asc",
+	cpu: "desc",
+	memory: "desc",
+	disk: "desc",
+	temp: "desc",
+};
 
 interface OverviewProps {
-	agents: OverviewAgent[];
-	loading: boolean;
-	error: string | null;
+	stats: OverviewStats | null;
 	onSelectAgent: (agent: OverviewAgent) => void;
 	starredIds: string[];
 	onToggleStar: (agentId: string) => void;
@@ -40,23 +55,8 @@ interface LabelFilter {
 
 // --- Stat Bar ---
 
-function StatBar({ agents }: { agents: OverviewAgent[] }) {
-	const thresholds = useThresholds();
-	const counts = useMemo(() => {
-		const c = { total: agents.length, online: 0, stale: 0, offline: 0, warn: 0, crit: 0, reboot: 0 };
-		for (const a of agents) {
-			const { status } = agentStatus(a, thresholds);
-			switch (status) {
-				case "online": c.online++; break;
-				case "warn": c.warn++; break;
-				case "crit": c.crit++; break;
-				case "stale": c.stale++; break;
-				case "offline": c.offline++; break;
-			}
-			if (a.reboot_required) c.reboot++;
-		}
-		return c;
-	}, [agents, thresholds]);
+function StatBar({ stats }: { stats: OverviewStats | null }) {
+	const c = stats ?? { total: 0, online: 0, stale: 0, offline: 0, warn: 0, crit: 0, reboot: 0 };
 
 	return (
 		<div
@@ -67,13 +67,13 @@ function StatBar({ agents }: { agents: OverviewAgent[] }) {
 				border: `1px solid ${themeVars.border}`,
 			}}
 		>
-			<StatBarItem label="Total Agents" value={counts.total} color={themeVars.text} />
-			<StatBarItem label="Online" value={counts.online} color={themeVars.ok} />
-			<StatBarItem label="Stale" value={counts.stale} color={themeVars.warn} />
-			<StatBarItem label="Offline" value={counts.offline} color={themeVars.textDim} />
-			<StatBarItem label="Warning" value={counts.warn} color={themeVars.warn} />
-			<StatBarItem label="Critical" value={counts.crit} color={themeVars.danger} />
-			<StatBarItem label="Reboot Req." value={counts.reboot} color={themeVars.warn} />
+			<StatBarItem label="Total Agents" value={c.total} color={themeVars.text} />
+			<StatBarItem label="Online" value={c.online} color={themeVars.ok} />
+			<StatBarItem label="Stale" value={c.stale} color={themeVars.warn} />
+			<StatBarItem label="Offline" value={c.offline} color={themeVars.textDim} />
+			<StatBarItem label="Warning" value={c.warn} color={themeVars.warn} />
+			<StatBarItem label="Critical" value={c.crit} color={themeVars.danger} />
+			<StatBarItem label="Reboot Req." value={c.reboot} color={themeVars.warn} />
 		</div>
 	);
 }
@@ -204,33 +204,32 @@ function StarButton({
 function LabelFilterBar({
 	filters,
 	knownKeys,
-	labelsByAgent,
 	onAdd,
 	onRemove,
 	onClear,
 }: {
 	filters: LabelFilter[];
 	knownKeys: LabelKey[];
-	labelsByAgent: Map<string, AgentLabel[]>;
 	onAdd: (key: string, value: string) => void;
 	onRemove: (f: LabelFilter) => void;
 	onClear: () => void;
 }) {
 	const [pickerKey, setPickerKey] = useState("");
 	const [pickerValue, setPickerValue] = useState("");
+	const [pickerValues, setPickerValues] = useState<string[]>([]);
 
 	const userKeys = useMemo(() => knownKeys.filter((k) => k.source === "user"), [knownKeys]);
 
-	const pickerValues = useMemo(() => {
-		if (!pickerKey) return [];
-		const s = new Set<string>();
-		for (const labels of labelsByAgent.values()) {
-			for (const l of labels) {
-				if (l.key === pickerKey) s.add(l.value);
-			}
-		}
-		return Array.from(s).sort();
-	}, [pickerKey, labelsByAgent]);
+	// Fetch distinct values for the chosen key on demand rather than deriving
+	// them from a bulk per-agent label dump.
+	useEffect(() => {
+		if (!pickerKey) { setPickerValues([]); return; }
+		let cancelled = false;
+		api.labelValues(pickerKey)
+			.then((vals) => { if (!cancelled) setPickerValues(vals); })
+			.catch(() => { if (!cancelled) setPickerValues([]); });
+		return () => { cancelled = true };
+	}, [pickerKey]);
 
 	const handleAdd = () => {
 		const k = pickerKey.trim();
@@ -832,164 +831,145 @@ function AgentCard({
 	);
 }
 
-// --- Sorting ---
-
-function sortAgents(agents: OverviewAgent[], sort: SortOption, t: Thresholds): OverviewAgent[] {
-	return [...agents].sort((a, b) => {
-		switch (sort) {
-			case "severity": {
-				const scoreA = (a.cpu_usage ?? 0) + (a.disk_max_percent ?? 0) + (a.ram_percent ?? 0);
-				const scoreB = (b.cpu_usage ?? 0) + (b.disk_max_percent ?? 0) + (b.ram_percent ?? 0);
-				return scoreB - scoreA;
-			}
-			case "status": {
-				const order: Record<AgentStatus, number> = { crit: 0, warn: 1, stale: 2, offline: 3, online: 4 };
-				const diff = order[agentStatus(a, t).status] - order[agentStatus(b, t).status];
-				if (diff !== 0) return diff;
-				return a.hostname.localeCompare(b.hostname);
-			}
-			case "hostname":
-				return a.hostname.localeCompare(b.hostname, undefined, { sensitivity: "base" });
-			case "cpu":
-				return (b.cpu_usage ?? 0) - (a.cpu_usage ?? 0);
-			case "memory":
-				return (b.ram_percent ?? 0) - (a.ram_percent ?? 0);
-			case "disk":
-				return (b.disk_max_percent ?? 0) - (a.disk_max_percent ?? 0);
-			case "temp":
-				return (b.max_temp ?? 0) - (a.max_temp ?? 0);
-			default:
-				return 0;
-		}
-	});
-}
-
 // --- Overview Page ---
 
-export function Overview({ agents, loading, error, onSelectAgent, starredIds, onToggleStar }: OverviewProps) {
+export function Overview({ stats, onSelectAgent, starredIds, onToggleStar }: OverviewProps) {
+	// Query state
+	const [searchInput, setSearchInput] = useState("");
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<AgentStatus | "all">("all");
 	const [osFilter, setOsFilter] = useState("all");
 	const [archFilter, setArchFilter] = useState("all");
 	const [hardwareFilter, setHardwareFilter] = useState("all");
 	const [sort, setSort] = useState<SortOption>("severity");
-	const [viewMode, setViewMode] = useState<"table" | "cards">("table");
 	const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-
 	const [activeFilters, setActiveFilters] = useState<LabelFilter[]>([]);
-	const [labelsByAgent, setLabelsByAgent] = useState<Map<string, AgentLabel[]>>(new Map());
+	const [page, setPage] = useState(0);
+
+	const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+
+	// Facet options - fetched once via labelValues
+	const [osOptions, setOsOptions] = useState<string[]>([]);
+	const [archOptions, setArchOptions] = useState<string[]>([]);
+	const [hardwareOptions, setHardwareOptions] = useState<string[]>([]);
 	const [knownKeys, setKnownKeys] = useState<LabelKey[]>([]);
 
-	const sparkHistory = useSparkHistory(agents);
-	const thresholds = useThresholds();
+	// Server-driven page data
+	const [agentsPage, setAgentsPage] = useState<OverviewAgent[]>([]);
+	const [total, setTotal] = useState(0);
+	const [totalPages, setTotalPages] = useState(1);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
 
-	const agentIdsKey = useMemo(() => agents.map((a) => a.id).sort().join(","), [agents]);
-
-	useEffect(() => {
-		if (agents.length === 0) return;
-		let cancelled = false;
-		api.allAgentLabels()
-			.then((byId) => {
-				if (cancelled) return;
-				const m = new Map<string, AgentLabel[]>();
-				for (const [id, labels] of Object.entries(byId)) {
-					m.set(id, labels as AgentLabel[]);
-				}
-				setLabelsByAgent(m);
-			})
-			.catch(() => {});
-		return () => {
-			cancelled = true;
-		};
-	}, [agentIdsKey]);
+	const sparkHistory = useSparkHistory(agentsPage);
 
 	useEffect(() => {
+		api.labelValues("os").then(setOsOptions).catch(() => {});
+		api.labelValues("arch").then(setArchOptions).catch(() => {});
+		api.labelValues("hardware").then(setHardwareOptions).catch(() => {});
 		api.labelKeys().then(setKnownKeys).catch(() => {});
 	}, []);
 
-	const osOptions = useMemo(() => {
-		const set = new Set(agents.map((a) => a.os).filter(Boolean));
-		return Array.from(set).sort();
-	}, [agents]);
-
-	const archOptions = useMemo(() => {
-		const set = new Set(agents.map((a) => a.arch).filter(Boolean));
-		return Array.from(set).sort();
-	}, [agents]);
-
-	const hardwareOptions = useMemo(() => {
-		const set = new Set<string>();
-		for (const labels of labelsByAgent.values()) {
-			for (const l of labels) {
-				if (l.key === "hardware") set.add(l.value);
-			}
-		}
-		return Array.from(set).sort();
-	}, [labelsByAgent]);
-
-	const filtered = useMemo(() => {
-		let result = agents;
-
-		if (search) {
-			const q = search.toLowerCase();
-			result = result.filter((a) => a.hostname.toLowerCase().includes(q));
-		}
-
-		if (statusFilter !== "all") {
-			result = result.filter((a) => agentStatus(a, thresholds).status === statusFilter);
-		}
-
-		if (osFilter !== "all") {
-			result = result.filter((a) => a.os === osFilter);
-		}
-
-		if (archFilter !== "all") {
-			result = result.filter((a) => a.arch === archFilter);
-		}
-
-		if (hardwareFilter !== "all") {
-			result = result.filter((a) => {
-				const labels = labelsByAgent.get(a.id) ?? [];
-				return labels.some((l) => l.key === "hardware" && l.value === hardwareFilter);
-			});
-		}
-
-		if (activeFilters.length > 0) {
-			result = result.filter((a) => {
-				const labels = labelsByAgent.get(a.id) ?? [];
-				return activeFilters.every((f) =>
-					labels.some((l) => l.key === f.key && l.value === f.value)
-				);
-			});
-		}
-
-		return sortAgents(result, sort, thresholds);
-	}, [agents, search, statusFilter, osFilter, archFilter, hardwareFilter, sort, activeFilters, labelsByAgent, thresholds]);
-
-	const { paged, page, setPage, totalPages, total, reset: resetPage } = usePagination(filtered, pageSize);
-
-	// Reset to the first page when the query changes. A polling data refresh does not refresh the page
+	// Debounce search input into the actual query value, resetting to page 1 once it settles
 	useEffect(() => {
-		resetPage();
-	}, [search, statusFilter, osFilter, archFilter, hardwareFilter, sort, activeFilters, pageSize, resetPage]);
+		const t = setTimeout(() => {
+			setSearch(searchInput);
+			setPage(0);
+		}, SEARCH_DEBOUNCE_MS);
+		return () => clearTimeout(t);
+	}, [searchInput]);
+
+	const changeStatusFilter = useCallback((v: AgentStatus | "all") => { setStatusFilter(v); setPage(0); }, []);
+	const changeOsFilter = useCallback((v: string) => { setOsFilter(v); setPage(0); }, []);
+	const changeArchFilter = useCallback((v: string) => { setArchFilter(v); setPage(0); }, []);
+	const changeHardwareFilter = useCallback((v: string) => { setHardwareFilter(v); setPage(0); }, []);
+	const changeSort = useCallback((v: SortOption) => { setSort(v); setPage(0); }, []);
+	const changePageSize = useCallback((n: number) => { setPageSize(n); setPage(0); }, []);
 
 	const addFilter = useCallback((key: string, value: string) => {
 		setActiveFilters((prev) => {
 			if (prev.some((f) => f.key === key && f.value === value)) return prev;
 			return [...prev, { key, value }];
 		});
+		setPage(0);
 	}, []);
 
 	const removeFilter = useCallback((f: LabelFilter) => {
-		setActiveFilters((prev) =>
-			prev.filter((x) => !(x.key === f.key && x.value === f.value))
-		);
+		setActiveFilters((prev) => prev.filter((x) => !(x.key === f.key && x.value === f.value)));
+		setPage(0);
 	}, []);
 
-	const clearFilters = useCallback(() => setActiveFilters([]), []);
+	const clearFilters = useCallback(() => { setActiveFilters([]); setPage(0); }, []);
+
+	const filtersKey = useMemo(() => {
+		const labelsPart = [
+			...activeFilters,
+			...(hardwareFilter !== "all" ? [{ key: "hardware", value: hardwareFilter }] : []),
+		]
+			.map((f) => `${f.key}:${f.value}`)
+			.sort()
+			.join(",");
+		return [search, statusFilter, osFilter, archFilter, sort, pageSize, labelsPart].join("|");
+	}, [search, statusFilter, osFilter, archFilter, hardwareFilter, sort, pageSize, activeFilters]);
+
+	const buildParams = useCallback((withCount: boolean): Parameters<typeof api.overviewPage>[0] => {
+		const labels: OverviewLabelFilter[] = [...activeFilters];
+		if (hardwareFilter !== "all") labels.push({ key: "hardware", value: hardwareFilter });
+		return {
+			page: page + 1,
+			size: pageSize,
+			sort,
+			order: SORT_ORDER[sort],
+			status: statusFilter,
+			os: osFilter,
+			arch: archFilter,
+			search: search || undefined,
+			labels,
+			count: withCount,
+		};
+	}, [page, pageSize, sort, statusFilter, osFilter, archFilter, search, activeFilters, hardwareFilter]);
+
+	const filtersKeyRef = useRef<string | null>(null);
+
+	// Foreground fetch
+	useEffect(() => {
+		let cancelled = false;
+		const withCount = filtersKeyRef.current !== filtersKey;
+		filtersKeyRef.current = filtersKey;
+
+		setLoading(true);
+		api.overviewPage(buildParams(withCount))
+			.then((res) => {
+				if (cancelled) return;
+				setAgentsPage(res.agents);
+				if (res.total != null) setTotal(res.total);
+				if (res.total_pages != null) setTotalPages(res.total_pages);
+				setError(null);
+			})
+			.catch((err) => {
+				if (cancelled) return;
+				setError(err instanceof Error ? err.message : "Failed to load agents");
+			})
+			.finally(() => {
+				if (!cancelled) setLoading(false);
+			});
+
+		return () => { cancelled = true; };
+	}, [filtersKey, buildParams]);
+
+	// Background refresh
+	useEffect(() => {
+		const id = setInterval(() => {
+			api.overviewPage(buildParams(false))
+				.then((res) => setAgentsPage(res.agents))
+				.catch(() => {});
+		}, POLL_INTERVAL_MS);
+		return () => clearInterval(id);
+	}, [buildParams]);
+
 	const starredSet = useMemo(() => new Set(starredIds), [starredIds]);
 
-	if (loading && agents.length === 0) return <LoadingSpinner />;
+	if (loading && agentsPage.length === 0) return <LoadingSpinner />;
 
 	if (error) {
 		return (
@@ -1010,6 +990,8 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 		letterSpacing: "0.03em",
 	});
 
+	const fleetIsEmpty = stats != null && stats.total === 0;
+
 	return (
 		<div style={{ padding: 24 }}>
 			{/* Page title */}
@@ -1026,23 +1008,23 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 			</div>
  
 			{/* Stat bar */}
-			<StatBar agents={agents} />
+			<StatBar stats={stats} />
  
 			{/* Filters + view toggle */}
 			<div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
 				<FilterToolbar
-					search={search}
-					onSearchChange={setSearch}
+					search={searchInput}
+					onSearchChange={setSearchInput}
 					statusFilter={statusFilter}
-					onStatusFilterChange={setStatusFilter}
+					onStatusFilterChange={changeStatusFilter}
 					osFilter={osFilter}
-					onOsFilterChange={setOsFilter}
+					onOsFilterChange={changeOsFilter}
 					archFilter={archFilter}
-					onArchFilterChange={setArchFilter}
+					onArchFilterChange={changeArchFilter}
 					hardwareFilter={hardwareFilter}
-					onHardwareFilterChange={setHardwareFilter}
+					onHardwareFilterChange={changeHardwareFilter}
 					sort={sort}
-					onSortChange={setSort}
+					onSortChange={changeSort}
 					osOptions={osOptions}
 					archOptions={archOptions}
 					hardwareOptions={hardwareOptions}
@@ -1062,7 +1044,6 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 			<LabelFilterBar
 				filters={activeFilters}
 				knownKeys={knownKeys}
-				labelsByAgent={labelsByAgent}
 				onAdd={addFilter}
 				onRemove={removeFilter}
 				onClear={clearFilters}
@@ -1076,7 +1057,7 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 							<TableHeader />
 						</thead>
 						<tbody>
-							{paged.map((agent) => (
+							{agentsPage.map((agent) => (
 								<AgentRow
 									key={agent.id}
 									agent={agent}
@@ -1100,7 +1081,7 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 						gap: 12,
 					}}
 				>
-					{paged.map((agent) => (
+					{agentsPage.map((agent) => (
 						<AgentCard
 							key={agent.id}
 							agent={agent}
@@ -1113,7 +1094,7 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 			)}
  
 			{/* Pagination + page size */}
-			{filtered.length > 0 && (
+			{total > 0 && (
 				<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
 					<Pagination
 						page={page}
@@ -1136,7 +1117,7 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 						Per page
 						<select
 							value={pageSize}
-							onChange={(e) => setPageSize(Number(e.target.value))}
+							onChange={(e) => changePageSize(Number(e.target.value))}
 							style={selectStyle}
 						>
 							{PAGE_SIZE_OPTIONS.map((n) => (
@@ -1147,8 +1128,8 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 				</div>
 			)}
  
-			{/* Empty state */}
-			{filtered.length === 0 && agents.length > 0 && (
+			{/* Empty states */}
+			{total === 0 && !fleetIsEmpty && (
 				<div
 					style={{
 						textAlign: "center",
@@ -1162,7 +1143,7 @@ export function Overview({ agents, loading, error, onSelectAgent, starredIds, on
 				</div>
 			)}
  
-			{agents.length === 0 && (
+			{fleetIsEmpty && (
 				<div
 					style={{
 						textAlign: "center",

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "./api";
+import type { OverviewStats } from "./api";
 import { initTheme, themeVars } from "./theme";
 import { Login } from "./components";
 import { Sidebar } from "./components/Sidebar";
@@ -72,13 +73,14 @@ export default function App() {
 
 	// Fetch agent list for sidebar quick access and online count
 	const agentFetcher = useCallback(() => user ? api.overview() : Promise.resolve([]), [user]);
-	const { data: agents, loading: agentsLoading, error: agentsError } = usePolling(agentFetcher, 10_000);
+	const { data: agents } = usePolling(agentFetcher, 10_000);
 	const agentList = agents ?? [];
 
-	const onlineCount = agentList.filter((a) => {
-		if (!a.last_seen) return false;
-		return (Date.now() - new Date(a.last_seen).getTime()) / 1000 < 120;
-	}).length;
+	const statsFetcher = useCallback(() => user ? api.overviewStats() : Promise.resolve(null), [user]);
+	const { data: stats } = usePolling<OverviewStats | null>(statsFetcher, 10_000);
+
+	const onlineCount = stats?.online ?? 0;
+	const totalCount = stats?.total ?? agentList.length;
 
 	const handleLogout = useCallback(async (reason?: string) => {
 		try {
@@ -197,16 +199,14 @@ export default function App() {
 						<span style={{ margin: "0 12px", color: themeVars.border }}>|</span>
 						<span style={{ color: themeVars.ok }}>●</span>
 						<span style={{ marginLeft: 4 }}>
-							{onlineCount}/{agentList.length} online
+							{onlineCount}/{totalCount} online
 						</span>
 					</div>
 
 					{/* Page content */}
 					{page === "overview" && (
 						<Overview
-							agents={agentList}
-							loading={agentsLoading}
-							error={agentsError}
+							stats={stats}
 							onSelectAgent={handleSelectAgent}
 							starredIds={starredIds}
 							onToggleStar={toggleStar}

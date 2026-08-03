@@ -57,6 +57,42 @@ export class HttpError extends Error {
     }
 }
 
+export interface OverviewLabelFilter {
+    key: string;
+    value: string;
+}
+
+export interface OverviewPageParams {
+    page?: number;
+    size?: number;
+    sort?: "hostname" | "cpu" | "memory" | "disk" | "temp" | "severity" | "last_seen" | "status";
+    order?: "asc" | "desc";
+    status?: string;
+    os?: string;
+    arch?: string;
+    search?: string;
+    labels?: OverviewLabelFilter[];
+    count?: boolean;
+}
+
+export interface OverviewPageResponse {
+    agents: OverviewAgent[];
+    page: number;
+    size: number;
+    total?: number;
+    total_pages?: number;
+}
+
+export interface OverviewStats {
+    total: number;
+    online: number;
+    warn: number;
+    crit: number;
+    stale: number;
+    offline: number;
+    reboot: number;
+}
+
 /**
  * Low-level fetch wrapper. Prepends API_BASE, includes credentials, and
  * surfaces non-2xx responses as HttpError. A 401 triggers the registered
@@ -158,6 +194,33 @@ export const api = {
      */
     sparklines: () =>
         apiFetch<Record<string, { cpu: number[]; mem: number[], disk: number[] }>>("/overview/sparklines"),
+
+    /**
+     * GET /overview/page - server-side paginated, filtered, sorted fleet page.
+     * status/os/arch use "all" (or omit) for no filter. labels are AND-combined
+     * key:value pairs sent as repeated ?label=key:value params - this is also
+     * how auto-labels like hardware are filtered, there's no separate hardware
+     * param. Pass count:false on routine polls to skip the total-row count.
+     */
+    overviewPage: (params: OverviewPageParams = {}): Promise<OverviewPageResponse> => {
+        const qs = new URLSearchParams();
+        if (params.page != null) qs.set("page", String(params.page));
+        if (params.size != null) qs.set("size", String(params.size));
+        if (params.sort) qs.set("sort", params.sort);
+        if (params.order) qs.set("order", params.order);
+        if (params.status) qs.set("status", params.status);
+        if (params.os) qs.set("os", params.os);
+        if (params.arch) qs.set("arch", params.arch);
+        if (params.search) qs.set("search", params.search);
+        if (params.count) qs.set("count", "true");
+        for (const l of params.labels ?? []) {
+            qs.append("label", `${l.key}:${l.value}`);
+        }
+        return apiFetch<OverviewPageResponse>(`/overview/page?${qs.toString()}`);
+    },
+
+    /** GET /overview/stats - fleet-wide status counts, unfiltered. */
+    overviewStats: (): Promise<OverviewStats> => apiFetch("/overview/stats"),
 
     // Agent detail
 
