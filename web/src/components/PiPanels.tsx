@@ -59,14 +59,12 @@ function countThrottleEvents(data: PiMetric[]): ThrottleCounts {
     let underVoltage = 0;
     let freqCapped = 0;
     let softTempLimit = 0;
-    let total = 0;
 
     for (const d of data) {
         if (d.throttled) throttled++;
         if (d.under_voltage) underVoltage++;
         if (d.freq_capped) freqCapped++;
         if (d.soft_temp_limit_occurred) softTempLimit++;
-        total++;
     }
 
     return {
@@ -74,7 +72,7 @@ function countThrottleEvents(data: PiMetric[]): ThrottleCounts {
         underVoltage,
         freqCapped,
         softTempLimit,
-        total,
+        total: throttled + underVoltage + freqCapped + softTempLimit,
     };
 }
 
@@ -123,7 +121,7 @@ function ThrottleSummary({
                 />
                 <StatusIndicator
                     label="Undervoltage"
-                    active={latest?.throttled ?? false}
+                    active={latest?.under_voltage ?? false}
                 />
                 <StatusIndicator
                     label="Freq Capped"
