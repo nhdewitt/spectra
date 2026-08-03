@@ -33,3 +33,4 @@ cookies.txt
 server.json
 perf/node_modules/
 perf/*.png
+web/coverage/*
