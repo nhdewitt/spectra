@@ -160,8 +160,9 @@ export function Login({ onLogin, message }: { onLogin: (user: User) => void; mes
                 )}
 
                 <form onSubmit={handleSubmit}>
-                    <label style={labelStyle}>Username</label>
+                    <label style={labelStyle} htmlFor="login-username">Username</label>
                     <input
+                        id="login-username"
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
@@ -170,8 +171,9 @@ export function Login({ onLogin, message }: { onLogin: (user: User) => void; mes
                         autoComplete="username"
                     />
 
-                    <label style={{ ...labelStyle, marginTop: 16 }}>Password</label>
+                    <label style={{ ...labelStyle, marginTop: 16 }} htmlFor="login-password">Password</label>
                     <input
+                        id="login-password"
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
