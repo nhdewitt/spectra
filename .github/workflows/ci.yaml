@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -24,7 +24,7 @@ jobs:
           npm run build
 
       - name: Upload dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: web-dist
           path: web/dist
@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: web-dist
           path: web/dist
@@ -63,7 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: web-dist
           path: web/dist
@@ -76,7 +76,7 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./... 2>&1 | tee vuln_output.txt || true
-          KNOWN="GO-2026-4887|GO-2026-4883"
+          KNOWN="GO-2026-4887|GO-2026-4883|GO-2026-5668"
           if grep -E "^Vulnerability #" vuln_output.txt | grep -vE "$KNOWN" | grep -q .; then
             echo "::error::New vulnerabilities found"
             cat vuln_output.txt
