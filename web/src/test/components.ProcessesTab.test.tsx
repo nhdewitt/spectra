@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ProcessesTab } from '../components/ProcessesTab'
 import type { Process } from '../types'
@@ -21,6 +21,13 @@ const mockAgentProcesses = api.agentProcesses as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
     mockAgentProcesses.mockReset()
+})
+
+// Safety net: guarantees real timers are restored even if an assertion
+// throws mid-test, so fake-timer state can't leak into another test file
+// sharing the same worker.
+afterEach(() => {
+    vi.useRealTimers()
 })
 
 describe('ProcessesTab', () => {

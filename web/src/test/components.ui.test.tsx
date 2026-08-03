@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import {
     StatBlock,
@@ -8,6 +8,13 @@ import {
     MetricSelector,
     InstructionBlock,
 } from '../components/ui'
+
+// Safety net: guarantees real timers are restored even if an assertion
+// throws mid-test, so fake-timer state can't leak into another test file
+// sharing the same worker.
+afterEach(() => {
+    vi.useRealTimers()
+})
 
 describe('StatBlock', () => {
     it('renders label and value', () => {
