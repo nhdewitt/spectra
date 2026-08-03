@@ -209,10 +209,7 @@ export function ContainersTab({ agentId, rangeSel }: ContainersTabProps) {
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
     const fetcher = useCallback(
-        () => api.agentContainers(agentId, { type: "quick", range: "1h" }).then(d => {
-            console.log("containers response:", d?.length, d);
-            return d;
-        }),
+        () => api.agentContainers(agentId, { type: "quick", range: "1h" }),
         [agentId]
     );
 
