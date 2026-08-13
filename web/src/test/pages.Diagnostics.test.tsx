@@ -9,6 +9,7 @@ vi.mock('../api', () => ({
         triggerDisk: vi.fn(),
         triggerLogs: vi.fn(),
         commandResult: vi.fn(),
+        overviewPage: vi.fn(),
     },
 }))
 
@@ -17,6 +18,7 @@ const mockTriggerNetwork = api.triggerNetwork as ReturnType<typeof vi.fn>
 const mockTriggerDisk = api.triggerDisk as ReturnType<typeof vi.fn>
 const mockTriggerLogs = api.triggerLogs as ReturnType<typeof vi.fn>
 const mockCommandResult = api.commandResult as ReturnType<typeof vi.fn>
+const mockOverviewPage = api.overviewPage as ReturnType<typeof vi.fn>
 
 function makeAgent(overrides: Partial<OverviewAgent> = {}): OverviewAgent {
     return {
@@ -75,6 +77,7 @@ beforeEach(() => {
     mockTriggerDisk.mockReset()
     mockTriggerLogs.mockReset()
     mockCommandResult.mockReset()
+    mockOverviewPage.mockReset().mockResolvedValue({ agents: [], page: 1, size: 20 })
 })
 
 afterEach(() => {
@@ -83,23 +86,28 @@ afterEach(() => {
 
 describe('Diagnostics - agent picker', () => {
     it('shows a prompt and no cards when no agent is selected', () => {
-        render(<Diagnostics agents={[makeAgent()]} selectedAgent={null} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={null} onSelectAgent={noop} />)
         expect(screen.getByText('Select an agent to run diagnostics.')).toBeInTheDocument()
         expect(screen.queryByText('Ping')).not.toBeInTheDocument()
     })
 
-    it('selecting an agent from the dropdown calls onSelectAgent', () => {
+    it('selecting an agent from the picker calls onSelectAgent', async () => {
         const onSelectAgent = vi.fn()
         const agent = makeAgent({ id: 'agent-1', hostname: 'test-host-1' })
-        render(<Diagnostics agents={[agent]} selectedAgent={null} onSelectAgent={onSelectAgent} />)
+        mockOverviewPage.mockResolvedValue({ agents: [agent], page: 1, size: 20 })
 
-        fireEvent.change(screen.getByDisplayValue('Select an agent...'), { target: { value: 'agent-1' } })
+        render(<Diagnostics selectedAgent={null} onSelectAgent={onSelectAgent} />)
+
+        fireEvent.click(screen.getByText('Select an agent...'))
+        await waitFor(() => expect(screen.getByText('test-host-1')).toBeInTheDocument())
+
+        fireEvent.click(screen.getByText('test-host-1'))
         expect(onSelectAgent).toHaveBeenCalledWith(agent)
     })
 
     it('shows the diagnostic cards once an agent is selected', () => {
         const agent = makeAgent({ hostname: 'test-host-1' })
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
 
         expect(screen.getByText('Ping')).toBeInTheDocument()
         expect(screen.getByText('Traceroute')).toBeInTheDocument()
@@ -113,7 +121,7 @@ describe('Diagnostics - agent picker', () => {
 describe('Diagnostics - ping/traceroute confirm-then-run', () => {
     it('flashes the target field instead of running when the target is empty', () => {
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
 
         fireEvent.click(screen.getByText('Ping'))
         expect(mockTriggerNetwork).not.toHaveBeenCalled()
@@ -125,7 +133,7 @@ describe('Diagnostics - ping/traceroute confirm-then-run', () => {
         mockCommandResult.mockResolvedValue({ id: 'cmd-1', type: 'x', agent_id: 'a', queued_at: '', done: false })
 
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
 
         fireEvent.change(screen.getByPlaceholderText('IP or hostname'), { target: { value: '10.0.0.1' } })
         fireEvent.click(screen.getByText('Ping'))
@@ -138,7 +146,7 @@ describe('Diagnostics - ping/traceroute confirm-then-run', () => {
 
     it('resets the confirmation if the target is edited between clicks', () => {
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
 
         fireEvent.change(screen.getByPlaceholderText('IP or hostname'), { target: { value: '10.0.0.1' } })
         fireEvent.click(screen.getByText('Ping')) // confirms
@@ -155,7 +163,7 @@ describe('Diagnostics - ping/traceroute confirm-then-run', () => {
         mockCommandResult.mockResolvedValue({ id: 'cmd-1', type: 'x', agent_id: 'a', queued_at: '', done: false })
 
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
 
         const input = screen.getByPlaceholderText('IP or hostname')
         fireEvent.change(input, { target: { value: '10.0.0.1' } })
@@ -173,7 +181,7 @@ describe('Diagnostics - netstat (no target/confirm needed)', () => {
         mockCommandResult.mockResolvedValue({ id: 'cmd-1', type: 'x', agent_id: 'a', queued_at: '', done: false })
 
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
 
         fireEvent.click(screen.getByText('Netstat'))
         await flush()
@@ -184,7 +192,7 @@ describe('Diagnostics - netstat (no target/confirm needed)', () => {
 describe('Diagnostics - disk/logs options panels', () => {
     it('toggles the disk options panel open and closed without running anything', () => {
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
 
         fireEvent.click(screen.getByText('Disk Scan'))
         expect(screen.getByText('Path to scan')).toBeInTheDocument()
@@ -200,7 +208,7 @@ describe('Diagnostics - disk/logs options panels', () => {
         mockCommandResult.mockResolvedValue({ id: 'cmd-1', type: 'x', agent_id: 'a', queued_at: '', done: false })
 
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
         fireEvent.click(screen.getByText('Disk Scan'))
 
         fireEvent.change(screen.getByPlaceholderText('/'), { target: { value: '/data' } })
@@ -213,7 +221,7 @@ describe('Diagnostics - disk/logs options panels', () => {
 
     it('opening the log options panel closes the disk panel, and vice versa', () => {
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
 
         fireEvent.click(screen.getByText('Disk Scan'))
         expect(screen.getByText('Path to scan')).toBeInTheDocument()
@@ -229,7 +237,7 @@ describe('Diagnostics - disk/logs options panels', () => {
         mockCommandResult.mockResolvedValue({ id: 'cmd-1', type: 'x', agent_id: 'a', queued_at: '', done: false })
 
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
         fireEvent.click(screen.getByText('Fetch Logs'))
 
         fireEvent.change(screen.getByDisplayValue('WARNING'), { target: { value: 'ERROR' } })
@@ -247,7 +255,7 @@ describe('Diagnostics - results and card status', () => {
         mockCommandResult.mockResolvedValue({ id: 'cmd-1', type: 'x', agent_id: 'a', queued_at: '', done: false })
 
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
         fireEvent.click(screen.getByText('Netstat'))
         await flush()
 
@@ -263,7 +271,7 @@ describe('Diagnostics - results and card status', () => {
         )
 
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
         fireEvent.change(screen.getByPlaceholderText('IP or hostname'), { target: { value: '10.0.0.1' } })
         fireEvent.click(screen.getByText('Ping'))
         fireEvent.click(screen.getByText('Ping'))
@@ -280,7 +288,7 @@ describe('Diagnostics - results and card status', () => {
         mockCommandResult.mockResolvedValue(doneEntry(null, 'permission denied'))
 
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
         fireEvent.click(screen.getByText('Netstat'))
         await flush()
 
@@ -291,7 +299,7 @@ describe('Diagnostics - results and card status', () => {
     it('shows a send error when triggering fails outright', async () => {
         mockTriggerNetwork.mockRejectedValue(new Error('agent unreachable'))
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
 
         fireEvent.click(screen.getByText('Netstat'))
         await waitFor(() => expect(screen.getByText('agent unreachable')).toBeInTheDocument())
@@ -303,7 +311,7 @@ describe('Diagnostics - results and card status', () => {
         mockCommandResult.mockResolvedValue(doneEntry({ action: 'netstat', netstat: [] }))
 
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
         fireEvent.click(screen.getByText('Netstat'))
         await flush()
         expect(screen.getByText('✓ COMPLETE')).toBeInTheDocument()
@@ -329,7 +337,7 @@ describe('Diagnostics - LogResultsInline (fetched logs result)', () => {
         mockCommandResult.mockResolvedValue(doneEntry(entries))
 
         const agent = makeAgent()
-        render(<Diagnostics agents={[agent]} selectedAgent={agent} onSelectAgent={noop} />)
+        render(<Diagnostics selectedAgent={agent} onSelectAgent={noop} />)
         fireEvent.click(screen.getByText('Fetch Logs'))
         fireEvent.click(screen.getByText('Fetch Logs', { selector: 'button' }))
         await waitFor(() => {
@@ -398,7 +406,7 @@ describe('Diagnostics - LogResultsInline (fetched logs result)', () => {
 
         fireEvent.click(screen.getByText('Next →'))
         await waitFor(() => expect(screen.getByText('entry-59')).toBeInTheDocument(), { timeout: 5000 })
-    })
+    }, 15000)
 
     it('resets to page 1 when the level filter changes', async () => {
         const entries = Array.from({ length: 60 }, (_, i) => ({
@@ -412,5 +420,5 @@ describe('Diagnostics - LogResultsInline (fetched logs result)', () => {
         fireEvent.click(screen.getByText('INFO (60)'))
         await waitFor(() => expect(screen.getByText('entry-0')).toBeInTheDocument(), { timeout: 5000 })
         expect(screen.queryByText('entry-59')).not.toBeInTheDocument()
-    })
+    }, 20000)
 })

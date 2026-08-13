@@ -1,7 +1,18 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { Sidebar } from '../components/Sidebar'
 import type { User, OverviewAgent, Page } from '../types'
+
+vi.mock('../api', () => ({
+    api: { overviewPage: vi.fn() },
+}))
+
+import { api } from '../api'
+const mockOverviewPage = api.overviewPage as ReturnType<typeof vi.fn>
+
+beforeEach(() => {
+    mockOverviewPage.mockReset().mockResolvedValue({ agents: [], page: 1, size: 20 })
+})
 
 function makeUser(overrides: Partial<User> = {}): User {
     return { id: 'u1', username: 'admin', role: 'admin', ...overrides } as User
@@ -40,7 +51,6 @@ function renderSidebar(overrides: {
     user?: User
     currentPage?: Page
     selectedAgent?: OverviewAgent | null
-    agents?: OverviewAgent[]
     starredIds?: string[]
     version?: string
     onNavigate?: (p: Page) => void
@@ -53,7 +63,6 @@ function renderSidebar(overrides: {
             onNavigate={overrides.onNavigate ?? noop}
             selectedAgent={overrides.selectedAgent ?? null}
             onSelectAgent={overrides.onSelectAgent ?? noop}
-            agents={overrides.agents ?? []}
             starredIds={overrides.starredIds ?? []}
             version={overrides.version ?? '1.0.0'}
         />
@@ -110,38 +119,39 @@ describe('Sidebar', () => {
     })
 
     it('hides the Quick Access section when there are no starred agents', () => {
-        renderSidebar({ agents: [makeAgent()], starredIds: [] })
+        renderSidebar({ starredIds: [] })
         expect(screen.queryByText('Quick Access')).not.toBeInTheDocument()
     })
 
-    it('shows only starred agents, sorted alphabetically by hostname', () => {
+    it('shows only starred agents, sorted alphabetically by hostname', async () => {
         const zeta = makeAgent({ id: 'z', hostname: 'zeta' })
         const alpha = makeAgent({ id: 'a', hostname: 'alpha' })
-        const unstarred = makeAgent({ id: 'u', hostname: 'not-starred' })
+        // Server already sorts/filters by the ids= filter - the mock returns
+        // exactly what a real starred-only, hostname-sorted response would.
+        mockOverviewPage.mockResolvedValue({ agents: [alpha, zeta], page: 1, size: 2 })
 
-        renderSidebar({
-            agents: [zeta, alpha, unstarred],
-            starredIds: ['z', 'a'],
-        })
+        renderSidebar({ starredIds: ['z', 'a'] })
 
-        expect(screen.getByText('Quick Access')).toBeInTheDocument()
+        await waitFor(() => expect(screen.getByText('Quick Access')).toBeInTheDocument())
         expect(screen.queryByText('not-starred')).not.toBeInTheDocument()
+        expect(mockOverviewPage).toHaveBeenCalledWith(
+            expect.objectContaining({ ids: ['z', 'a'], sort: 'hostname', order: 'asc' })
+        )
 
-        const names = [screen.getByText('alpha'), screen.getByText('zeta')].map((el) => el.textContent)
-        // Confirm ordering: alpha's DOM position precedes zeta's.
         const alphaEl = screen.getByText('alpha')
         const zetaEl = screen.getByText('zeta')
         expect(alphaEl.compareDocumentPosition(zetaEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-        expect(names).toEqual(['alpha', 'zeta'])
     })
 
-    it('selects the clicked starred agent and navigates to detail', () => {
+    it('selects the clicked starred agent and navigates to detail', async () => {
         const onSelectAgent = vi.fn()
         const onNavigate = vi.fn()
         const agent = makeAgent({ id: 'a1', hostname: 'test-host-1' })
+        mockOverviewPage.mockResolvedValue({ agents: [agent], page: 1, size: 1 })
 
-        renderSidebar({ agents: [agent], starredIds: ['a1'], onSelectAgent, onNavigate })
+        renderSidebar({ starredIds: ['a1'], onSelectAgent, onNavigate })
 
+        await waitFor(() => expect(screen.getByText('test-host-1')).toBeInTheDocument())
         fireEvent.click(screen.getByText('test-host-1'))
 
         expect(onSelectAgent).toHaveBeenCalledWith(agent)

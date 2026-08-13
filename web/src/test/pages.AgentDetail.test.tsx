@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { AgentDetail } from '../pages/AgentDetail'
 import type { Agent, OverviewAgent, SystemMetric, User, RangeSelection } from '../types'
 
 vi.mock('../api', () => ({
-    api: { agent: vi.fn(), agentSystemLatest: vi.fn() },
+    api: { agent: vi.fn(), agentSystemLatest: vi.fn(), overviewPage: vi.fn() },
 }))
 
 vi.mock('../components/MetricsTab', () => ({
@@ -36,6 +36,7 @@ vi.mock('../components/AgentLabelChips', () => ({
 import { api } from '../api'
 const mockAgent = api.agent as ReturnType<typeof vi.fn>
 const mockSystemLatest = api.agentSystemLatest as ReturnType<typeof vi.fn>
+const mockOverviewPage = api.overviewPage as ReturnType<typeof vi.fn>
 
 function makeOverviewAgent(overrides: Partial<OverviewAgent> = {}): OverviewAgent {
     return {
@@ -102,13 +103,18 @@ const noop = () => {}
 beforeEach(() => {
     mockAgent.mockReset().mockResolvedValue(undefined)
     mockSystemLatest.mockReset().mockResolvedValue(undefined)
+    mockOverviewPage.mockReset().mockResolvedValue({ agents: [], page: 1, size: 20 })
+})
+
+afterEach(() => {
+    vi.useRealTimers()
 })
 
 describe('AgentDetail - header', () => {
     it('shows the hostname and calls onBack', () => {
         const onBack = vi.fn()
         render(
-            <AgentDetail agent={makeOverviewAgent()} agents={[]} user={makeUser()} onSelectAgent={noop}
+            <AgentDetail agent={makeOverviewAgent()} user={makeUser()} onSelectAgent={noop}
                 onBack={onBack} starredIds={[]} onToggleStar={noop} />
         )
         expect(screen.getByText('test-host-1')).toBeInTheDocument()
@@ -118,13 +124,13 @@ describe('AgentDetail - header', () => {
 
     it('shows the reboot badge only when reboot_required is true', () => {
         const { rerender } = render(
-            <AgentDetail agent={makeOverviewAgent({ reboot_required: false })} agents={[]} user={makeUser()}
+            <AgentDetail agent={makeOverviewAgent({ reboot_required: false })} user={makeUser()}
                 onSelectAgent={noop} onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
         expect(screen.queryByText('REBOOT')).not.toBeInTheDocument()
 
         rerender(
-            <AgentDetail agent={makeOverviewAgent({ reboot_required: true })} agents={[]} user={makeUser()}
+            <AgentDetail agent={makeOverviewAgent({ reboot_required: true })} user={makeUser()}
                 onSelectAgent={noop} onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
         expect(screen.getByText('REBOOT')).toBeInTheDocument()
@@ -133,7 +139,7 @@ describe('AgentDetail - header', () => {
     it('shows a filled star when starred and calls onToggleStar', () => {
         const onToggleStar = vi.fn()
         render(
-            <AgentDetail agent={makeOverviewAgent({ id: 'a1' })} agents={[]} user={makeUser()}
+            <AgentDetail agent={makeOverviewAgent({ id: 'a1' })} user={makeUser()}
                 onSelectAgent={noop} onBack={noop} starredIds={['a1']} onToggleStar={onToggleStar} />
         )
         expect(screen.getByTitle('Remove from quick access')).toBeInTheDocument()
@@ -143,13 +149,13 @@ describe('AgentDetail - header', () => {
 
     it('pluralizes core count correctly', () => {
         const { rerender } = render(
-            <AgentDetail agent={makeOverviewAgent({ cpu_cores: 1 })} agents={[]} user={makeUser()}
+            <AgentDetail agent={makeOverviewAgent({ cpu_cores: 1 })} user={makeUser()}
                 onSelectAgent={noop} onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
         expect(screen.getByText('1 core')).toBeInTheDocument()
 
         rerender(
-            <AgentDetail agent={makeOverviewAgent({ cpu_cores: 4 })} agents={[]} user={makeUser()}
+            <AgentDetail agent={makeOverviewAgent({ cpu_cores: 4 })} user={makeUser()}
                 onSelectAgent={noop} onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
         expect(screen.getByText('4 cores')).toBeInTheDocument()
@@ -157,49 +163,74 @@ describe('AgentDetail - header', () => {
 })
 
 describe('AgentDetail - agent switcher dropdown', () => {
-    it('opens on hostname click, lists other agents sorted alphabetically, and switches on selection', () => {
+    it('opens on hostname click, shows search results, and switches on selection', async () => {
         const onSelectAgent = vi.fn()
         const zeta = makeOverviewAgent({ id: 'z', hostname: 'zeta' })
         const alpha = makeOverviewAgent({ id: 'a', hostname: 'alpha' })
+        mockOverviewPage.mockResolvedValue({ agents: [alpha, zeta], page: 1, size: 20 })
 
         render(
-            <AgentDetail agent={zeta} agents={[zeta, alpha]} user={makeUser()} onSelectAgent={onSelectAgent}
+            <AgentDetail agent={zeta} user={makeUser()} onSelectAgent={onSelectAgent}
                 onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
 
         expect(screen.queryByText('alpha')).not.toBeInTheDocument()
         fireEvent.click(screen.getByText('zeta'))
 
-        // The trigger button's own direct text is also just "zeta" (the
-        // chevron lives in a separate nested span, so it doesn't count
-        // toward the button's own text) - scope to the dropdown's <span>
-        // entries specifically to exclude it.
-        const options = screen.getAllByText(/^(alpha|zeta)$/).filter((el) => el.tagName === 'SPAN')
-        expect(options.map((el) => el.textContent)).toEqual(['alpha', 'zeta'])
+        await waitFor(() => expect(screen.getByText('alpha')).toBeInTheDocument())
+        expect(mockOverviewPage).toHaveBeenCalledWith(
+            expect.objectContaining({ search: undefined, sort: 'hostname', order: 'asc' })
+        )
 
         fireEvent.click(screen.getByText('alpha'))
         expect(onSelectAgent).toHaveBeenCalledWith(alpha)
     })
 
-    it('closes the dropdown on Escape', () => {
+    it('closes the dropdown on Escape', async () => {
         const agent = makeOverviewAgent()
+        mockOverviewPage.mockResolvedValue({ agents: [agent], page: 1, size: 20 })
+
         render(
-            <AgentDetail agent={agent} agents={[agent]} user={makeUser()} onSelectAgent={noop}
+            <AgentDetail agent={agent} user={makeUser()} onSelectAgent={noop}
                 onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
 
         fireEvent.click(screen.getByText('test-host-1'))
-        expect(screen.getAllByText('test-host-1').length).toBeGreaterThan(1) // header + dropdown entry
+        await waitFor(() => expect(screen.getAllByText('test-host-1').length).toBeGreaterThan(1)) // header + search result
 
         fireEvent.keyDown(window, { key: 'Escape' })
         expect(screen.getAllByText('test-host-1')).toHaveLength(1) // dropdown closed
+    })
+
+    it('debounces the search box before querying', async () => {
+        vi.useFakeTimers()
+        const agent = makeOverviewAgent()
+        mockOverviewPage.mockResolvedValue({ agents: [agent], page: 1, size: 20 })
+
+        render(
+            <AgentDetail agent={agent} user={makeUser()} onSelectAgent={noop}
+                onBack={noop} starredIds={[]} onToggleStar={noop} />
+        )
+
+        fireEvent.click(screen.getByText('test-host-1'))
+        await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+        mockOverviewPage.mockClear()
+
+        fireEvent.change(screen.getByPlaceholderText('Search agents...'), { target: { value: 'test' } })
+        await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+        expect(mockOverviewPage).not.toHaveBeenCalled()
+
+        await act(async () => { await vi.advanceTimersByTimeAsync(200) })
+        expect(mockOverviewPage).toHaveBeenCalledWith(expect.objectContaining({ search: 'test' }))
+
+        vi.useRealTimers()
     })
 })
 
 describe('AgentDetail - tabs', () => {
     it('shows the metrics tab by default, wired with agentId, rangeSel, and cores', () => {
         render(
-            <AgentDetail agent={makeOverviewAgent({ id: 'a1', cpu_cores: 4 })} agents={[]} user={makeUser()}
+            <AgentDetail agent={makeOverviewAgent({ id: 'a1', cpu_cores: 4 })} user={makeUser()}
                 onSelectAgent={noop} onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
         const tab = screen.getByTestId('tab-metrics')
@@ -210,7 +241,7 @@ describe('AgentDetail - tabs', () => {
     it('switches between every tab', () => {
         const agent = makeOverviewAgent()
         render(
-            <AgentDetail agent={agent} agents={[]} user={makeUser()} onSelectAgent={noop}
+            <AgentDetail agent={agent} user={makeUser()} onSelectAgent={noop}
                 onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
 
@@ -233,7 +264,7 @@ describe('AgentDetail - tabs', () => {
     it('dims the time range picker outside metrics/containers tabs', () => {
         const agent = makeOverviewAgent()
         const { container } = render(
-            <AgentDetail agent={agent} agents={[]} user={makeUser()} onSelectAgent={noop}
+            <AgentDetail agent={agent} user={makeUser()} onSelectAgent={noop}
                 onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
 
@@ -253,7 +284,7 @@ describe('AgentDetail - live agent / system info polling', () => {
         mockSystemLatest.mockResolvedValue(makeSystemInfo({ user_count: 3, process_count: 150 }))
 
         render(
-            <AgentDetail agent={makeOverviewAgent()} agents={[]} user={makeUser()} onSelectAgent={noop}
+            <AgentDetail agent={makeOverviewAgent()} user={makeUser()} onSelectAgent={noop}
                 onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
 
@@ -265,7 +296,7 @@ describe('AgentDetail - live agent / system info polling', () => {
         mockAgent.mockResolvedValue(makeAgent({ cpu_model: 'AMD EPYC 7302P' }))
 
         render(
-            <AgentDetail agent={makeOverviewAgent()} agents={[]} user={makeUser({ role: 'admin' })}
+            <AgentDetail agent={makeOverviewAgent()} user={makeUser({ role: 'admin' })}
                 onSelectAgent={noop} onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
 
@@ -277,7 +308,7 @@ describe('AgentDetail - live agent / system info polling', () => {
         mockAgent.mockResolvedValue(makeAgent())
 
         render(
-            <AgentDetail agent={makeOverviewAgent()} agents={[]} user={makeUser({ role: 'viewer' })}
+            <AgentDetail agent={makeOverviewAgent()} user={makeUser({ role: 'viewer' })}
                 onSelectAgent={noop} onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
 
@@ -289,7 +320,7 @@ describe('AgentDetail - live agent / system info polling', () => {
         mockAgent.mockResolvedValue(makeAgent({ ip_address: '198.51.100.42' }))
 
         render(
-            <AgentDetail agent={makeOverviewAgent()} agents={[]} user={makeUser()} onSelectAgent={noop}
+            <AgentDetail agent={makeOverviewAgent()} user={makeUser()} onSelectAgent={noop}
                 onBack={noop} starredIds={[]} onToggleStar={noop} />
         )
 
