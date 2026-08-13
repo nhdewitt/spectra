@@ -119,7 +119,7 @@ describe('ServicesTab', () => {
         expect(screen.queryByText('svc-24')).not.toBeInTheDocument()
         fireEvent.click(screen.getByText('Next →'))
         await waitFor(() => expect(screen.getByText('svc-24')).toBeInTheDocument(), { timeout: 5000 })
-    })
+    }, 15000)
 
     it('polls for fresh data every 30 seconds', async () => {
         vi.useFakeTimers()

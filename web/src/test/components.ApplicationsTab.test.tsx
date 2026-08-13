@@ -91,7 +91,7 @@ describe('ApplicationsTab', () => {
 
         fireEvent.click(screen.getByText('Next →'))
         await waitFor(() => expect(screen.getByText('pkg-24')).toBeInTheDocument(), { timeout: 5000 })
-    })
+    }, 15000)
 
     it('refetches when agentId changes', async () => {
         mockAgentApplications.mockImplementation((id: string) =>

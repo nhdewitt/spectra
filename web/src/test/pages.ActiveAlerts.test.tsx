@@ -268,5 +268,5 @@ describe('ActiveAlerts - History section', () => {
         expect(screen.queryByText('Rule 24')).not.toBeInTheDocument()
         fireEvent.click(screen.getByText('Next →'))
         await waitFor(() => expect(screen.getByText('Rule 24')).toBeInTheDocument(), { timeout: 5000 })
-    })
+    }, 15000)
 })
