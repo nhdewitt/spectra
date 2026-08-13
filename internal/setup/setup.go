@@ -64,7 +64,6 @@ type TLSSetupConfig struct {
 type SetupConfig struct {
 	DBConfig         *DBConfig
 	CreateDB         bool
-	MigrationsDir    string
 	Admin            *AdminCredentials
 	Port             int
 	TLS              *TLSSetupConfig // nil if TLS disabled
