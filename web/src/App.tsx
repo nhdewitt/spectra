@@ -4,6 +4,7 @@ import type { OverviewStats } from "./api";
 import { initTheme, themeVars } from "./theme";
 import { Login } from "./components";
 import { Sidebar } from "./components/Sidebar";
+import { AgentSearchList } from "./components/AgentSearchList";
 import { Overview } from "./pages/Overview";
 import { AgentDetail } from "./pages/AgentDetail";
 import { AgentManagement } from "./pages/AgentManagement";
@@ -13,7 +14,6 @@ import { Settings } from "./pages/Settings";
 import { Tags } from "./pages/Tags";
 import type { User, Page, OverviewAgent, Thresholds } from "./types";
 import { usePolling } from "./hooks";
-import { statusColor } from "./utils";
 import { ThresholdsProvider } from "./ThresholdsContext";
 import { DEFAULT_THRESHOLDS } from "./types";
 import { Alerts } from "./pages/Alerts";
@@ -71,16 +71,11 @@ export default function App() {
 		return () => clearTimeout(timeout);
 	}, [starredIds, user, starredLoaded]);
 
-	// Fetch agent list for sidebar quick access and online count
-	const agentFetcher = useCallback(() => user ? api.overview() : Promise.resolve([]), [user]);
-	const { data: agents } = usePolling(agentFetcher, 10_000);
-	const agentList = agents ?? [];
-
 	const statsFetcher = useCallback(() => user ? api.overviewStats() : Promise.resolve(null), [user]);
 	const { data: stats } = usePolling<OverviewStats | null>(statsFetcher, 10_000);
 
 	const onlineCount = stats?.online ?? 0;
-	const totalCount = stats?.total ?? agentList.length;
+	const totalCount = stats?.total ?? 0;
 
 	const handleLogout = useCallback(async (reason?: string) => {
 		try {
@@ -170,11 +165,10 @@ export default function App() {
 					onNavigate={handleNavigate}
 					selectedAgent={selectedAgent}
 					onSelectAgent={handleSelectAgent}
-					agents={agentList}
 					starredIds={starredIds}
 					version={version}
 				/>
-
+ 
 				<div style={{ flex: 1, minWidth: 0 }}>
 					{/* Content header */}
 					<div
@@ -202,7 +196,7 @@ export default function App() {
 							{onlineCount}/{totalCount} online
 						</span>
 					</div>
-
+ 
 					{/* Page content */}
 					{page === "overview" && (
 						<Overview
@@ -212,11 +206,10 @@ export default function App() {
 							onToggleStar={toggleStar}
 						/>
 					)}
-
+ 
 					{page === "detail" && selectedAgent && (
 						<AgentDetail
 							agent={selectedAgent}
-							agents={agentList}
 							user={user}
 							onSelectAgent={handleSelectAgent}
 							onBack={() => { setSelectedAgent(null); setPage("overview"); }}
@@ -224,7 +217,7 @@ export default function App() {
 							onToggleStar={toggleStar}
 						/>
 					)}
-
+ 
 					{page === "detail" && !selectedAgent && (
 						<div style={{ padding: 24}}>
 							<div
@@ -248,62 +241,29 @@ export default function App() {
 							>
 								Select an agent to view details.
 							</div>
-							<div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-								{agentList.map((a) => (
-									<button
-										key={a.id}
-										onClick={() => handleSelectAgent(a)}
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: 10,
-											padding: "8px 12px",
-											fontSize: 12,
-											fontFamily: themeVars.font,
-											color: themeVars.text,
-											background: themeVars.surface,
-											border: `1px solid ${themeVars.border}`,
-											cursor: "pointer",
-											textAlign: "left",
-										}}
-									>
-										<span
-											style={{
-												width: 7,
-												height: 7,
-												borderRadius: "50%",
-												background: statusColor(a, thresholds),
-												flexShrink: 0,
-											}}
-										/>
-										<span style={{ fontWeight: 500 }}>{a.hostname}</span>
-										<span style={{ color: themeVars.textDim, marginLeft: "auto", fontSize: 11 }}>
-											{a.os} · {a.platform} · {a.arch}
-										</span>
-									</button>
-								))}
+							<div style={{ maxWidth: 420 }}>
+								<AgentSearchList onSelectAgent={handleSelectAgent} placeholder="Search agents..." />
 							</div>
 						</div>
 					)}
-
+ 
 					{page === "diagnostics" && (
 						<Diagnostics
-							agents={agentList}
 							selectedAgent={selectedAgent}
 							onSelectAgent={handleSelectAgent}
 						/>
 					)}
-
+ 
 					{page === "agents" && <AgentManagement user={user}/>}
-
+ 
 					{page === "tags" && <Tags user={user} />}
-
+ 
 					{page === "users" && <UserManagement user={user} />}
-
+ 
 					{page === "settings" && (
 						<Settings user={user} onLogout={handleLogout} />
 					)}
-
+ 
 					{page === "alerts" && <Alerts user={user} />}
 				</div>
 			</div>

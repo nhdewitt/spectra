@@ -72,6 +72,10 @@ export interface OverviewPageParams {
     arch?: string;
     search?: string;
     labels?: OverviewLabelFilter[];
+    // Restricts to specific agents by ID, AND-combined with any other
+    // filters present. For pickers needing details on a small, known set
+    // of agents (e.g. a starred list) without paging through the fleet.
+    ids?: string[];
     count?: boolean;
 }
 
@@ -215,6 +219,9 @@ export const api = {
         if (params.count) qs.set("count", "true");
         for (const l of params.labels ?? []) {
             qs.append("label", `${l.key}:${l.value}`);
+        }
+        for (const id of params.ids ?? []) {
+            qs.append("id", id);
         }
         return apiFetch<OverviewPageResponse>(`/overview/page?${qs.toString()}`);
     },

@@ -6,9 +6,9 @@ import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner }
 import type { OverviewAgent, CommandResponse, CommandEntry } from "../types";
 import { Pagination, usePagination } from "../hooks/usePagination";
 import { useThresholds } from "../ThresholdsContext";
+import { AgentSearchList } from "../components/AgentSearchList";
 
 interface DiagnosticsProps {
-	agents: OverviewAgent[];
 	selectedAgent: OverviewAgent | null;
 	onSelectAgent: (agent: OverviewAgent) => void;
 }
@@ -208,20 +208,20 @@ function LogResultsInline({ entries }: { entries: LogEntry[] }) {
                 {Object.entries(levels)
                     .sort(([a], [b]) => severityOrder(a) - severityOrder(b))
                     .map(([level, count]) => (
-						<span key={level}>
-							{filterBtn(
-								`${level} (${count})`,
-								activeLevel === level,
-								() => setActiveLevel(activeLevel === level ? null : level),
-								levelColor(level)
-							)}
-						</span>
-					))}
+                        <span key={level}>
+                            {filterBtn(
+                                `${level} (${count})`,
+                                activeLevel === level,
+                                () => setActiveLevel(activeLevel === level ? null : level),
+                                levelColor(level)
+                            )}
+                        </span>
+                    ))}
                 <span style={{ fontSize: 10, fontFamily: themeVars.font, color: themeVars.textDim, marginLeft: 8 }}>
                     {filtered.length} entries
                 </span>
             </div>
-
+ 
             {/* Entries */}
             <div
                 style={{
@@ -232,7 +232,7 @@ function LogResultsInline({ entries }: { entries: LogEntry[] }) {
             >
                 {paged.map((e, i) => (
                     <div
-                        key={i}
+                        key={`${e.timestamp}-${i}`}
                         style={{
                             padding: "4px 8px",
                             fontSize: 11,
@@ -578,10 +578,12 @@ function NetstatResultsInline({ entries }: {
 	);
 }
 
-export function Diagnostics({ agents, selectedAgent, onSelectAgent }: DiagnosticsProps) {
+export function Diagnostics({ selectedAgent, onSelectAgent }: DiagnosticsProps) {
 	const [remoteTarget, setRemoteTarget] = useState("");
 	const [targetFlash, setTargetFlash] = useState(false);
 	const targetRef = useRef<HTMLInputElement>(null);
+
+	const [agentPickerOpen, setAgentPickerOpen] = useState(false);
 
 	const [cardStatus, setCardStatus] = useState<Record<DiagTool, CardStatus>>({
 		ping: "idle", traceroute: "idle", netstat: "idle", disk: "idle", logs: "idle",
@@ -788,22 +790,42 @@ export function Diagnostics({ agents, selectedAgent, onSelectAgent }: Diagnostic
                         <div style={{ fontSize: 10, fontFamily: themeVars.font, color: themeVars.textDim, marginBottom: 4 }}>
                             Agent
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <select
-                                value={selectedAgent?.id ?? ""}
-                                onChange={(e) => {
-                                    const agent = agents.find((a) => a.id === e.target.value);
-                                    if (agent) onSelectAgent(agent);
-                                }}
-                                style={{ ...inputStyle, minWidth: 280, cursor: "pointer" }}
-                            >
-                                <option value="" disabled>Select an agent...</option>
-                                {agents.map((a) => (
-                                    <option key={a.id} value={a.id}>
-                                        {a.hostname} — {a.os} {a.platform} {a.arch}
-                                    </option>
-                                ))}
-                            </select>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, position: "relative" }}>
+							<button
+								onClick={() => setAgentPickerOpen((v) => !v)}
+								style={{ ...inputStyle, minWidth: 280, cursor: "pointer", textAlign: "left" }}
+							>
+								{selectedAgent ? selectedAgent.hostname : "Select an agent..."}
+							</button>
+                            {agentPickerOpen && (
+								<>
+									<div
+										style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
+										onClick={() => setAgentPickerOpen(false)}
+									/>
+									<div
+										style={{
+											position: "absolute",
+											top: "calc(100% + 4px)",
+											left: 0,
+											background: themeVars.surface,
+											border: `1px solid ${themeVars.border}`,
+											zIndex: 100,
+											minWidth: 280,
+											padding: 6,
+											boxSizing: "border-box",
+										}}
+									>
+										<AgentSearchList
+											currentAgentId={selectedAgent?.id}
+											onSelectAgent={(a) => {
+												onSelectAgent(a);
+												setAgentPickerOpen(false);
+											}}
+										/>
+									</div>
+								</>
+							)}
                             {selectedAgent && (
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontFamily: themeVars.font, color: themeVars.text }}>
                                     <span style={{ width: 7, height: 7, borderRadius: "50%", background: statusColor(selectedAgent, thresholds) }} />

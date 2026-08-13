@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { themeVars } from "../theme";
 import { SpectraLogo } from "./SpectraLogo";
 import { statusColor } from "../utils";
+import { api } from "../api";
+import { usePolling } from "../hooks/usePolling";
 import type { Page, OverviewAgent, User } from "../types";
 import { useThresholds } from "../ThresholdsContext";
 
@@ -11,7 +13,6 @@ interface SidebarProps {
     onNavigate: (page: Page) => void;
     selectedAgent: OverviewAgent | null;
     onSelectAgent: (agent: OverviewAgent) => void;
-    agents: OverviewAgent[];
     starredIds: string[];
     version: string;
 }
@@ -39,7 +40,6 @@ export function Sidebar({
     onNavigate,
     selectedAgent,
     onSelectAgent,
-    agents,
     starredIds,
     version,
 }: SidebarProps) {
@@ -53,9 +53,19 @@ export function Sidebar({
         }
     }, [currentPage]);
 
-    const starredAgents = agents
-        .filter((a) => starredIds.includes(a.id))
-        .sort((a, b) => a.hostname.localeCompare(b.hostname));
+    // Fetch details for jus tthe starred agents by ID, rather than riding
+    // along on a full-fleet fetch (the same problem AgentDetail/Diagnostics
+    // had). starredIds.join(",") gives useCallback a stable dependency even
+    // if the parent passes a fresh array reference each render.
+    const starredKey = starredIds.join(",")
+    const starredFetcher = useCallback((): Promise<OverviewAgent[]> => {
+        if (starredIds.length === 0) return Promise.resolve([]);
+        return api
+            .overviewPage({ ids: starredIds, size: starredIds.length, sort: "hostname", order: "asc", count: false })
+            .then((res) => res.agents);
+    }, [starredKey]);
+    const { data: starredAgentsData } = usePolling<OverviewAgent[]>(starredFetcher, 10_000);
+    const starredAgents = starredAgentsData ?? [];
 
     const navItems: NavItem[] = [
         { key: "overview", label: "Fleet Overview" },
@@ -105,7 +115,7 @@ export function Sidebar({
             Spectra
             </span>
         </div>
-
+ 
         {/* Navigation */}
         <div style={{ padding: "0 12px", marginBottom: 24 }}>
             <div
@@ -120,15 +130,15 @@ export function Sidebar({
             >
             Navigation
             </div>
-
+ 
             {navItems.map((item) => {
             if (item.adminOnly && !isAdmin) return null;
-
+ 
             // Hide diagnostics when detail is collapsed
             if (item.key === "diagnostics" && !detailExpanded) return null;
-
+ 
             const isActive = currentPage === item.key;
-
+ 
             // Detail item is special — has a collapse toggle
             if (item.key === "detail") {
                 return (
@@ -160,7 +170,7 @@ export function Sidebar({
                 </button>
                 );
             }
-
+ 
             return (
                 <button
                 key={item.key}
@@ -189,7 +199,7 @@ export function Sidebar({
             );
             })}
         </div>
-
+ 
         {/* Quick Access */}
         {starredAgents.length > 0 && (
             <div style={{ padding: "0 12px", marginBottom: 24 }}>
@@ -205,7 +215,7 @@ export function Sidebar({
             >
                 Quick Access
             </div>
-
+ 
             {starredAgents.map((agent) => (
                 <button
                 key={agent.id}
@@ -256,10 +266,10 @@ export function Sidebar({
             ))}
             </div>
         )}
-
+ 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
-
+ 
         {/* Footer */}
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${themeVars.border}` }}>
             <div

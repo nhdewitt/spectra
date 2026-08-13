@@ -14,12 +14,12 @@ import { ApplicationsTab } from "../components/ApplicationsTab";
 import { UpdatesTab } from "../components/UpdatesTab";
 import { ContainersTab } from "../components/ContainersTab";
 import { AgentLabelChips } from "../components/AgentLabelChips";
+import { AgentSearchList } from "../components/AgentSearchList";
 
 const TABS = ["metrics", "processes", "services", "containers", "apps", "updates"] as const;
 
 interface AgentDetailProps {
     agent: OverviewAgent;
-    agents: OverviewAgent[];
     user: User;
     onSelectAgent: (agent: OverviewAgent) => void;
     onBack: () => void;
@@ -29,7 +29,6 @@ interface AgentDetailProps {
 
 export function AgentDetail({
     agent,
-    agents,
     user,
     onSelectAgent,
     onBack,
@@ -84,9 +83,9 @@ export function AgentDetail({
                 >
                     ← BACK
                 </button>
-
+ 
                 <OSIcon os={agent.os} platform={agent.platform} size={18} />
-
+ 
                 <div
                     style={{
                         width: 10,
@@ -96,7 +95,7 @@ export function AgentDetail({
                         flexShrink: 0,
                     }}
                 />
-
+ 
                 {/* Hostname + dropdown */}
                 <div style={{ position: "relative" }}>
                     <button
@@ -118,7 +117,7 @@ export function AgentDetail({
                         {agent.hostname}
                         <span style={{ fontSize: 10, color: themeVars.textDim }}>▾</span>
                     </button>
-
+ 
                     {dropdownOpen && (
                         <>
                             <div
@@ -140,52 +139,18 @@ export function AgentDetail({
                                     background: themeVars.surface,
                                     border: `1px solid ${themeVars.border}`,
                                     zIndex: 100,
-                                    minWidth: 220,
-                                    maxHeight: 300,
-                                    overflowY: "auto",
+                                    minWidth: 260,
+                                    padding: 6,
+                                    boxSizing: "border-box",
                                 }}
                             >
-                                {agents
-                                    .slice()
-                                    .sort((a, b) => a.hostname.localeCompare(b.hostname))
-                                    .map((a) => (
-                                        <button
-                                            key={a.id}
-                                            onClick={() => {
-                                                onSelectAgent(a);
-                                                setDropdownOpen(false);
-                                            }}
-                                            style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 8,
-                                                width: "100%",
-                                                padding: "8px 12px",
-                                                fontSize: 12,
-                                                fontFamily: themeVars.font,
-                                                color: a.id === agent.id ? themeVars.text : themeVars.textMuted,
-                                                background: a.id === agent.id ? themeVars.accentDim : "transparent",
-                                                border: "none",
-                                                cursor: "pointer",
-                                                textAlign: "left",
-                                            }}
-                                        >
-                                            <span
-                                                style={{
-                                                    width: 6,
-                                                    height: 6,
-                                                    borderRadius: "50%",
-                                                    background: agentStatusColor(agentStatus(a, thresholds).status),
-                                                    flexShrink: 0,
-                                                }}
-                                            />
-                                            <OSIcon os={a.os} platform={a.platform} size={12} />
-                                            <span style={{ flex: 1 }}>{a.hostname}</span>
-                                            <span style={{ fontSize: 10, color: themeVars.textDim }}>
-                                                {a.platform}
-                                            </span>
-                                        </button>
-                                    ))}
+                                <AgentSearchList
+                                    currentAgentId={agent.id}
+                                    onSelectAgent={(a) => {
+                                        onSelectAgent(a);
+                                        setDropdownOpen(false);
+                                    }}
+                                />
                             </div>
                         </>
                     )}
