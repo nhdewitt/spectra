@@ -47,7 +47,7 @@ func gzipMiddleware(next http.Handler) http.Handler {
 		// Only compress API responses. The embedded frontend is served with its
 		// own Content-Length, and wrapping those in gzip would make the
 		// advertised length mismatch the compressed body.
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if !strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/api/v1/admin/releases/") {
 			next.ServeHTTP(w, r)
 			return
 		}

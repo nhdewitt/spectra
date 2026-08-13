@@ -69,9 +69,9 @@ func (a *Agent) selfUpdate(ctx context.Context, req protocol.UpdateAgentRequest)
 	hasher := sha256.New()
 	writer := io.MultiWriter(tmp, hasher)
 
-	if _, err := io.Copy(writer, resp.Body); err != nil {
+	if written, err := io.Copy(writer, resp.Body); err != nil {
 		tmp.Close()
-		return nil, fmt.Errorf("download write failed: %w", err)
+		return nil, fmt.Errorf("download write failed after %d of %d bytes: %w", written, resp.ContentLength, err)
 	}
 	tmp.Close()
 
