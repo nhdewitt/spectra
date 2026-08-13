@@ -2,10 +2,12 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nhdewitt/spectra/internal/database"
 )
 
@@ -32,6 +34,10 @@ type overviewPage struct {
 //	status, os, arch		equality filters
 //	search				hostname substring (LIKE-escaped)
 //	label				repeatable, "key:value", AND-combined
+//	id				repeatable UUID, AND-combined with other filters
+//									restricts to specific agents (e.g. a starred list);
+//									malformed values reject the whole request with 400
+//									rather than being skipped
 //	count				"true" to include total/total_pages; omit on routine
 //									polls to skip counting
 func (s *Server) handleOverviewPage(w http.ResponseWriter, r *http.Request) {
@@ -49,12 +55,19 @@ func (s *Server) handleOverviewPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ids, err := parseIDFilters(q["id"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	params := database.GetOverviewPageParams{
 		Search:    q.Get("search"),
 		OS:        emptyIfAll(q.Get("os")),
 		Arch:      emptyIfAll(q.Get("arch")),
 		Status:    emptyIfAll(q.Get("status")),
 		Labels:    parseLabelFilters(q["label"]),
+		IDs:       ids,
 		SortBy:    q.Get("sort"),
 		SortDir:   q.Get("order"),
 		Limit:     int32(size),
@@ -122,6 +135,29 @@ func emptyIfAll(v string) string {
 		return ""
 	}
 	return v
+}
+
+// parseIDFilters converts repeated "id" params into pre-validated
+// pgtype.UUID, restricting the candidate set to specific agents. Unlike
+// parseLabelFilters, a malformed value here is an error, not a silent skip;
+// this filter is used for exact, targeted lookups (e.g. resolving a starred
+// list) where dropping a bad ID would silently return the wrong set rather
+// than surface a caller bug. Empty strings are ignored.
+func parseIDFilters(raw []string) ([]pgtype.UUID, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	out := make([]pgtype.UUID, 0, len(raw))
+	for _, id := range raw {
+		if id == "" {
+			continue
+		}
+		if !uuidRegex.MatchString(id) {
+			return nil, fmt.Errorf("invalid id filter %q", id)
+		}
+		out = append(out, mustUUID(id))
+	}
+	return out, nil
 }
 
 // praseLabelFilters converts repeated "key:value" label params into filters.

@@ -3,6 +3,8 @@ package database
 import (
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // baseParams returns params with the ten threshold values set, so arg counting
@@ -148,6 +150,29 @@ func TestBuildQuery_LabelFilters(t *testing.T) {
 	}
 }
 
+// IDs filter emits one ANY(...) clause and binds the whole slice as a single
+// arg (not one arg per ID).
+func TestBuildQuery_IDsFilter(t *testing.T) {
+	p := baseParams()
+	p.IDs = []pgtype.UUID{{}, {}}
+	sql, args := buildOverviewPageQuery(p)
+
+	if !strings.Contains(sql, "a.id = ANY(") || !strings.Contains(sql, "::uuid[])") {
+		t.Errorf("IDs filter should add a.id = ANY(...::uuid[]); got:\n%s", sql)
+	}
+	// thresholds + ids (one slice arg) + limit + offset
+	if len(args) != thresholdArgCount+1+2 {
+		t.Errorf("args = %d, want %d", len(args), thresholdArgCount+1+2)
+	}
+}
+
+func TestBuildQuery_NoIDsNoANY(t *testing.T) {
+	sql, _ := buildOverviewPageQuery(baseParams())
+	if strings.Contains(sql, "a.id = ANY(") {
+		t.Error("empty IDs should not contain an a.id = ANY(...) clause")
+	}
+}
+
 func TestBuildQuery_StatusSort(t *testing.T) {
 	p := baseParams()
 	p.SortBy = "status"
@@ -244,6 +269,12 @@ func TestValidateOverviewParams(t *testing.T) {
 		}, false},
 		{"search over limit", func(p *GetOverviewPageParams) {
 			p.Search = strings.Repeat("a", maxSearchLen+1)
+		}, true},
+		{"ids at limit", func(p *GetOverviewPageParams) {
+			p.IDs = make([]pgtype.UUID, maxOverviewPageSize)
+		}, false},
+		{"ids over limit", func(p *GetOverviewPageParams) {
+			p.IDs = make([]pgtype.UUID, maxOverviewPageSize+1)
 		}, true},
 	}
 

@@ -160,3 +160,61 @@ func TestHandleOverviewPage_DBErrorIs500(t *testing.T) {
 		t.Errorf("status = %d, want 500 for DB error", rec.Code)
 	}
 }
+
+func TestHandleOverviewPage_InvalidIDIs400(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	mock.StatusThresholds = defaultThresholdsRow()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/overview/page?id=not-a-uuid", nil)
+	rec := httptest.NewRecorder()
+	s.handleOverviewPage(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for malformed id filter", rec.Code)
+	}
+}
+
+func TestParseIDFilters(t *testing.T) {
+	valid1 := "11111111-1111-1111-1111-111111111111"
+	valid2 := "22222222-2222-2222-2222-222222222222"
+
+	t.Run("empty input", func(t *testing.T) {
+		got, err := parseIDFilters(nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("got %d ids, want 0", len(got))
+		}
+	})
+
+	t.Run("valid UUIDs", func(t *testing.T) {
+		got, err := parseIDFilters([]string{valid1, valid2})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("got %d ids, want 2", len(got))
+		}
+		if !got[0].Valid || !got[1].Valid {
+			t.Error("parsed UUIDs should be Valid")
+		}
+	})
+
+	t.Run("empty string entries are skipped, not errors", func(t *testing.T) {
+		got, err := parseIDFilters([]string{valid1, "", valid2})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 2 {
+			t.Errorf("got %d ids, want 2 (empty entry skipped)", len(got))
+		}
+	})
+
+	t.Run("malformed UUID errors the whole request, not skipped", func(t *testing.T) {
+		_, err := parseIDFilters([]string{valid1, "not-a-uuid"})
+		if err == nil {
+			t.Error("expected an error for a malformed id, got nil")
+		}
+	})
+}

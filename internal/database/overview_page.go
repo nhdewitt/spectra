@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const (
@@ -34,6 +36,13 @@ type GetOverviewPageParams struct {
 	Arch   string
 	Status string
 	Labels []OverviewLabelFilter
+	// IDs restricts the candidate set to specific agents, AND-combined with
+	// any other filters present. Pre-validated pgtype.UUID, not raw strings;
+	// format validation happens in the HTTP handler, so a malformed value
+	// never reaches this layer. Used by pickers that need details for a small,
+	// known set of agents (e.g. a starred list) without paging through the
+	// whole fleet.
+	IDs []pgtype.UUID
 
 	SortBy  string
 	SortDir string
@@ -163,6 +172,9 @@ func buildInnerFilters(acc *argAcc, arg GetOverviewPageParams) []string {
 		esc := escapeLike(arg.Search)
 		conds = append(conds, "a.hostname ILIKE "+acc.p("%"+esc+"%")+" ESCAPE '\\'")
 	}
+	if len(arg.IDs) > 0 {
+		conds = append(conds, "a.id = ANY("+acc.p(arg.IDs)+"::uuid[])")
+	}
 	for _, lm := range arg.Labels {
 		conds = append(conds, fmt.Sprintf(
 			"EXISTS (SELECT 1 FROM agent_labels al WHERE al.agent_id = a.id AND al.key = %s AND al.value = %s)",
@@ -196,6 +208,9 @@ func validateOverviewParams(arg GetOverviewPageParams) error {
 	}
 	if len(arg.Search) > maxSearchLen {
 		return fmt.Errorf("%w: search too long (max %d)", ErrInvalidOverviewParam, maxSearchLen)
+	}
+	if len(arg.IDs) > maxOverviewPageSize {
+		return fmt.Errorf("%w: too many ids (max %d)", ErrInvalidOverviewParam, maxOverviewPageSize)
 	}
 	for _, lm := range arg.Labels {
 		if lm.Key == "" || lm.Value == "" {
