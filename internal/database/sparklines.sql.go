@@ -190,6 +190,7 @@ WITH disk_buckets AS (
         date_trunc('minute', time) AS bucket,
         MAX(used_percent)::double precision AS max_percent
     FROM metrics_disk
+    WHERE time >= NOW() - INTERVAL '1 hour'
     GROUP BY agent_id, date_trunc('minute', time)
 ),
 ranked AS (
@@ -215,6 +216,10 @@ type GetRecentDiskMaxRow struct {
 }
 
 // Returns the latest 30 disk max samples per agent, ordered chronologically.
+// Bounded to the last hour before aggregating: disk_buckets only ever needs
+// the 30 most recent 1-minute buckets per agent (60s collection interval),
+// but without a time filter the GROUP BY scanned the entire metrics_disk
+// history on every call.
 func (q *Queries) GetRecentDiskMax(ctx context.Context) ([]GetRecentDiskMaxRow, error) {
 	rows, err := q.db.Query(ctx, getRecentDiskMax)
 	if err != nil {
