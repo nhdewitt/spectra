@@ -4,6 +4,7 @@ import { formatBytes } from "../utils";
 import { useMetric } from "../hooks/useMetric";
 import { MetricChart, type SeriesDef } from "./MetricChart";
 import type {
+    CPUMetric,
     RangeSelection,
     DiskMetric,
     NetworkMetric,
@@ -20,6 +21,13 @@ interface PanelProps {
 
 interface MetricsTabProps extends PanelProps {
     cores: number;
+}
+
+interface CPUPanelProps {
+    data: CPUMetric[];
+    loading: boolean;
+    error: string | null;
+    rangeSel: RangeSelection;
 }
 
 type PivotedRow = { time: string; _ts?: number; [sensor: string]: string | number | null | undefined };
@@ -88,14 +96,7 @@ const WIFI_SERIES: SeriesDef[] = [
     { key: "noise_dbm", label: "Noise" },
 ];
 
-function CPUPanel({ agentId, rangeSel }: PanelProps) {
-    const fetchCPU = useAgentMetricFetcher(agentId, api.agentCPU);
-    const { data, loading, error } = useMetric(
-        fetchCPU,
-        rangeSel,
-        pollInterval(rangeSel)
-    );
-
+function CPUPanel({ data, loading, error, rangeSel }: CPUPanelProps) {
     return (
         <MetricChart
             title="CPU"
@@ -110,14 +111,7 @@ function CPUPanel({ agentId, rangeSel }: PanelProps) {
     );
 }
 
-function LoadPanel({ agentId, rangeSel, cores }: PanelProps & { cores: number }) {
-    const fetchCPU = useAgentMetricFetcher(agentId, api.agentCPU);
-    const { data, loading, error } = useMetric(
-        fetchCPU,
-        rangeSel,
-        pollInterval(rangeSel)
-    );
-
+function LoadPanel({ data, loading, error, rangeSel, cores }: CPUPanelProps & { cores: number }) {
     const refLines = useMemo(
         () => [{ y: cores, label: `${cores} cores`, color: themeVars.textDim }],
         [cores]
@@ -391,11 +385,14 @@ function WifiPanel({ agentId, rangeSel }: PanelProps) {
 }
 
 export function MetricsTab({ agentId, rangeSel, cores }: MetricsTabProps) {
+    const fetchCPU = useAgentMetricFetcher(agentId, api.agentCPU);
+    const cpu = useMetric(fetchCPU, rangeSel, pollInterval(rangeSel));
+
     return (
         <div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <CPUPanel agentId={agentId} rangeSel={rangeSel} />
-                <LoadPanel agentId={agentId} rangeSel={rangeSel} cores={cores} />
+                <CPUPanel {...cpu} rangeSel={rangeSel} />
+                <LoadPanel {...cpu} rangeSel={rangeSel} cores={cores} />
             </div>
 
             <MemoryPanel agentId={agentId} rangeSel={rangeSel} />
