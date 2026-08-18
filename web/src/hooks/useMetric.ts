@@ -95,7 +95,17 @@ function insertGaps<T extends { time: string }>(data: T[], maxGapMs: number): T[
 }
 
 function gapThreshold(sel: RangeSelection): number {
-    if (sel.type === "custom") return 5 * 60_000;
+    if (sel.type === "custom") {
+        // Must exceed the server's bucket width for this range, or every
+        // bucketed point reads as a gap. Mirrors bucketInterval in
+        // internal/server/bucket.go.
+        const dur = Date.parse(sel.end) - Date.parse(sel.start);
+        if (dur <= 60 * 60_000) return 2 * 60_000;
+        if (dur <= 6 * 60 * 60_000) return 5 * 60_000;
+        if (dur <= 24 * 60 * 60_000) return 15 * 60_000;
+        if (dur <= 7 * 24 * 60 * 60_000) return 60 * 60_000;
+        return 4 * 60 * 60_000;
+    }
 
     switch (sel.range) {
         case "5m":
