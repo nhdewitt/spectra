@@ -146,6 +146,9 @@ func fleetQuery[P any, R any](ctx context.Context, queryFn func(context.Context,
 }
 
 func (s *Server) dbError(w http.ResponseWriter, err error, handler string) {
+	if errors.Is(err, context.Canceled) {
+		return
+	}
 	s.Logger.Error("database query failed", "error", err, "handler", handler)
 	http.Error(w, "database error", http.StatusInternalServerError)
 }
