@@ -11,6 +11,7 @@ import { AgentManagement } from "./pages/AgentManagement";
 import { Diagnostics } from "./pages/Diagnostics";
 import { UserManagement } from "./pages/UserManagement";
 import { Settings } from "./pages/Settings";
+import { ServerSettings } from "./pages/ServerSettings";
 import { Tags } from "./pages/Tags";
 import type { User, Page, OverviewAgent, Thresholds } from "./types";
 import { usePolling } from "./hooks";
@@ -263,6 +264,8 @@ export default function App() {
 					{page === "settings" && (
 						<Settings user={user} onLogout={handleLogout} />
 					)}
+
+					{page === "server" && <ServerSettings user={user} />}
  
 					{page === "alerts" && <Alerts user={user} />}
 				</div>

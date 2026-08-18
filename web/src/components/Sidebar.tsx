@@ -6,6 +6,7 @@ import { api } from "../api";
 import { usePolling } from "../hooks/usePolling";
 import type { Page, OverviewAgent, User } from "../types";
 import { useThresholds } from "../ThresholdsContext";
+import { NavIcon } from "../icons";
 
 interface SidebarProps {
     user: User;
@@ -17,21 +18,12 @@ interface SidebarProps {
     version: string;
 }
 
-const NAV_ICON: Record<string, string> = {
-    overview: "■",
-    detail: "◆",
-    diagnostics: "○",
-    agents: "☐",
-    tags: "▲",
-    alerts: "!",
-    users: "☐",
-};
-
 interface NavItem {
     key: Page;
     label: string;
     indent?: boolean;
     adminOnly?: boolean;
+    superadminOnly?: boolean;
 }
 
 export function Sidebar({
@@ -75,6 +67,7 @@ export function Sidebar({
         { key: "tags", label: "Tags" },
         { key: "alerts", label: "Alerts" },
         { key: "users", label: "User Mgmt", adminOnly: true },
+        { key: "server", label: "Server Settings", superadminOnly: true },
     ];
 
     const isAdmin = user.role === "admin" || user.role === "superadmin";
@@ -83,7 +76,9 @@ export function Sidebar({
         <div
         style={{
             width: 170,
-            minHeight: "100vh",
+            height: "100vh",
+            position: "sticky",
+            top: 0,
             background: themeVars.surface,
             borderRight: `1px solid ${themeVars.border}`,
             display: "flex",
@@ -116,159 +111,159 @@ export function Sidebar({
             </span>
         </div>
  
-        {/* Navigation */}
-        <div style={{ padding: "0 12px", marginBottom: 24 }}>
-            <div
-            style={{
-                fontSize: 9,
-                color: themeVars.textDim,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                marginBottom: 8,
-                padding: "0 4px",
-            }}
-            >
-            Navigation
-            </div>
- 
-            {navItems.map((item) => {
-            if (item.adminOnly && !isAdmin) return null;
- 
-            // Hide diagnostics when detail is collapsed
-            if (item.key === "diagnostics" && !detailExpanded) return null;
- 
-            const isActive = currentPage === item.key;
- 
-            // Detail item is special — has a collapse toggle
-            if (item.key === "detail") {
-                return (
-                <button
-                    key={item.key}
-                    onClick={() => {
-                    setDetailExpanded((v) => !v);
-                    onNavigate("detail");
-                    }}
-                    style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    width: "100%",
-                    padding: "7px 8px",
-                    fontSize: 12,
-                    color: isActive ? themeVars.accent : themeVars.textMuted,
-                    background: isActive ? themeVars.accentDim : "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontFamily: themeVars.font,
-                    }}
+        <div style={{ flex: 1, overflowY: "auto", minWidth: 0 }}>
+            {/* Navigation */}
+            <div style={{ padding: "0 12px", marginBottom: 24 }}>
+                <div
+                style={{
+                    fontSize: 9,
+                    color: themeVars.textDim,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    marginBottom: 8,
+                    padding: "0 4px",
+                }}
                 >
+                Navigation
+                </div>
+    
+                {navItems.map((item) => {
+                if (item.adminOnly && !isAdmin) return null;
+                if (item.superadminOnly && user.role !== "superadmin") return null;
+    
+                // Hide diagnostics when detail is collapsed
+                if (item.key === "diagnostics" && !detailExpanded) return null;
+    
+                const isActive = currentPage === item.key;
+    
+                // Detail item is special — has a collapse toggle
+                if (item.key === "detail") {
+                    return (
+                    <button
+                        key={item.key}
+                        onClick={() => {
+                        setDetailExpanded((v) => !v);
+                        onNavigate("detail");
+                        }}
+                        style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        width: "100%",
+                        padding: "7px 8px",
+                        fontSize: 12,
+                        color: isActive ? themeVars.accent : themeVars.textMuted,
+                        background: isActive ? themeVars.accentDim : "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontFamily: themeVars.font,
+                        }}
+                    >
+                        <span style={{ fontSize: 10, width: 14, textAlign: "center" }}>
+                        {<NavIcon page={item.key} />}
+                        </span>
+                        {item.label}
+                    </button>
+                    );
+                }
+    
+                return (
+                    <button
+                    key={item.key}
+                    onClick={() => onNavigate(item.key)}
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        width: "100%",
+                        padding: "7px 8px",
+                        paddingLeft: item.indent ? 30 : 8,
+                        fontSize: 12,
+                        color: isActive ? themeVars.accent : themeVars.textMuted,
+                        background: isActive ? themeVars.accentDim : "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontFamily: themeVars.font,
+                    }}
+                    >
                     <span style={{ fontSize: 10, width: 14, textAlign: "center" }}>
-                    {NAV_ICON[item.key]}
+                        {<NavIcon page={item.key} />}
                     </span>
                     {item.label}
-                </button>
+                    </button>
                 );
-            }
- 
-            return (
-                <button
-                key={item.key}
-                onClick={() => onNavigate(item.key)}
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    width: "100%",
-                    padding: "7px 8px",
-                    paddingLeft: item.indent ? 30 : 8,
-                    fontSize: 12,
-                    color: isActive ? themeVars.accent : themeVars.textMuted,
-                    background: isActive ? themeVars.accentDim : "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontFamily: themeVars.font,
-                }}
+                })}
+            </div>
+    
+            {/* Quick Access */}
+            {starredAgents.length > 0 && (
+                <div style={{ padding: "0 12px", marginBottom: 24 }}>
+                <div
+                    style={{
+                    fontSize: 9,
+                    color: themeVars.textDim,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    marginBottom: 8,
+                    padding: "0 4px",
+                    }}
                 >
-                <span style={{ fontSize: 10, width: 14, textAlign: "center" }}>
-                    {NAV_ICON[item.key]}
-                </span>
-                {item.label}
-                </button>
-            );
-            })}
+                    Quick Access
+                </div>
+    
+                {starredAgents.map((agent) => (
+                    <button
+                    key={agent.id}
+                    onClick={() => {
+                        onSelectAgent(agent);
+                        onNavigate("detail");
+                    }}
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        width: "100%",
+                        padding: "5px 8px",
+                        fontSize: 11,
+                        color:
+                        selectedAgent?.id === agent.id
+                            ? themeVars.text
+                            : themeVars.textMuted,
+                        background:
+                        selectedAgent?.id === agent.id
+                            ? themeVars.accentDim
+                            : "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontFamily: themeVars.font,
+                    }}
+                    >
+                    <span
+                        style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: statusColor(agent, thresholds),
+                        flexShrink: 0,
+                        }}
+                    />
+                    <span
+                        style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        }}
+                    >
+                        {agent.hostname}
+                    </span>
+                    </button>
+                ))}
+                </div>
+            )}
         </div>
- 
-        {/* Quick Access */}
-        {starredAgents.length > 0 && (
-            <div style={{ padding: "0 12px", marginBottom: 24 }}>
-            <div
-                style={{
-                fontSize: 9,
-                color: themeVars.textDim,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                marginBottom: 8,
-                padding: "0 4px",
-                }}
-            >
-                Quick Access
-            </div>
- 
-            {starredAgents.map((agent) => (
-                <button
-                key={agent.id}
-                onClick={() => {
-                    onSelectAgent(agent);
-                    onNavigate("detail");
-                }}
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    width: "100%",
-                    padding: "5px 8px",
-                    fontSize: 11,
-                    color:
-                    selectedAgent?.id === agent.id
-                        ? themeVars.text
-                        : themeVars.textMuted,
-                    background:
-                    selectedAgent?.id === agent.id
-                        ? themeVars.accentDim
-                        : "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontFamily: themeVars.font,
-                }}
-                >
-                <span
-                    style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    background: statusColor(agent, thresholds),
-                    flexShrink: 0,
-                    }}
-                />
-                <span
-                    style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    }}
-                >
-                    {agent.hostname}
-                </span>
-                </button>
-            ))}
-            </div>
-        )}
- 
-        {/* Spacer */}
-        <div style={{ flex: 1 }} />
  
         {/* Footer */}
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${themeVars.border}` }}>
