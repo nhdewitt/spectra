@@ -83,6 +83,10 @@ func runMigrations(ctx context.Context, q querier, existingInstall bool) (int, e
 		}
 	}
 
+	if _, err := q.Exec(ctx, `SET statement_timeout = 0;`); err != nil {
+		return 0, fmt.Errorf("clearing statement_timeout: %w", err)
+	}
+
 	count := 0
 	for _, f := range files {
 		version := migrationVersion(f)

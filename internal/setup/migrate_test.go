@@ -93,6 +93,26 @@ func readMigrationContent(filename string) (string, error) {
 	return string(b), nil
 }
 
+// postBaselineMigrations returns the migrations that must genuinely execute on
+// an existing install: everything ordered after migrationTrackingBaseline.
+// Derived from the embedded FS so adding a migration needs no test edit.
+func postBaselineMigrations(t *testing.T) []string {
+	t.Helper()
+
+	files, err := findMigrations()
+	if err != nil {
+		t.Fatalf("findMigrations: %v", err)
+	}
+
+	var out []string
+	for _, f := range files {
+		if migrationVersion(f) > migrationTrackingBaseline {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // TestBackfillVersions_CutoffBoundary tests the exact boundary with
 // synthetic filenames, independent of whatever the real migration set
 // happens to contain at any given time.
@@ -149,46 +169,40 @@ func TestBackfillVersions_OnlyBackfillsPreTrackingVersions(t *testing.T) {
 // TestRunMigrations_ExecutesPostCutoffMigrationsOnExistingInstall is the
 // direct regression test for the production incident: on an existing
 // install (empty schema_migrations, TablesExist would report true), the
-// two migrations added after the tracking system's introduction must
+// migrations added after the tracking system's introduction must
 // actually execute their real DDL, not just get their version recorded
 // via backfill. Before the fix, this test would fail on both assertions -
-// 018/019 would end up "applied" in schema_migrations, but their DDL
-// would never have actually run against the database.
+// post-baseline migrations would end up "applied" in schema_migrations,
+// but their DDL would never have actually run against the database.
 func TestRunMigrations_ExecutesPostCutoffMigrationsOnExistingInstall(t *testing.T) {
 	q := newFakeQuerier()
+
+	want := postBaselineMigrations(t)
+	if len(want) == 0 {
+		t.Fatal("no post-baseline migrations found; baseline constant may be stale")
+	}
 
 	applied, err := runMigrations(context.Background(), q, true /* existingInstall */)
 	if err != nil {
 		t.Fatalf("runMigrations: %v", err)
 	}
-
-	// Exactly the two post-cutoff migrations should have actually executed.
-	if applied != 2 {
-		t.Errorf("applied = %d, want 2 (018 and 019 executing for real)", applied)
+	if applied != len(want) {
+		t.Errorf("applied = %d, want %d", applied, len(want))
 	}
 
-	if !q.appliedVersions["018_status_thresholds"] {
-		t.Error("018_status_thresholds should be recorded as applied after running")
-	}
-	if !q.appliedVersions["019_overview_indexes"] {
-		t.Error("019_overview_indexes should be recorded as applied after running")
-	}
-
-	// The critical distinction: was the real DDL executed, or only the
-	// bookkeeping row inserted? This is what actually would have caught
-	// the incident - schema_migrations claimed 018 was applied, but
-	// CREATE TABLE status_thresholds had never run.
-	if !q.ranRealDDL(t, "018_status_thresholds.up.sql") {
-		t.Error("018_status_thresholds's actual DDL was never executed - only backfilled, reproducing the incident")
-	}
-	if !q.ranRealDDL(t, "019_overview_indexes.up.sql") {
-		t.Error("019_overview_indexes's actual DDL was never executed - only backfilled")
+	for _, f := range want {
+		v := migrationVersion(f)
+		if !q.appliedVersions[v] {
+			t.Errorf("%s should be recorded as applied", v)
+		}
+		if !q.ranRealDDL(t, f) {
+			t.Errorf("%s's DDL was never executed — only backfilled, reproducing the incident", v)
+		}
 	}
 
-	// Sanity check the other direction: an older, genuinely-pre-tracking
-	// migration should NOT have had its DDL re-executed (only backfilled).
-	if q.ranRealDDL(t, "017_smtp_config.up.sql") {
-		t.Error("017_smtp_config's DDL should not have been re-executed - it should only be backfilled")
+	// Negative control: the baseline itself must be backfilled, not re-executed.
+	if q.ranRealDDL(t, migrationTrackingBaseline+".up.sql") {
+		t.Errorf("%s's DDL should not have been re-executed", migrationTrackingBaseline)
 	}
 }
 
