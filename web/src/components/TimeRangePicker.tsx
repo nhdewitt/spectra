@@ -4,6 +4,12 @@ import type { TimeRange, RangeSelection } from "../types";
 
 const QUICK_RANGES: TimeRange[] = ["5m", "15m", "1h", "6h", "24h", "7d", "30d"];
 
+/**
+ * Mirrors retentionDays in internal/server/api_handlers.go and the drop_after
+ * interval on the metrics hypertables. Data older than this no longer exists.
+ */
+const RETENTION_DAYS = 30;
+
 /** Format an ISO string to the datetime-local input format (YYYY-MM-DDTHH:MM). */
 function toLocalInput(iso: string): string {
     const d = new Date(iso);
@@ -77,6 +83,14 @@ export function TimeRangePicker({
     const activeRange = isQuick ? value.range : null;
 
     const maxDate = toLocalInput(new Date().toISOString());
+    const minDate = toLocalInput(
+        new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString()
+    );
+    const customInvalid =
+        !customStart ||
+        !customEnd ||
+        new Date(customStart) >= new Date(customEnd) ||
+        new Date(customStart) < new Date(minDate);
 
     return (
         <div>
@@ -163,6 +177,7 @@ export function TimeRangePicker({
                         <input
                             type="datetime-local"
                             value={toLocalInput(customStart)}
+                            min={minDate}
                             max={maxDate}
                             onChange={(e) => setCustomStart(fromLocalInput(e.target.value))}
                             style={{
@@ -195,6 +210,7 @@ export function TimeRangePicker({
                         <input
                             type="datetime-local"
                             value={toLocalInput(customEnd)}
+                            min={minDate}
                             max={maxDate}
                             onChange={(e) => setCustomEnd(fromLocalInput(e.target.value))}
                             style={{
@@ -212,20 +228,17 @@ export function TimeRangePicker({
 
                     <button
                         onClick={handleApply}
-                        disabled={!customStart || !customEnd || new Date(customStart) >= new Date(customEnd)}
+                        disabled={customInvalid}
                         style={{
                             padding: "6px 16px",
                             fontSize: 11,
                             fontFamily: themeVars.font,
                             fontWeight: 500,
                             color: "#fff",
-                            background:
-                                !customStart || !customEnd || new Date(customStart) >= new Date(customEnd)
-                                    ? themeVars.accentDim
-                                    : themeVars.accent,
+                            background: customInvalid ? themeVars.accentDim : themeVars.accent,
                             border: "none",
                             cursor:
-                                !customStart || !customEnd || new Date(customStart) >= new Date(customEnd)
+                                customInvalid
                                     ? "not-allowed"
                                     : "pointer",
                             letterSpacing: "0.02em",

@@ -36,6 +36,13 @@ type agentOverview struct {
 	UpdateAvailable  bool     `json:"update_available"`
 }
 
+const retentionDays = 30
+
+// clockSkewTolerance absorbs the gap between the client computing a start
+// time and the server evaluating the retention boundary, plus any drift
+// between their clocks. Without it a legitimate 30d request fails.
+const clockSkewTolerance = 5 * time.Minute
+
 // shortRanges maps quick range strings to durations.
 var shortRanges = map[string]time.Duration{
 	"5m":  5 * time.Minute,
@@ -53,7 +60,11 @@ var shortRanges = map[string]time.Duration{
 //   - Calendar range: ?start=YYYY-MM-DDT00:00:00Z&end=YYYY-MM-DDT00:00:00Z
 //
 // If end is omitted in calendar, it defaults to now.
-// Start is clamped to the 30-day retention boundary.
+// Calendar ranges beyond the retention window are rejected rather than
+// clamped: silently returning 30 days for a 90-day request mislabels the
+// result. A small tolerance absorbs client/server clock skew so a legitimate
+// 30d request doesn't fail at the boundary. Quick ranges top out at 30d so
+// they cannot exceed the window.
 func parseTimeRange(r *http.Request) (pgtype.Timestamptz, pgtype.Timestamptz, error) {
 	now := time.Now()
 	oldest := now.AddDate(0, 0, -30)
@@ -88,8 +99,8 @@ func parseTimeRange(r *http.Request) (pgtype.Timestamptz, pgtype.Timestamptz, er
 		}
 	}
 
-	if start.Before(oldest) {
-		start = oldest
+	if start.Before(oldest.Add(-clockSkewTolerance)) {
+		return pgtype.Timestamptz{}, pgtype.Timestamptz{}, fmt.Errorf("start time exceeds the %d-day retention window", retentionDays)
 	}
 	if end.After(now) {
 		end = now

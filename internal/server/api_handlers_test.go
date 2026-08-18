@@ -676,18 +676,21 @@ func TestParseTimeRange_StartAfterEnd(t *testing.T) {
 	}
 }
 
-func TestParseTimeRange_ClampTo30Days(t *testing.T) {
+func TestParseTimeRange_RejectsBeyondRetention(t *testing.T) {
 	s := time.Now().AddDate(0, 0, -60).Format(time.RFC3339)
 
 	req := httptest.NewRequest(http.MethodGet, "/?start="+s, nil)
-	start, _, err := parseTimeRange(req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if _, _, err := parseTimeRange(req); err == nil {
+		t.Error("start 60 days ago should be rejected, retention is 30 days")
 	}
+}
 
-	oldest := time.Now().AddDate(0, 0, -30)
-	if diff := start.Time.Sub(oldest); diff < -2*time.Second || diff > 2*time.Second {
-		t.Errorf("start should be clamped to ~30 days ago, got %v", start.Time)
+func TestParseTimeRange_AcceptsRetentionBoundary(t *testing.T) {
+	s := time.Now().AddDate(0, 0, -30).Format(time.RFC3339)
+
+	req := httptest.NewRequest(http.MethodGet, "/?start="+s, nil)
+	if _, _, err := parseTimeRange(req); err != nil {
+		t.Errorf("start at exactly 30 days should be accepted: %v", err)
 	}
 }
 
