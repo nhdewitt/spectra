@@ -3,12 +3,19 @@ package collector
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
+
+// testLogger keeps collector output out of the test log.
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 // Mock Metric implementation for testing
 type mockMetric struct {
@@ -30,7 +37,7 @@ func newHarness(bufferSize int) *harness {
 	out := make(chan protocol.Envelope, bufferSize)
 	ctx, cancel := context.WithCancel(context.Background())
 	return &harness{
-		c:      New("test-host", out),
+		c:      New("test-host", out, testLogger()),
 		out:    out,
 		ctx:    ctx,
 		cancel: cancel,
@@ -268,7 +275,7 @@ func TestCollector_NilMetricInSlice(t *testing.T) {
 }
 
 func BenchmarkCollector_Wrap(b *testing.B) {
-	c := New("test-host", make(chan protocol.Envelope, 100))
+	c := New("test-host", make(chan protocol.Envelope, 100), testLogger())
 	m := mockMetric{Value: 42}
 
 	b.ResetTimer()

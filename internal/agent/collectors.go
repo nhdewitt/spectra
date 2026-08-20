@@ -27,7 +27,7 @@ type job struct {
 }
 
 func (a *Agent) startCollectors(ctx context.Context) {
-	c := collector.New(a.Config.Hostname, a.metricsCh)
+	c := collector.New(a.Config.Hostname, a.metricsCh, a.Logger.Logger)
 
 	diskCol := disk.MakeDiskCollector(a.DriveCache)
 	diskIOCol := disk.MakeDiskIOCollector(a.DriveCache)
