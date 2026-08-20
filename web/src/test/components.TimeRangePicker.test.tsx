@@ -74,10 +74,14 @@ describe('TimeRangePicker', () => {
     })
 
     it('calls onChange with custom range on APPLY', () => {
+        // Relative to now: hardcoded dates eventually age past the 30-day
+        // retention floor, which disables APPLY and silently breaks this test.
+        const end = new Date(Date.now() - 60 * 60 * 1000)
+        const start = new Date(end.getTime() - 4 * 60 * 60 * 1000)
         const customValue: RangeSelection = {
-        type: 'custom',
-        start: '2026-06-01T08:00:00Z',
-        end: '2026-06-01T12:00:00Z',
+            type: 'custom',
+            start: start.toISOString(),
+            end: end.toISOString(),
         }
         const onChange = vi.fn()
         render(<TimeRangePicker value={customValue} onChange={onChange} />)

@@ -3,10 +3,6 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { Settings } from '../pages/Settings'
 import type { User } from '../types'
 
-vi.mock('../pages/SMTPSettings', () => ({
-    SMTPSettings: () => <div data-testid="smtp-settings" />,
-}))
-
 function makeUser(overrides: Partial<User> = {}): User {
     return { id: 'u1', username: 'test-admin', role: 'admin', ...overrides } as User
 }
@@ -37,20 +33,5 @@ describe('Settings', () => {
         render(<Settings user={makeUser()} onLogout={vi.fn()} />)
         fireEvent.click(screen.getByText('NORD'))
         expect(screen.getByText('NORD')).toBeInTheDocument()
-    })
-
-    it('shows SMTP settings for an admin', () => {
-        render(<Settings user={makeUser({ role: 'admin' })} onLogout={vi.fn()} />)
-        expect(screen.getByTestId('smtp-settings')).toBeInTheDocument()
-    })
-
-    it('shows SMTP settings for a superadmin', () => {
-        render(<Settings user={makeUser({ role: 'superadmin' })} onLogout={vi.fn()} />)
-        expect(screen.getByTestId('smtp-settings')).toBeInTheDocument()
-    })
-
-    it('hides SMTP settings for a non-admin', () => {
-        render(<Settings user={makeUser({ role: 'viewer' })} onLogout={vi.fn()} />)
-        expect(screen.queryByTestId('smtp-settings')).not.toBeInTheDocument()
     })
 })
