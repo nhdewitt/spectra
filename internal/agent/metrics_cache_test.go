@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -132,5 +133,142 @@ func BenchmarkMetricsCache_Drain(b *testing.B) {
 	for b.Loop() {
 		c.Add(makeEnvelopes(50))
 		c.Drain()
+	}
+}
+
+// numberedEnvelopes gives each envelope a distinct hostname so order-sensitive
+// assertions can tell them apart. makeEnvelopes leaves Hostname empty.
+func numberedEnvelopes(n int) []protocol.Envelope {
+	envs := make([]protocol.Envelope, n)
+	for i := range envs {
+		envs[i] = protocol.Envelope{
+			Type:      "cpu",
+			Timestamp: time.Now(),
+			Hostname:  fmt.Sprintf("test-host-%d", i),
+		}
+	}
+	return envs
+}
+
+func TestDrainN_TakesOldestFirst(t *testing.T) {
+	c := newMetricsCache(100)
+	c.Add(numberedEnvelopes(10))
+
+	got := c.DrainN(4)
+
+	if len(got) != 4 {
+		t.Fatalf("drained: got %d, want 4", len(got))
+	}
+	if got[0].Hostname != "test-host-0" || got[3].Hostname != "test-host-3" {
+		t.Errorf("drained the wrong envelopes: %q..%q", got[0].Hostname, got[3].Hostname)
+	}
+	if c.Len() != 6 {
+		t.Errorf("remaining: got %d, want 6", c.Len())
+	}
+
+	next := c.DrainN(4)
+	if next[0].Hostname != "test-host-4" {
+		t.Errorf("second chunk starts at %q, want test-host-4", next[0].Hostname)
+	}
+}
+
+func TestDrainN_TakesAllWhenNExceedsCache(t *testing.T) {
+	c := newMetricsCache(100)
+	c.Add(numberedEnvelopes(3))
+
+	if got := c.DrainN(500); len(got) != 3 {
+		t.Errorf("drained: got %d, want 3", len(got))
+	}
+	if c.Len() != 0 {
+		t.Errorf("remaining: got %d, want 0", c.Len())
+	}
+}
+
+func TestDrainN_EmptyAndNonPositive(t *testing.T) {
+	c := newMetricsCache(100)
+
+	if got := c.DrainN(10); got != nil {
+		t.Errorf("empty cache: got %v, want nil", got)
+	}
+
+	c.Add(numberedEnvelopes(3))
+	if got := c.DrainN(0); got != nil {
+		t.Errorf("n=0: got %v, want nil", got)
+	}
+	if c.Len() != 3 {
+		t.Errorf("n=0 must not consume: got %d, want 3", c.Len())
+	}
+}
+
+func TestDrainN_LoopEmptiesCache(t *testing.T) {
+	c := newMetricsCache(1000)
+	c.Add(numberedEnvelopes(250))
+
+	chunks := 0
+	for {
+		batch := c.DrainN(100)
+		if len(batch) == 0 {
+			break
+		}
+		chunks++
+		if chunks > 10 {
+			t.Fatal("DrainN loop did not terminate")
+		}
+	}
+
+	if chunks != 3 {
+		t.Errorf("chunks: got %d, want 3", chunks)
+	}
+	if c.Len() != 0 {
+		t.Errorf("remaining: got %d, want 0", c.Len())
+	}
+}
+
+func TestRequeue_PutsEnvelopesBackAtTheFront(t *testing.T) {
+	c := newMetricsCache(100)
+	c.Add(numberedEnvelopes(6))
+
+	drained := c.DrainN(2)
+	c.Requeue(drained)
+
+	if c.Len() != 6 {
+		t.Fatalf("cache size after requeue: got %d, want 6", c.Len())
+	}
+
+	all := c.Drain()
+	if all[0].Hostname != "test-host-0" {
+		t.Errorf("requeued envelopes are not at the front: first is %q, want test-host-0", all[0].Hostname)
+	}
+	if all[5].Hostname != "test-host-5" {
+		t.Errorf("order after requeue is wrong: last is %q, want test-host-5", all[5].Hostname)
+	}
+}
+
+func TestRequeue_EvictsOldestOnOverflow(t *testing.T) {
+	c := newMetricsCache(5)
+	c.Add(numberedEnvelopes(5))
+
+	// Requeueing more than the cache can hold drops the oldest, which are the
+	// ones at the front of the requeued block.
+	older := []protocol.Envelope{{Hostname: "test-host-older"}, {Hostname: "test-host-older-2"}}
+	c.Requeue(older)
+
+	if c.Len() != 5 {
+		t.Fatalf("cache size: got %d, want 5 (maxSize)", c.Len())
+	}
+	all := c.Drain()
+	if all[len(all)-1].Hostname != "test-host-4" {
+		t.Errorf("newest envelope was evicted: last is %q, want test-host-4", all[len(all)-1].Hostname)
+	}
+}
+
+func TestRequeue_EmptyIsNoOp(t *testing.T) {
+	c := newMetricsCache(100)
+	c.Add(numberedEnvelopes(3))
+
+	c.Requeue(nil)
+
+	if c.Len() != 3 {
+		t.Errorf("cache size: got %d, want 3", c.Len())
 	}
 }

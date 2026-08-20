@@ -4,7 +4,9 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -332,4 +334,201 @@ func TestHandleCommand_ContextTimeout(t *testing.T) {
 	a.handleCommand(ctx, cmd)
 
 	// Should still attempt to upload the result
+}
+
+// TestUploadCommandResult_UnaffectedByMetricEncodeFailure covers the blast
+// radius of the gzip mutex, not the metric path itself: compressPayload is
+// shared, so a metric batch that failed to encode used to leave the lock held
+// and take command results down with it. Diagnostics stopped working with no
+// error anywhere -- uploads simply blocked forever.
+func TestUploadCommandResult_UnaffectedByMetricEncodeFailure(t *testing.T) {
+	var got protocol.CommandResult
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		defer gz.Close()
+		json.NewDecoder(gz).Decode(&got)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	a := newTestAgentWithLogger()
+	a.Config.BaseURL = srv.URL
+	a.Config.MetricsPath = "/api/v1/agent/metrics"
+
+	// Fail an encode on the metric path first.
+	if err := a.postCompressed(context.Background(), srv.URL+"/api/v1/agent/metrics", []protocol.Envelope{nanEnvelope()}); err == nil {
+		t.Fatal("expected the metric encode to fail")
+	}
+
+	cmd := protocol.Command{ID: "cmd-abc", Type: protocol.CmdFetchLogs}
+	done := make(chan error, 1)
+	go func() {
+		done <- a.uploadCommandResult(context.Background(), cmd, map[string]string{"status": "ok"}, nil)
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("upload command result: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("uploadCommandResult never returned: the failed metric encode left gzipMu held")
+	}
+
+	if got.ID != cmd.ID {
+		t.Errorf("uploaded command ID: got %q, want %q", got.ID, cmd.ID)
+	}
+}
+
+func TestUploadCommandResult_ReportsCommandError(t *testing.T) {
+	var got protocol.CommandResult
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		defer gz.Close()
+		json.NewDecoder(gz).Decode(&got)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	a := newTestAgentWithLogger()
+	a.Config.BaseURL = srv.URL
+
+	cmd := protocol.Command{ID: "cmd-def", Type: protocol.CmdDiskUsage}
+	if err := a.uploadCommandResult(context.Background(), cmd, nil, context.DeadlineExceeded); err != nil {
+		t.Fatalf("upload command result: %v", err)
+	}
+
+	if got.Error != context.DeadlineExceeded.Error() {
+		t.Errorf("reported error: got %q, want %q", got.Error, context.DeadlineExceeded.Error())
+	}
+}
+
+func TestUploadCommandResult_UnmarshalablePayloadStillReports(t *testing.T) {
+	var got protocol.CommandResult
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		defer gz.Close()
+		json.NewDecoder(gz).Decode(&got)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	a := newTestAgentWithLogger()
+	a.Config.BaseURL = srv.URL
+
+	// A payload json.Marshal rejects becomes a reported error rather than a
+	// dropped result, so the server still learns the command finished.
+	cmd := protocol.Command{ID: "cmd-ghi", Type: protocol.CmdDiskUsage}
+	if err := a.uploadCommandResult(context.Background(), cmd, map[string]float64{"usage": math.Inf(1)}, nil); err != nil {
+		t.Fatalf("upload command result: %v", err)
+	}
+
+	if got.Error == "" {
+		t.Error("expected the marshal failure to be reported in the result")
+	}
+	if got.ID != cmd.ID {
+		t.Errorf("uploaded command ID: got %q, want %q", got.ID, cmd.ID)
+	}
+}
+
+func TestRestartRequested(t *testing.T) {
+	updateCmd := protocol.Command{ID: "cmd-update", Type: protocol.CmdUpdateAgent}
+
+	tests := []struct {
+		name   string
+		cmd    protocol.Command
+		result any
+		err    error
+		want   bool
+	}{
+		{
+			name:   "installed a new binary",
+			cmd:    updateCmd,
+			result: &protocol.UpdateAgentResult{Status: protocol.UpdateStatusRestarting},
+			want:   true,
+		},
+		{
+			name:   "already on the target version",
+			cmd:    updateCmd,
+			result: &protocol.UpdateAgentResult{Status: protocol.UpdateStatusAlreadyCurrent},
+			want:   false,
+		},
+		{
+			name:   "update failed",
+			cmd:    updateCmd,
+			result: nil,
+			err:    errors.New("hash mismatch"),
+			want:   false,
+		},
+		{
+			name:   "a diagnostic is never a restart",
+			cmd:    protocol.Command{ID: "cmd-ping", Type: protocol.CmdNetworkDiag},
+			result: &protocol.UpdateAgentResult{Status: protocol.UpdateStatusRestarting},
+			want:   false,
+		},
+		{
+			name:   "nil result",
+			cmd:    updateCmd,
+			result: (*protocol.UpdateAgentResult)(nil),
+			want:   false,
+		},
+		{
+			name:   "unexpected result type",
+			cmd:    updateCmd,
+			result: map[string]string{"status": protocol.UpdateStatusRestarting},
+			want:   false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := restartRequested(tc.cmd, tc.result, tc.err); got != tc.want {
+				t.Errorf("restartRequested: got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExecTimeoutFor(t *testing.T) {
+	if got := execTimeoutFor(protocol.CmdUpdateAgent); got != updateExecTimeout {
+		t.Errorf("update: got %v, want %v", got, updateExecTimeout)
+	}
+
+	for _, ct := range []protocol.CommandType{
+		protocol.CmdFetchLogs,
+		protocol.CmdDiskUsage,
+		protocol.CmdNetworkDiag,
+		protocol.CmdListMounts,
+		protocol.CmdRestartAgent,
+	} {
+		if got := execTimeoutFor(ct); got != commandExecTimeout {
+			t.Errorf("%s: got %v, want %v", ct, got, commandExecTimeout)
+		}
+	}
+}
+
+// TestUpdateExecTimeout_CoversASlowDownload pins the reasoning rather than the
+// number: an agent binary is around 8MB, and the timeout has to leave room for
+// a link far slower than a LAN.
+func TestUpdateExecTimeout_CoversASlowDownload(t *testing.T) {
+	const binarySize = 9 << 20 // a little over the measured armv7 build
+	const slowLink = 30 << 10  // bytes/sec
+
+	needed := time.Duration(binarySize/slowLink) * time.Second
+	if updateExecTimeout < needed {
+		t.Errorf("updateExecTimeout is %v, which cannot cover %d bytes at %d B/s (%v)",
+			updateExecTimeout, binarySize, slowLink, needed)
+	}
 }

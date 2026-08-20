@@ -88,19 +88,30 @@ func DefaultRetryConfig() RetryConfig {
 	}
 }
 
+// Delay returns how long to wait before retry number attempt, capped at
+// MaxDelay.
+//
+// The cap is checked in the float64 domain, before any conversion to
+// time.Duration. Converting first and comparing afterwards crashed agents.
+// Delay doubles per attempt, and a float-to-integer conversion that overflows
+// is implementation-defined. If it produced a negative value, the clamp did
+// not fire, and applyBackoff handed a negative bound to rand.Int64N, causing
+// a panic.
 func (rc RetryConfig) Delay(attempt int) time.Duration {
 	if attempt <= 0 {
 		return rc.InitialDelay
 	}
 
+	maxDelay := float64(rc.MaxDelay)
 	delay := float64(rc.InitialDelay)
+
 	for range attempt {
 		delay *= rc.Multiplier
+		if delay >= maxDelay {
+			return rc.MaxDelay
+		}
 	}
 
-	if time.Duration(delay) > rc.MaxDelay {
-		return rc.MaxDelay
-	}
 	return time.Duration(delay)
 }
 

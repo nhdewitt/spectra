@@ -7,11 +7,39 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/diagnostics"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
+
+const (
+	// commandExecTimeout bounds a single diagnostic run.
+	commandExecTimeout = 60 * time.Second
+	// updateExecTimeout bounds a self-update. A measured update on the slowest
+	// hardware in the fleet took 4.5s to download and verify ~8MB, so this is
+	// not an estimate of the work, it is a ceiling on how long a stuck one may
+	// hang before being called dead. Sizing it near the observed time would
+	// defeat that, since the case it guards is a half-open connection or a link
+	// that has collapsed to a trickle, which by definition does not resemble
+	// the measurement. Ten minutes covers ~15KB/s for a binary a third larger
+	// than today's.
+	updateExecTimeout = 10 * time.Minute
+	// commandReportTimeout bounds uploading the result of one.
+	commandReportTimeout = 30 * time.Second
+)
+
+// execTimeoutFor returns how long a command may run. Only the self-update
+// differs; everything else is a diagnostic that should not hang around.
+func execTimeoutFor(cmdType protocol.CommandType) time.Duration {
+	switch cmdType {
+	case protocol.CmdUpdateAgent:
+		return updateExecTimeout
+	default:
+		return commandExecTimeout
+	}
+}
 
 // runCommandLoop long-polls the server for tasks
 func (a *Agent) runCommandLoop(ctx context.Context) {
@@ -55,20 +83,31 @@ func (a *Agent) pollOnce(ctx context.Context, url string) {
 	}
 }
 
+// handleCommand runs one server-issued command and reports the outcome.
+//
+// Execution and reporting run on separate contexts. Reusing the execution
+// context for the upload meant a diagnostic that hit its deadline tried to
+// report "context deadline exceeded" over a context that was already canceled,
+// so the single most useful result was the one that never arrived. The report
+// context still derives from the caller's, so agent shutdown ends it.
+//
+// A successful update exits the process here, after the result is uploaded,
+// rather than from a goroutine watchinga context inside selfUpdate.
 func (a *Agent) handleCommand(ctx context.Context, cmd protocol.Command) {
 	a.Logger.Info("command received", "type", cmd.Type, "id", cmd.ID)
 
 	var resultData any
 	var err error
 
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	// bounds the diagnostic itself
+	execCtx, cancelExec := context.WithTimeout(ctx, execTimeoutFor(cmd.Type))
+	defer cancelExec()
 
 	switch cmd.Type {
 	case protocol.CmdFetchLogs:
 		var req protocol.LogRequest
 		if json.Unmarshal(cmd.Payload, &req) == nil {
-			resultData, err = diagnostics.FetchLogs(ctx, req)
+			resultData, err = diagnostics.FetchLogs(execCtx, req)
 		} else {
 			err = fmt.Errorf("invalid log request payload")
 		}
@@ -92,7 +131,7 @@ func (a *Agent) handleCommand(ctx context.Context, cmd protocol.Command) {
 				req.TopN = 50
 			}
 
-			resultData, err = diagnostics.RunDiskUsageTop(ctx, targetPath, req.TopN, req.TopN)
+			resultData, err = diagnostics.RunDiskUsageTop(execCtx, targetPath, req.TopN, req.TopN)
 		}
 
 	case protocol.CmdRestartAgent:
@@ -104,7 +143,7 @@ func (a *Agent) handleCommand(ctx context.Context, cmd protocol.Command) {
 	case protocol.CmdNetworkDiag:
 		var req protocol.NetworkRequest
 		if json.Unmarshal(cmd.Payload, &req) == nil {
-			resultData, err = diagnostics.RunNetworkDiag(ctx, req)
+			resultData, err = diagnostics.RunNetworkDiag(execCtx, req)
 		} else {
 			err = fmt.Errorf("invalid network request payload")
 		}
@@ -112,7 +151,7 @@ func (a *Agent) handleCommand(ctx context.Context, cmd protocol.Command) {
 	case protocol.CmdUpdateAgent:
 		var req protocol.UpdateAgentRequest
 		if json.Unmarshal(cmd.Payload, &req) == nil {
-			resultData, err = a.selfUpdate(ctx, req)
+			resultData, err = a.selfUpdate(execCtx, req)
 		} else {
 			err = fmt.Errorf("invalid update request payload")
 		}
@@ -121,9 +160,32 @@ func (a *Agent) handleCommand(ctx context.Context, cmd protocol.Command) {
 		err = fmt.Errorf("unknown command type: %s", cmd.Type)
 	}
 
-	if uploadErr := a.uploadCommandResult(ctx, cmd, resultData, err); uploadErr != nil {
+	// survives an execution timeout
+	reportCtx, cancelReport := context.WithTimeout(ctx, commandReportTimeout)
+	defer cancelReport()
+
+	if uploadErr := a.uploadCommandResult(reportCtx, cmd, resultData, err); uploadErr != nil {
 		a.Logger.Error("failed to upload command result", "command_id", cmd.ID, "error", uploadErr)
 	}
+
+	if restartRequested(cmd, resultData, err) {
+		a.Logger.Info("exiting for service manager restart", "command_id", cmd.ID)
+		os.Exit(0)
+	}
+}
+
+// restartRequested reports whether a completed command installed a new binary
+// and needs the process to exit so the service manager restarts it.
+//
+// The status check has to be exact. selfUpdate also returns successfully with
+// UpdateStatusAlreadyCurrent, having installed nothing, and exiting on that
+// would restart the agent every time the server pushed an update it already had.
+func restartRequested(cmd protocol.Command, resultData any, err error) bool {
+	if cmd.Type != protocol.CmdUpdateAgent || err != nil {
+		return false
+	}
+	res, ok := resultData.(*protocol.UpdateAgentResult)
+	return ok && res != nil && res.Status == protocol.UpdateStatusRestarting
 }
 
 // uploadCommandResult handles JSON marshaling, Gzip compression, and HTTP transport.
@@ -144,28 +206,7 @@ func (a *Agent) uploadCommandResult(ctx context.Context, cmd protocol.Command, d
 		}
 	}
 
-	var payload []byte
-	var compressedSize int
-
-	err := func() error {
-		a.gzipMu.Lock()
-		defer a.gzipMu.Unlock()
-
-		a.gzipBuf.Reset()
-		a.gzipW.Reset(&a.gzipBuf)
-
-		if err := json.NewEncoder(a.gzipW).Encode(res); err != nil {
-			return err
-		}
-		if err := a.gzipW.Close(); err != nil {
-			return err
-		}
-
-		compressedSize = a.gzipBuf.Len()
-		payload = make([]byte, compressedSize)
-		copy(payload, a.gzipBuf.Bytes())
-		return nil
-	}()
+	payload, err := a.compressPayload(res)
 	if err != nil {
 		return fmt.Errorf("compression failed: %w", err)
 	}
@@ -190,7 +231,7 @@ func (a *Agent) uploadCommandResult(ctx context.Context, cmd protocol.Command, d
 		return fmt.Errorf("server rejected result (%s): %s", resp.Status, string(body))
 	}
 
-	a.Logger.Debug("command result uploaded", "command_id", cmd.ID, "compressed_bytes", compressedSize)
+	a.Logger.Debug("command result uploaded", "command_id", cmd.ID, "compressed_bytes", len(payload))
 	return nil
 }
 

@@ -20,7 +20,7 @@ func (a *Agent) selfUpdate(ctx context.Context, req protocol.UpdateAgentRequest)
 		return &protocol.UpdateAgentResult{
 			PreviousVersion: version.Version,
 			NewVersion:      req.Version,
-			Status:          "already_current",
+			Status:          protocol.UpdateStatusAlreadyCurrent,
 		}, nil
 	}
 
@@ -36,7 +36,13 @@ func (a *Agent) selfUpdate(ctx context.Context, req protocol.UpdateAgentRequest)
 	httpReq.Header.Del("Content-Encoding")
 	httpReq.Header.Del("Content-Type")
 
-	resp, err := a.Client.Do(httpReq)
+	// The shared client carries a 45s whole-request Timeout, which covers the
+	// body read and caps the download regardless of what the command context
+	// allows. Reuse the transport (connection pool and TLS config, including
+	// a custom CA) but drop the deadline and let ctx bound the transfer.
+	downloadClient := &http.Client{Transport: a.Client.Transport}
+
+	resp, err := downloadClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("download failed: %w", err)
 	}
@@ -104,17 +110,14 @@ func (a *Agent) selfUpdate(ctx context.Context, req protocol.UpdateAgentRequest)
 		"previous", version.Version,
 		"new", req.Version)
 
-	result := &protocol.UpdateAgentResult{
+	// The caller exits the process once this result has been reported. Doing
+	// it here, on a goroutine watching the command context, meant the exit
+	// fired whenever that context ended - including when it hit its deadline
+	// mid-upload, which killed the process before the server ever heard that
+	// the update succeeded.
+	return &protocol.UpdateAgentResult{
 		PreviousVersion: version.Version,
 		NewVersion:      req.Version,
-		Status:          "restarting",
-	}
-
-	// Exit after returning result - systemd/launchd/Windows service will restart
-	go func() {
-		<-ctx.Done()
-		os.Exit(0)
-	}()
-
-	return result, nil
+		Status:          protocol.UpdateStatusRestarting,
+	}, nil
 }

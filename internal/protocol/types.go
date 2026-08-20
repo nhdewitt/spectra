@@ -208,3 +208,12 @@ type UpdateAgentResult struct {
 	NewVersion      string `json:"new_version"`
 	Status          string `json:"status"` // "downloading", "verified", "restarting", "failed"
 }
+
+// Update result statuses. UpdateStatusRestarting is the only one that means a
+// new binary is on disk and the process must exit for the service manager to
+// start it; the agent keys its restart on exactly this value, so treat it as
+// wire format rather than a log string.
+const (
+	UpdateStatusAlreadyCurrent = "already_current"
+	UpdateStatusRestarting     = "restarting"
+)

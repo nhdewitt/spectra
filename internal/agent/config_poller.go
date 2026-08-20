@@ -55,9 +55,14 @@ func (a *Agent) fetchAndApplyConfig(ctx context.Context) {
 	if raw, ok := config["log_level"]; ok {
 		var level string
 		if json.Unmarshal(raw, &level) == nil && level != "" {
-			a.Logger.SetConsoleLevel(logging.ParseLevel(level))
-			a.Logger.SetFileLevel(logging.ParseLevel(level))
-			a.Logger.Info("log level updated from remote config", "level", level)
+			parsed := logging.ParseLevel(level)
+			if parsed != a.Logger.ConsoleLevel.Level() {
+				previous := a.Logger.ConsoleLevel.Level()
+				a.Logger.SetConsoleLevel(parsed)
+				a.Logger.SetFileLevel(parsed)
+				a.Logger.Info("log level updated from remote config",
+					"previous", previous, "level", level)
+			}
 		}
 	}
 }

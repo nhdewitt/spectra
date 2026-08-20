@@ -55,6 +55,58 @@ func (c *metricsCache) Drain() []protocol.Envelope {
 	return batch
 }
 
+// DrainN removes and returns up to n envelopes, oldest first, leaving the rest
+// cached. Returns nil if the cache is empty.
+//
+// A full cache is maxSize envelopes, which as one request is megabytes compressed
+// and tens of megabytes decompressed. Sending it in bounded pieces keeps any
+// single request small enough for the server to enforce a meaningful body limit,
+// and means a failure partway through only costs the piece that failed rather than
+// the whole backlog.
+func (c *metricsCache) DrainN(n int) []protocol.Envelope {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.pending) == 0 || n <= 0 {
+		return nil
+	}
+
+	if n >= len(c.pending) {
+		batch := c.pending
+		c.pending = make([]protocol.Envelope, 0, 64)
+		return batch
+	}
+
+	batch := make([]protocol.Envelope, n)
+	copy(batch, c.pending[:n])
+
+	// Shift the remainder down rather than reslicing, so the drained
+	// envelopes stop being reachable and can be collected.
+	remaining := copy(c.pending, c.pending[n:])
+	clear(c.pending[remaining:])
+	c.pending = c.pending[:remaining]
+
+	return batch
+}
+
+// Requeue puts envelopes back at the front of the cache, where they belong by
+// age. Add appends, which would make a re-queued chunk look newer than data
+// collected after it and let eviction drop the wrong envelopes first.
+func (c *metricsCache) Requeue(batch []protocol.Envelope) {
+	if len(batch) == 0 {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.pending = append(batch, c.pending...)
+
+	if len(c.pending) > c.maxSize {
+		c.pending = c.pending[len(c.pending)-c.maxSize:]
+	}
+}
+
 func (c *metricsCache) Len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
