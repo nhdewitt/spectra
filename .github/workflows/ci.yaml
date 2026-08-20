@@ -13,7 +13,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version-file: web/.nvmrc
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
 
@@ -24,12 +24,29 @@ jobs:
           npm run build
 
       - name: Upload dist
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: web-dist
           path: web/dist
           retention-days: 1
           if-no-files-found: error
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: web/.nvmrc
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Test frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run test:run -- --no-file-parallelism
 
   test:
     needs: build-frontend
