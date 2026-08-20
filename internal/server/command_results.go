@@ -15,6 +15,11 @@ type commandEntry struct {
 	QueuedAt time.Time               `json:"queued_at"`
 	Result   *protocol.CommandResult `json:"result,omitempty"`
 	Done     bool                    `json:"done"`
+
+	// completedAt is when the result arrived. Retention is measured from here for
+	// finished commands, so a slow command does not have its result discarded
+	// moments after reporting it.
+	completedAt time.Time
 }
 
 // commandResultStore holds in-flight and completed command results with TTL cleanup.
@@ -53,6 +58,7 @@ func (s *commandResultStore) Complete(id string, result protocol.CommandResult) 
 	defer s.mu.Unlock()
 	if entry, ok := s.entries[id]; ok {
 		entry.Result = &result
+		entry.completedAt = time.Now()
 		entry.Done = true
 	}
 }
@@ -68,7 +74,16 @@ func (s *commandResultStore) Get(id string) (*commandEntry, bool) {
 	return entry, true
 }
 
-// cleanup removes entries older than TTL.
+// maxCommandLifetime bounds how long an unfinished command is tracked.
+//
+// It must exceed the longest a command can legitimately take to report
+// (updateExecTimeout plus commandReportTimeout on the agent side), or
+// an entry is deleted before its result arrives, Complete finds nothing
+// to write to, and the outcome is lost with no trace.
+const maxCommandLifetime = 30 * time.Minute
+
+// cleanup removes finished entries ttl after the completed, and unfinished
+// entries once they exceed maxCommandLifetime.
 func (s *commandResultStore) cleanup() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -77,9 +92,15 @@ func (s *commandResultStore) cleanup() {
 		select {
 		case <-ticker.C:
 			s.mu.Lock()
-			cutoff := time.Now().Add(-s.ttl)
+			now := time.Now()
 			for id, entry := range s.entries {
-				if entry.QueuedAt.Before(cutoff) {
+				var expired bool
+				if entry.Done {
+					expired = entry.completedAt.Add(s.ttl).Before(now)
+				} else {
+					expired = entry.QueuedAt.Add(maxCommandLifetime).Before(now)
+				}
+				if expired {
 					delete(s.entries, id)
 				}
 			}
