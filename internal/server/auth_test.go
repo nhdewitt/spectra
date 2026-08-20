@@ -393,3 +393,59 @@ func BenchmarkLoginTracker_Check(b *testing.B) {
 		lt.check("192.168.1.1")
 	}
 }
+
+func TestUseSecureCookies(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		want bool
+	}{
+		{"serving TLS directly", Config{TLSCert: "/etc/spectra/server.crt", TLSKey: "/etc/spectra/server.key"}, true},
+		{"behind a proxy terminating TLS", Config{ExternalURL: "https://spectra.test"}, true},
+		{"external URL case is ignored", Config{ExternalURL: "HTTPS://spectra.test"}, true},
+		{"plain HTTP", Config{ExternalURL: "http://spectra.test"}, false},
+		{"nothing configured", Config{}, false},
+		{"cert without key is not TLS", Config{TLSCert: "/etc/spectra/server.crt"}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := useSecureCookies(tc.cfg); got != tc.want {
+				t.Errorf("useSecureCookies: got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLogin_SetsSecureCookieWhenServingTLS(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	s.secureCookies = true
+	mock.AddUser("test-admin", "test-password", "admin")
+
+	body := `{"username":"test-admin","password":"test-password"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:54321"
+
+	rec := httptest.NewRecorder()
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login status: got %d, want 200", rec.Code)
+	}
+
+	cookies := rec.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("no session cookie was set")
+	}
+	c := cookies[0]
+	if !c.Secure {
+		t.Error("session cookie is missing Secure, so a browser would send it over plain HTTP")
+	}
+	if !c.HttpOnly {
+		t.Error("session cookie is missing HttpOnly")
+	}
+	if c.SameSite != http.SameSiteStrictMode {
+		t.Errorf("session cookie SameSite: got %v, want Strict", c.SameSite)
+	}
+}

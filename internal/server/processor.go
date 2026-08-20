@@ -8,15 +8,21 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-// processMetric is the entry point for handling a raw metric envelope
-func (s *Server) processMetric(agentID string, env RawEnvelope) {
+// processMetric decodes and persists a single raw envelope.
+//
+// A decode failure returns nil: the envelope is malformed or of a type this
+// server doesn't understand, and failing the request would only make the agent
+// resent the identical payload forever. A persistence failure is returned, so
+// the caller can refuse the batch and let the agent retry it.
+func (s *Server) processMetric(ctx context.Context, agentID string, env RawEnvelope) error {
 	metric, err := s.unmarshalMetric(env.Type, env.Data)
 	if err != nil {
-		s.Logger.Warn("error processing metric", "hostname", env.Hostname, "error", err)
-		return
+		s.Logger.Warn("dropping undecodable metric",
+			"hostname", env.Hostname, "type", env.Type, "error", err)
+		return nil
 	}
 
-	s.persistMetric(context.Background(), agentID, env.Timestamp, metric)
+	return s.persistMetric(ctx, agentID, env.Timestamp, metric)
 }
 
 // unmarshalMetric converts raw JSON into a concrete protocol.Metric struct

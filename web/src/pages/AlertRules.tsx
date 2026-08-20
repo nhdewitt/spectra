@@ -91,6 +91,22 @@ function scopeBadge(scope: string): React.CSSProperties {
 	};
 }
 
+function enabledBadge(enabled: boolean): React.CSSProperties {
+	const color = enabled ? themeVars.ok : themeVars.textDim;
+	return {
+		display: "inline-block",
+		fontSize: 9,
+		fontFamily: themeVars.font,
+		fontWeight: 600,
+		color,
+		background: `color-mix(in srgb, ${color} 15%, transparent)`,
+		border: `1px solid ${color}`,
+		padding: "2px 8px",
+		letterSpacing: "0.04em",
+		textTransform: "uppercase",
+	};
+}
+
 function RuleModal({
 	existing,
 	agents,
@@ -616,7 +632,8 @@ interface AlertRulesProps {
 	user: User;
 }
 
-export function AlertRules({ user: _user }: AlertRulesProps) {
+export function AlertRules({ user }: AlertRulesProps) {
+	const isAdmin = user.role === "admin" || user.role === "superadmin";
 	const [rules, setRules] = useState<AlertRule[]>([]);
 	const [agents, setAgents] = useState<Agent[]>([]);
 	const [channels, setChannels] = useState<AlertChannel[]>([]);
@@ -702,9 +719,11 @@ export function AlertRules({ user: _user }: AlertRulesProps) {
 			)}
  
 			<div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
-				<button onClick={openCreate} style={btnStyle}>
-					+ Create Rule
-				</button>
+				{isAdmin && (
+					<button onClick={openCreate} style={btnStyle}>
+						+ Create Rule
+					</button>
+				)}
 				<span
 					style={{
 						fontSize: 11,
@@ -739,7 +758,9 @@ export function AlertRules({ user: _user }: AlertRulesProps) {
 								<th style={tableHeaderStyle}>Scope</th>
 								<th style={tableHeaderStyle}>Target</th>
 								<th style={tableHeaderStyle}>Enabled</th>
-								<th style={{ ...tableHeaderStyle, textAlign: "right" }}>Actions</th>
+								{isAdmin && (
+									<th style={{ ...tableHeaderStyle, textAlign: "right" }}>Actions</th>
+								)}
 							</tr>
 						</thead>
 						<tbody>
@@ -757,61 +778,58 @@ export function AlertRules({ user: _user }: AlertRulesProps) {
 										{rule.scope === "agent" ? agentHostname(rule.agent_id) : "All agents"}
 									</td>
 									<td style={tableCellStyle}>
-										<button
-											onClick={() => handleToggleEnabled(rule)}
-											style={{
-												fontSize: 9,
-												fontFamily: themeVars.font,
-												fontWeight: 600,
-												color: rule.enabled ? themeVars.ok : themeVars.textDim,
-												background: `color-mix(in srgb, ${rule.enabled ? themeVars.ok : themeVars.textDim} 15%, transparent)`,
-												border: `1px solid ${rule.enabled ? themeVars.ok : themeVars.textDim}`,
-												padding: "2px 8px",
-												letterSpacing: "0.04em",
-												textTransform: "uppercase",
-												cursor: "pointer",
-											}}
-											title="Click to toggle"
-										>
-											{rule.enabled ? "Enabled" : "Disabled"}
-										</button>
-									</td>
-									<td style={{ ...tableCellStyle, textAlign: "right" }}>
-										{confirmDelete === rule.id ? (
-											<div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-												<span style={{ fontSize: 11, fontFamily: themeVars.font, color: themeVars.danger }}>
-													Delete {rule.name}?
-												</span>
-												<button
-													onClick={() => handleDelete(rule.id)}
-													style={{ ...btnStyle, color: "#fff", background: themeVars.danger, borderColor: themeVars.danger, padding: "3px 10px" }}
-												>
-													Confirm
-												</button>
-												<button
-													onClick={() => setConfirmDelete(null)}
-													style={{ ...btnStyle, color: themeVars.textMuted, background: "transparent", borderColor: themeVars.border, padding: "3px 10px" }}
-												>
-													Cancel
-												</button>
-											</div>
+										{isAdmin ? (
+											<button
+												onClick={() => handleToggleEnabled(rule)}
+												style={{ ...enabledBadge(rule.enabled), cursor: "pointer" }}
+												title="Click to toggle"
+											>
+												{rule.enabled ? "Enabled" : "Disabled"}
+											</button>
 										) : (
-											<div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-												<button
-													onClick={() => openEdit(rule)}
-													style={{ ...btnStyle, color: themeVars.textMuted, background: "transparent", borderColor: themeVars.border, padding: "3px 10px" }}
-												>
-													Edit
-												</button>
-												<button
-													onClick={() => setConfirmDelete(rule.id)}
-													style={{ ...btnStyle, color: themeVars.danger, background: "transparent", borderColor: themeVars.danger, padding: "3px 10px" }}
-												>
-													Delete
-												</button>
-											</div>
+											<span style={enabledBadge(rule.enabled)} title="Only admins can toggle rules">
+												{rule.enabled ? "Enabled" : "Disabled"}
+											</span>
 										)}
 									</td>
+									{isAdmin && (
+										<td style={{ ...tableCellStyle, textAlign: "right" }}>
+											{confirmDelete === rule.id ? (
+												<div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+													<span style={{ fontSize: 11, fontFamily: themeVars.font, color: themeVars.danger }}>
+														Delete {rule.name}?
+													</span>
+													<button
+														onClick={() => handleDelete(rule.id)}
+														style={{ ...btnStyle, color: "#fff", background: themeVars.danger, borderColor: themeVars.danger, padding: "3px 10px" }}
+													>
+														Confirm
+													</button>
+													<button
+														onClick={() => setConfirmDelete(null)}
+														style={{ ...btnStyle, color: themeVars.textMuted, background: "transparent", borderColor: themeVars.border, padding: "3px 10px" }}
+													>
+														Cancel
+													</button>
+												</div>
+											) : (
+												<div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+													<button
+														onClick={() => openEdit(rule)}
+														style={{ ...btnStyle, color: themeVars.textMuted, background: "transparent", borderColor: themeVars.border, padding: "3px 10px" }}
+													>
+														Edit
+													</button>
+													<button
+														onClick={() => setConfirmDelete(rule.id)}
+														style={{ ...btnStyle, color: themeVars.danger, background: "transparent", borderColor: themeVars.danger, padding: "3px 10px" }}
+													>
+														Delete
+													</button>
+												</div>
+											)}
+										</td>
+									)}
 								</tr>
 							))}
 						</tbody>

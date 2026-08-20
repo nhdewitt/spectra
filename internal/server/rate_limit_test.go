@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"sync"
 	"testing"
 )
@@ -148,7 +149,8 @@ func TestClientIP_RemoteAddr(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.RemoteAddr = "10.0.0.1:12345"
 
-	got := clientIP(req)
+	s, _, _, _ := newTestServer()
+	got := s.clientIP(req)
 	if got != "10.0.0.1" {
 		t.Errorf("clientIP = %s, want 10.0.0.1", got)
 	}
@@ -317,5 +319,146 @@ func BenchmarkRateLimiter_Allow(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		rl.allow("192.168.1.1")
+	}
+}
+
+func TestParseTrustedProxies(t *testing.T) {
+	prefixes, invalid := parseTrustedProxies([]string{
+		"198.51.100.0/24",
+		"203.0.113.7",
+		"  192.0.2.0/25  ",
+		"2001:db8::/32",
+		"",
+		"not-an-address",
+		"10.0.0.0/99",
+	})
+
+	if len(prefixes) != 4 {
+		t.Errorf("parsed prefixes: got %d, want 4", len(prefixes))
+	}
+	if len(invalid) != 2 {
+		t.Errorf("invalid entries: got %v, want 2", invalid)
+	}
+}
+
+func TestIsTrustedProxy(t *testing.T) {
+	s, _, _, _ := newTestServer()
+	s.trustedProxies, _ = parseTrustedProxies([]string{"198.51.100.0/24", "203.0.113.7", "2001:db8::/32"})
+
+	tests := []struct {
+		addr string
+		want bool
+	}{
+		{"198.51.100.1", true},
+		{"198.51.100.255", true},
+		{"203.0.113.7", true},
+		{"203.0.113.8", false},
+		{"192.0.2.1", false},
+		{"2001:db8::1", true},
+		{"2001:db9::1", false},
+		{"::ffff:198.51.100.1", true}, // v4-mapped must not read as untrusted
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.addr, func(t *testing.T) {
+			addr, err := netip.ParseAddr(tc.addr)
+			if err != nil {
+				t.Fatalf("parse %q: %v", tc.addr, err)
+			}
+			if got := s.isTrustedProxy(addr); got != tc.want {
+				t.Errorf("isTrustedProxy(%s): got %v, want %v", tc.addr, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestClientIP_IgnoresForwardedHeadersFromUntrustedPeer is the regression test
+// for the original bug: any caller could set X-Forwarded-For to a new value on
+// every request and get a fresh login-lockout and rate-limit bucket each time.
+func TestClientIP_IgnoresForwardedHeadersFromUntrustedPeer(t *testing.T) {
+	s, _, _, _ := newTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/version", nil)
+	req.RemoteAddr = "203.0.113.50:44444"
+	req.Header.Set("X-Forwarded-For", "192.0.2.1")
+	req.Header.Set("X-Real-IP", "192.0.2.2")
+
+	if got := s.clientIP(req); got != "203.0.113.50" {
+		t.Errorf("clientIP: got %q, want the peer address 203.0.113.50", got)
+	}
+}
+
+func TestClientIP_NoTrustedProxiesConfigured(t *testing.T) {
+	s, _, _, _ := newTestServer()
+	if len(s.trustedProxies) != 0 {
+		t.Fatalf("expected no trusted proxies by default, got %v", s.trustedProxies)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/version", nil)
+	req.RemoteAddr = "198.51.100.9:1234"
+	req.Header.Set("X-Forwarded-For", "192.0.2.1")
+
+	if got := s.clientIP(req); got != "198.51.100.9" {
+		t.Errorf("clientIP: got %q, want 198.51.100.9", got)
+	}
+}
+
+func TestClientIP_TrustedProxy(t *testing.T) {
+	s, _, _, _ := newTestServer()
+	s.trustedProxies, _ = parseTrustedProxies([]string{"198.51.100.0/24"})
+
+	tests := []struct {
+		name string
+		xff  string
+		xri  string
+		want string
+	}{
+		{
+			name: "single hop",
+			xff:  "192.0.2.1",
+			want: "192.0.2.1",
+		},
+		{
+			name: "stops at the first untrusted hop from the right",
+			xff:  "192.0.2.1, 203.0.113.9, 198.51.100.20",
+			want: "203.0.113.9",
+		},
+		{
+			name: "a client-supplied prefix cannot displace the real hop",
+			xff:  "10.9.9.9, 192.0.2.1, 198.51.100.20",
+			want: "192.0.2.1",
+		},
+		{
+			name: "unparseable entries are skipped",
+			xff:  "192.0.2.1, not-an-address, 198.51.100.20",
+			want: "192.0.2.1",
+		},
+		{
+			name: "falls back to X-Real-IP when there is no XFF",
+			xri:  "192.0.2.5",
+			want: "192.0.2.5",
+		},
+		{
+			name: "every hop trusted falls back to the peer",
+			xff:  "198.51.100.21, 198.51.100.20",
+			want: "198.51.100.10",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/version", nil)
+			req.RemoteAddr = "198.51.100.10:44444"
+			if tc.xff != "" {
+				req.Header.Set("X-Forwarded-For", tc.xff)
+			}
+			if tc.xri != "" {
+				req.Header.Set("X-Real-IP", tc.xri)
+			}
+
+			if got := s.clientIP(req); got != tc.want {
+				t.Errorf("clientIP: got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

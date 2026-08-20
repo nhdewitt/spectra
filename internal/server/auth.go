@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -69,15 +70,15 @@ func (s *Server) requireUserAuth(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// Verify IP
-		if session.IpAddress != clientIP(r) {
+		if session.IpAddress != s.clientIP(r) {
 			if err := s.DB.DeleteSession(r.Context(), cookie.Value); err != nil {
 				s.Logger.Error("failed to delete session", "error", err)
 			}
-			clearSessionCookie(w)
+			s.clearSessionCookie(w)
 			s.Logger.Warn("session invalidated: IP mismatch",
 				"username", session.Username,
 				"session_ip", session.IpAddress,
-				"request_ip", clientIP(r),
+				"request_ip", s.clientIP(r),
 			)
 			http.Error(w, "session invalidated", http.StatusUnauthorized)
 			return
@@ -96,7 +97,7 @@ func (s *Server) requireUserAuth(next http.HandlerFunc) http.HandlerFunc {
 
 // handleLogin authenticates a user and creates an IP-bound session.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
+	ip := s.clientIP(r)
 
 	if err := s.LoginTracker.check(ip); err != nil {
 		s.Logger.Warn("login locked out", "ip", ip)
@@ -108,8 +109,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, "invalid request", http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxAuthBody); err != nil {
+		http.Error(w, "invalid request", badBodyStatus(err))
 		return
 	}
 
@@ -165,6 +166,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		Expires:  expiresAt,
 		HttpOnly: true,
+		Secure:   s.secureCookies,
 		SameSite: http.SameSiteStrictMode,
 	})
 
@@ -185,7 +187,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if err := s.DB.DeleteSession(r.Context(), cookie.Value); err != nil {
 		s.Logger.Error("failed to delete session on logout", "error", err)
 	}
-	clearSessionCookie(w)
+	s.clearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -204,32 +206,120 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func clearSessionCookie(w http.ResponseWriter) {
+func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   s.secureCookies,
 		SameSite: http.SameSiteStrictMode,
 	})
 }
 
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i > 0 {
-			return strings.TrimSpace(xff[:i])
-		}
-		return strings.TrimSpace(xff)
+// useSecureCookies decides whether the session cookie carries the Secure
+// attribute, which keeps the browser from ever sending it over plain HTTP.
+//
+// It is derived rather than configured because both real deployments answer it
+// correctly on their own. Serving TLS directly means HTTPS, and an https
+// ExternalURL means a reverse proxy is terminating TLS in front of a server
+// that may itself be listening on plain HTTP. Hardcoding true would lock out
+// any plain-HTTP deployment, since the browser would hold the cookie back on
+// every request and the login would appear to succeed and then immediately fail.
+func useSecureCookies(cfg Config) bool {
+	if cfg.TLSCert != "" && cfg.TLSKey != "" {
+		return true
 	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.ExternalURL)), "https://")
+}
+
+// clientIP returns the address a request should be attributed to for rate
+// limiting, login lockout, and session IP binding.
+//
+// X-Forwarded-For and X-Real-IP are only consulted when the immediate peer is
+// itself a configured trusted proxy. Any other caller can set those headers to
+// a different value on every request, which hands out a fresh lockout and
+// rate-limit bucket each time and makes session IP binding meaningless.
+func (s *Server) clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
 	}
+
+	peer, err := netip.ParseAddr(host)
+	if err != nil || !s.isTrustedProxy(peer) {
+		if r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("X-Real-IP") != "" {
+			s.xffWarnOnce.Do(func() {
+				s.Logger.Warn("ignoring forwarded-for headers from an untrusted peer; set trusted_proxies if this server sits behind a reverse proxy",
+					"peer", host)
+			})
+		}
+		return host
+	}
+
+	// Walk right to left. The rightmost entry was observed by the nearest
+	// proxy and is the last hop an external client cannot forge; everything
+	// left of it is only as trustworthy as the proxy that appended it. Stop at
+	// the first hop that isn't a proxy we trust.
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		hops := strings.Split(xff, ",")
+		for i := len(hops) - 1; i >= 0; i-- {
+			addr, err := netip.ParseAddr(strings.TrimSpace(hops[i]))
+			if err != nil {
+				continue
+			}
+			if !s.isTrustedProxy(addr) {
+				return addr.String()
+			}
+		}
+	}
+
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+		if addr, err := netip.ParseAddr(xri); err == nil {
+			return addr.String()
+		}
+	}
+
+	// Every hop was a trusted proxy, or no usable header was present.
 	return host
+}
+
+func (s *Server) isTrustedProxy(addr netip.Addr) bool {
+	if len(s.trustedProxies) == 0 {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, p := range s.trustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseTrustedProxies converts configured CIDRs and bare addresses into
+// prefixes, returning any entries it could not parse so the caller can log
+// them. Bad entries are dropped rather than fatal: dropping one only ever
+// narrows what the server trusts.
+func parseTrustedProxies(entries []string) (prefixes []netip.Prefix, invalid []string) {
+	for _, e := range entries {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		if p, err := netip.ParsePrefix(e); err == nil {
+			prefixes = append(prefixes, p.Masked())
+			continue
+		}
+		if addr, err := netip.ParseAddr(e); err == nil {
+			addr = addr.Unmap()
+			prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+			continue
+		}
+		invalid = append(invalid, e)
+	}
+	return
 }
 
 func (s *Server) tokenOrAuth(next http.HandlerFunc) http.HandlerFunc {

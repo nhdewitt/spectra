@@ -106,8 +106,8 @@ func (s *Server) handlePushUpdate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AgentIDs []string `json:"agent_ids"`
 	}
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, "invalid request body", badBodyStatus(err))
 		return
 	}
 
@@ -178,7 +178,7 @@ func (s *Server) handlePushUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Logger.Info("agent update pushed",
-		"ip", clientIP(r),
+		"ip", s.clientIP(r),
 		"queued", queued,
 		"skipped", skipped,
 		"failed", failed)

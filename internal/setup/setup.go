@@ -26,6 +26,9 @@ type ServerConfig struct {
 	TLSCert     string `json:"tls_cert,omitempty"`
 	TLSKey      string `json:"tls_key,omitempty"`
 	TLSCA       string `json:"tls_ca,omitempty"`
+	// TrustedProxies lists reverse proxies (CIDR or bare address) permitted to
+	// set X-Forwarded-For / X-Real-IP. Empty means the headers are ignored.
+	TrustedProxies []string `json:"trusted_proxies,omitempty"`
 }
 
 // AdminCredentials holds the admin user info collected during setup.

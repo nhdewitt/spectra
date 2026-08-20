@@ -68,7 +68,7 @@ export function Alerts({ user }: AlertsProps) {
 			) : tab === "rules" ? (
 				<AlertRules user={user} />
 			) : tab === "channels" ? (
-				<AlertChannels />
+				<AlertChannels user={user}/>
 			) : null}
 		</div>
 	);

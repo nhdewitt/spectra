@@ -41,13 +41,13 @@ func hashAgentSecret(secret string) []byte {
 // handleAgentRegister accepts the HostInfo payload
 func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 	var req protocol.RegisterRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxAuthBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 
 	if !s.Tokens.Validate(req.Token) {
-		s.Logger.Warn("invalid registration token", "hostname", req.Info.Hostname, "ip", clientIP(r))
+		s.Logger.Warn("invalid registration token", "hostname", req.Info.Hostname, "ip", s.clientIP(r))
 		http.Error(w, "invalid or expired registration token", http.StatusUnauthorized)
 		return
 	}
@@ -71,7 +71,7 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 			CpuModel:     pgText(req.Info.CPUModel),
 			CpuCores:     pgInt4(int32(req.Info.CPUCores)),
 			RamTotal:     pgInt8(int64(req.Info.RAMTotal)),
-			IpAddress:    pgText(clientIP(r)),
+			IpAddress:    pgText(s.clientIP(r)),
 			Version:      req.Info.AgentVer,
 		}); err != nil {
 			s.Logger.Error("database query error", "error", err, "handler", "handleAgentRegister")
@@ -115,15 +115,15 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var rawEnvelopes []RawEnvelope
-	if err := decodeJSONBody(r, &rawEnvelopes); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &rawEnvelopes, maxMetricsBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 
 	if s.DB != nil {
 		if err := s.DB.TouchLastSeenIfStale(r.Context(), database.TouchLastSeenIfStaleParams{
 			ID:         mustUUID(agentID),
-			IpAddress:  pgText(clientIP(r)),
+			IpAddress:  pgText(s.clientIP(r)),
 			Version:    r.Header.Get("X-Agent-Version"),
 			Commit:     r.Header.Get("X-Agent-Commit"),
 			BinaryHash: r.Header.Get("X-Agent-Binary-Hash"),
@@ -134,18 +134,17 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.WriteHeader(http.StatusAccepted)
-
-	go func() {
-		for _, env := range rawEnvelopes {
-			select {
-			case <-s.done:
-				return
-			default:
-				s.processMetric(agentID, env)
-			}
+	// Persist before acknowledging. The agent treats any 2xx as durable and
+	// drops the batch, so a status sent ahead of the write turns a transient
+	// database failure into permanent, silent gaps in the metric history.
+	for _, env := range rawEnvelopes {
+		if err := s.processMetric(r.Context(), agentID, env); err != nil {
+			s.dbError(w, err, "handleMetrics")
+			return
 		}
-	}()
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (s *Server) handleAgentCommand(w http.ResponseWriter, r *http.Request) {
@@ -164,8 +163,8 @@ func (s *Server) handleCommandResult(w http.ResponseWriter, r *http.Request) {
 	agentID := getAgentID(r)
 
 	var res protocol.CommandResult
-	if err := decodeJSONBody(r, &res); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &res, maxCommandResultBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 

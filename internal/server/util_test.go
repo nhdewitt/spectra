@@ -5,8 +5,10 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
@@ -20,7 +22,7 @@ func TestDecodeJSONBody_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	var target map[string]string
-	err := decodeJSONBody(req, &target)
+	err := decodeJSONBody(req, &target, maxStandardBody)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -42,7 +44,7 @@ func TestDecodeJSONBody_Gzip(t *testing.T) {
 	req.Header.Set("Content-Encoding", "gzip")
 
 	var target map[string]string
-	err := decodeJSONBody(req, &target)
+	err := decodeJSONBody(req, &target, maxStandardBody)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -55,7 +57,7 @@ func TestDecodeJSONBody_InvalidJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte("not json")))
 
 	var target map[string]string
-	err := decodeJSONBody(req, &target)
+	err := decodeJSONBody(req, &target, maxStandardBody)
 
 	if err == nil {
 		t.Error("expected error for invalid JSON")
@@ -67,7 +69,7 @@ func TestDecodeJSONBody_InvalidGzip(t *testing.T) {
 	req.Header.Set("Content-Encoding", "gzip")
 
 	var target map[string]string
-	err := decodeJSONBody(req, &target)
+	err := decodeJSONBody(req, &target, maxStandardBody)
 
 	if err == nil {
 		t.Error("expected error for invalid gzip")
@@ -78,7 +80,7 @@ func TestDecodeJSONBody_EmptyBody(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte{}))
 
 	var target map[string]string
-	err := decodeJSONBody(req, &target)
+	err := decodeJSONBody(req, &target, maxStandardBody)
 
 	if err == nil {
 		t.Error("expected error for empty body")
@@ -96,7 +98,7 @@ func TestDecodeJSONBody_Struct(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
 
 	var target protocol.HostInfo
-	err := decodeJSONBody(req, &target)
+	err := decodeJSONBody(req, &target, maxStandardBody)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -367,7 +369,7 @@ func BenchmarkDecodeJSONBody_Small(b *testing.B) {
 	for b.Loop() {
 		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
 		var target map[string]string
-		decodeJSONBody(req, &target)
+		decodeJSONBody(req, &target, maxStandardBody)
 	}
 }
 
@@ -384,7 +386,7 @@ func BenchmarkDecodeJSONBody_Large(b *testing.B) {
 	for b.Loop() {
 		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
 		var target protocol.ProcessListMetric
-		decodeJSONBody(req, &target)
+		decodeJSONBody(req, &target, maxStandardBody)
 	}
 }
 
@@ -404,7 +406,7 @@ func BenchmarkDecodeJSONBody_Gzip(b *testing.B) {
 		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(gzipData))
 		req.Header.Set("Content-Encoding", "gzip")
 		var target map[string]string
-		decodeJSONBody(req, &target)
+		decodeJSONBody(req, &target, maxStandardBody)
 	}
 }
 
@@ -480,5 +482,225 @@ func BenchmarkQueueHelper(b *testing.B) {
 
 		rec := httptest.NewRecorder()
 		s.queueHelper(rec, "agent-1", protocol.CmdFetchLogs, payload, "Queued!")
+	}
+}
+
+// --- Body size limits (finding #8) ---
+
+func TestDecodeJSONBody_RejectsOversizedPlainBody(t *testing.T) {
+	// Comfortably over maxAuthBody, which is what login and registration use.
+	body := `{"username":"` + strings.Repeat("a", 8<<10) + `","password":"x"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(body))
+
+	var target map[string]string
+	err := decodeJSONBody(req, &target, maxAuthBody)
+
+	if !errors.Is(err, errBodyTooLarge) {
+		t.Errorf("error: got %v, want errBodyTooLarge", err)
+	}
+}
+
+// TestDecodeJSONBody_RejectsDecompressionBomb is the point of the whole change:
+// the compressed body is trivially small, so any Content-Length check passes,
+// and the old decoder piped the inflated stream straight into json.Decoder.
+func TestDecodeJSONBody_RejectsDecompressionBomb(t *testing.T) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	gz.Write([]byte(`{"padding":"`))
+	for range 512 {
+		gz.Write(bytes.Repeat([]byte("a"), 1<<10))
+	}
+	gz.Write([]byte(`"}`))
+	gz.Close()
+
+	if buf.Len() > maxStandardBody {
+		t.Fatalf("compressed payload is %d bytes, which defeats the point of the test", buf.Len())
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts/rules", bytes.NewReader(buf.Bytes()))
+	req.Header.Set("Content-Encoding", "gzip")
+
+	var target map[string]string
+	err := decodeJSONBody(req, &target, maxStandardBody)
+
+	if !errors.Is(err, errBodyTooLarge) {
+		t.Errorf("error: got %v, want errBodyTooLarge for a body that inflates past the limit", err)
+	}
+}
+
+func TestDecodeJSONBody_AcceptsBodyUnderLimit(t *testing.T) {
+	body := `{"hostname":"test-host"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader(body))
+
+	var target map[string]string
+	if err := decodeJSONBody(req, &target, maxStandardBody); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if target["hostname"] != "test-host" {
+		t.Errorf("decoded hostname: got %q, want test-host", target["hostname"])
+	}
+}
+
+func TestDecodeJSONBody_AcceptsGzipBodyUnderLimit(t *testing.T) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	gz.Write([]byte(`{"hostname":"test-host"}`))
+	gz.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(buf.Bytes()))
+	req.Header.Set("Content-Encoding", "gzip")
+
+	var target map[string]string
+	if err := decodeJSONBody(req, &target, maxStandardBody); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if target["hostname"] != "test-host" {
+		t.Errorf("decoded hostname: got %q, want test-host", target["hostname"])
+	}
+}
+
+func TestBadBodyStatus(t *testing.T) {
+	if got := badBodyStatus(errBodyTooLarge); got != http.StatusRequestEntityTooLarge {
+		t.Errorf("oversized body: got %d, want 413", got)
+	}
+	if got := badBodyStatus(errors.New("invalid json")); got != http.StatusBadRequest {
+		t.Errorf("malformed body: got %d, want 400", got)
+	}
+}
+
+// TestHandleMetrics_OversizedBatchReturns413 pins the status the agent sees.
+// A 400 and a 413 both fail the upload, but only 413 tells the agent the batch
+// can never be accepted, so it drops it instead of retrying forever.
+func TestHandleMetrics_OversizedBatchReturns413(t *testing.T) {
+	s, agentID, secret, _ := newTestServer()
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	gz.Write([]byte(`[{"type":"cpu","hostname":"`))
+	for range maxMetricsBody/(1<<10) + 16 {
+		gz.Write(bytes.Repeat([]byte("a"), 1<<10))
+	}
+	gz.Write([]byte(`","data":{}}]`))
+	gz.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(buf.Bytes()))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status: got %d, want 413", rec.Code)
+	}
+}
+
+// --- Per-endpoint size class assignment ---
+//
+// decodeJSONBody's own tests prove the limit works. These prove each endpoint
+// was given the right one: a mis-assigned constant compiles cleanly and fails
+// only in production, and the failure is silent in both directions -- too
+// small breaks a working feature, too large reopens the hole.
+
+func TestBodyLimit_LoginRejectsOversizedBody(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	mock.AddUser("test-admin", "test-password", "admin")
+
+	// Well past maxAuthBody. Login parses before any real authentication, so
+	// this is the endpoint the limit exists for.
+	body := `{"username":"` + strings.Repeat("a", 8<<10) + `","password":"x"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status: got %d, want 413", rec.Code)
+	}
+}
+
+// TestBodyLimit_CommandResultAcceptsLargeLogOutput guards the direction that is
+// easy to get wrong: FETCH_LOGS on a chatty host returns hundreds of KB, so
+// this endpoint on maxStandardBody would break diagnostics precisely when they
+// are being used.
+func TestBodyLimit_CommandResultAcceptsLargeLogOutput(t *testing.T) {
+	s, agentID, secret, _ := newTestServer()
+
+	payload, _ := json.Marshal(map[string]string{"logs": strings.Repeat("x", 512<<10)})
+	res := protocol.CommandResult{
+		ID:      "cmd-large",
+		Type:    protocol.CmdFetchLogs,
+		Payload: payload,
+	}
+
+	body, _ := json.Marshal(res)
+	if len(body) <= maxStandardBody {
+		t.Fatalf("test payload is %d bytes, which no longer exceeds maxStandardBody", len(body))
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/command/result", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusRequestEntityTooLarge {
+		t.Errorf("a %d byte diagnostic result was rejected as too large", len(body))
+	}
+}
+
+// TestBodyLimit_MetricsAcceptsFullChunk guards the same direction on the path
+// that matters most: an agent retries a rejected batch forever, so a metrics
+// limit below what one chunk produces wedges that agent permanently.
+func TestBodyLimit_MetricsAcceptsFullChunk(t *testing.T) {
+	s, agentID, secret, _ := newTestServer()
+
+	batch := []RawEnvelope{
+		{
+			Type:     "cpu",
+			Hostname: strings.Repeat("h", 6<<20), // past maxCommandResultBody, under maxMetricsBody
+			Data:     json.RawMessage(`{"usage": 50.0}`),
+		},
+	}
+
+	body, _ := json.Marshal(batch)
+	if len(body) <= maxCommandResultBody {
+		t.Fatalf("test payload is %d bytes, which no longer exceeds maxCommandResultBody", len(body))
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status: got %d, want 202: a legitimate large batch must not be rejected", rec.Code)
+	}
+}
+
+// TestBodyLimit_StandardEndpointRejectsOversizedBody spot-checks the class the
+// other sixteen call sites use.
+func TestBodyLimit_StandardEndpointRejectsOversizedBody(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	body := `{"name":"` + strings.Repeat("a", 128<<10) + `","type":"webhook","config":{"url":"https://webhook.example/hook"}}`
+	req := authedRequest(httptest.NewRequest(http.MethodPost, "/api/v1/alerts/channels", strings.NewReader(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status: got %d, want 413", rec.Code)
 	}
 }

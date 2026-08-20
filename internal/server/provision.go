@@ -62,8 +62,8 @@ func (s *Server) handleListPlatforms(w http.ResponseWriter, r *http.Request) {
 // POST /api/v1/admin/provision
 func (s *Server) handleProvision(w http.ResponseWriter, r *http.Request) {
 	var req provisionRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, "invalid request body", badBodyStatus(err))
 		return
 	}
 
@@ -99,7 +99,7 @@ func (s *Server) handleProvision(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate one-time token
-	s.Logger.Info("one-time token provisioned", "ip", clientIP(r))
+	s.Logger.Info("one-time token provisioned", "ip", s.clientIP(r))
 	token := s.Tokens.Generate(24 * time.Hour)
 
 	// Build server URL from request
@@ -203,8 +203,8 @@ func (s *Server) handleDownloadRelease(w http.ResponseWriter, r *http.Request) {
 // POST /api/v1/admin/provision/config
 func (s *Server) handleDownloadConfig(w http.ResponseWriter, r *http.Request) {
 	var cfg agentConfig
-	if err := decodeJSONBody(r, &cfg); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if err := decodeJSONBody(r, &cfg, maxStandardBody); err != nil {
+		http.Error(w, "invalid request body", badBodyStatus(err))
 		return
 	}
 

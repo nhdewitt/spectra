@@ -2,14 +2,17 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/nhdewitt/spectra/internal/database"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
@@ -545,5 +548,145 @@ func TestHandleVersion(t *testing.T) {
 		if _, ok := body[key]; !ok {
 			t.Errorf("missing key %q in response", key)
 		}
+	}
+}
+
+// failingWriteDB fails metric writes only.
+//
+// MockDB.Err fails every query, which means agent auth (GetAgentSecretSHA256)
+// and TouchLastSeenIfStale fail too -- the request 401s in middleware, or 500s
+// before it reaches the persistence loop, and the test passes for the wrong
+// reason. Overriding just the write methods isolates the failure to the thing
+// under test.
+type failingWriteDB struct {
+	*MockDB
+	err error
+}
+
+func (d *failingWriteDB) InsertCPU(ctx context.Context, p database.InsertCPUParams) error {
+	_ = d.MockDB.InsertCPU(ctx, p)
+	return d.err
+}
+
+func (d *failingWriteDB) InsertMemory(ctx context.Context, p database.InsertMemoryParams) error {
+	_ = d.MockDB.InsertMemory(ctx, p)
+	return d.err
+}
+
+// TestHandleMetrics_PersistFailureReturns500 is the regression test for the
+// original bug: the handler wrote 202 and persisted on a detached goroutine, so
+// a database failure was invisible to the agent, which had already discarded
+// the batch. A 202 has to mean the rows are on disk.
+func TestHandleMetrics_PersistFailureReturns500(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+	s.DB = &failingWriteDB{MockDB: mock, err: errors.New("db connection lost")}
+
+	batch := []RawEnvelope{
+		{Type: "cpu", Hostname: "test-host", Data: json.RawMessage(`{"usage": 50.0}`)},
+	}
+
+	body, _ := json.Marshal(batch)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status: got %d, want 500 so the agent retains the batch and retries", rec.Code)
+	}
+}
+
+// TestHandleMetrics_PersistsBeforeResponding pins the ordering. Against the old
+// goroutine-based handler the insert had usually not happened by the time the
+// response was written, and never deterministically.
+func TestHandleMetrics_PersistsBeforeResponding(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+
+	batch := []RawEnvelope{
+		{Type: "cpu", Hostname: "test-host", Data: json.RawMessage(`{"usage": 50.0}`)},
+		{Type: "memory", Hostname: "test-host", Data: json.RawMessage(`{"used_pct": 40.0}`)},
+	}
+
+	body, _ := json.Marshal(batch)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status: got %d, want 202", rec.Code)
+	}
+	if mock.InsertCPUCount != 1 {
+		t.Errorf("InsertCPU: got %d, want 1 before the response was written", mock.InsertCPUCount)
+	}
+	if mock.InsertMemoryCount != 1 {
+		t.Errorf("InsertMemory: got %d, want 1 before the response was written", mock.InsertMemoryCount)
+	}
+}
+
+// TestHandleMetrics_StopsAtFirstPersistFailure confirms the handler gives up
+// rather than working through a batch against a database that is already
+// failing. The agent resends the whole batch regardless.
+func TestHandleMetrics_StopsAtFirstPersistFailure(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+	s.DB = &failingWriteDB{MockDB: mock, err: errors.New("db connection lost")}
+
+	batch := []RawEnvelope{
+		{Type: "cpu", Hostname: "test-host", Data: json.RawMessage(`{"usage": 50.0}`)},
+		{Type: "memory", Hostname: "test-host", Data: json.RawMessage(`{"used_pct": 40.0}`)},
+	}
+
+	body, _ := json.Marshal(batch)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d, want 500", rec.Code)
+	}
+	if mock.InsertMemoryCount != 0 {
+		t.Errorf("InsertMemory: got %d, want 0 after the first failure", mock.InsertMemoryCount)
+	}
+}
+
+// TestHandleMetrics_UndecodableEnvelopeDoesNotFailBatch is the poison-payload
+// rule. A malformed or unknown envelope fails identically on every retry, so
+// rejecting the batch would wedge that agent's pipeline permanently.
+func TestHandleMetrics_UndecodableEnvelopeDoesNotFailBatch(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+
+	batch := []RawEnvelope{
+		{Type: "cpu", Hostname: "test-host", Data: json.RawMessage(`{"usage": "not-a-number"}`)},
+		{Type: "not_a_real_metric_type", Hostname: "test-host", Data: json.RawMessage(`{}`)},
+		{Type: "memory", Hostname: "test-host", Data: json.RawMessage(`{"used_pct": 40.0}`)},
+	}
+
+	body, _ := json.Marshal(batch)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status: got %d, want 202: an undecodable envelope must not fail the batch", rec.Code)
+	}
+	if mock.InsertCPUCount != 0 {
+		t.Errorf("InsertCPU: got %d, want 0 for an envelope that failed to decode", mock.InsertCPUCount)
+	}
+	if mock.InsertMemoryCount != 1 {
+		t.Errorf("InsertMemory: got %d, want 1: the good envelope after it must still persist", mock.InsertMemoryCount)
 	}
 }

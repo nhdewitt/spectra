@@ -46,6 +46,7 @@ func main() {
 		TLSCert:        cfg.TLSCert,
 		TLSKey:         cfg.TLSKey,
 		TLSCA:          cfg.TLSCA,
+		TrustedProxies: cfg.TrustedProxies,
 	}
 
 	srv := server.New(srvCfg, queries)

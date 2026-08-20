@@ -47,8 +47,8 @@ func (s *Server) handleSetAgentConfig(w http.ResponseWriter, r *http.Request) {
 		Key   string          `json:"key"`
 		Value json.RawMessage `json:"value"`
 	}
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 

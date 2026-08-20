@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { api, HttpError } from "../api";
 import { themeVars } from "../theme";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "../components/ui";
-import type { AlertChannel, ChannelType, ChannelConfig, WebhookConfig, EmailConfig } from "../types";
+import type { AlertChannel, ChannelType, ChannelConfig, WebhookConfig, EmailConfig, User } from "../types";
 
 const btnStyle: React.CSSProperties = {
 	padding: "6px 14px",
@@ -287,7 +287,12 @@ function ChannelModal({
 	);	
 }
 
-export function AlertChannels() {
+interface AlertChannelsProps {
+	user: User;
+}
+
+export function AlertChannels({ user }: AlertChannelsProps) {
+	const isAdmin = user.role === "admin" || user.role === "superadmin"
 	const [channels, setChannels] = useState<AlertChannel[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -360,9 +365,11 @@ export function AlertChannels() {
 			)}
  
 			<div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
-				<button onClick={openCreate} style={btnStyle}>
-					+ Create Channel
-				</button>
+				{isAdmin && (
+					<button onClick={openCreate} style={btnStyle}>
+						+ Create Channel
+					</button>
+				)}
 				<span
 					style={{
 						fontSize: 11,
@@ -401,7 +408,9 @@ export function AlertChannels() {
 								<th style={tableHeaderStyle}>Name</th>
 								<th style={tableHeaderStyle}>Type</th>
 								<th style={tableHeaderStyle}>Target</th>
-								<th style={{ ...tableHeaderStyle, textAlign: "right" }}>Actions</th>
+								{isAdmin && (
+									<th style={{ ...tableHeaderStyle, textAlign: "right" }}>Actions</th>
+								)}
 							</tr>
 						</thead>
 						<tbody>
@@ -430,85 +439,87 @@ export function AlertChannels() {
 									>
 										{channelTarget(ch)}
 									</td>
-									<td style={{ ...tableCellStyle, textAlign: "right" }}>
-										{confirmDelete === ch.id ? (
-											<div
-												style={{
-													display: "flex",
-													gap: 6,
-													justifyContent: "flex-end",
-													alignItems: "center",
-												}}
-											>
-												<span
+									{isAdmin && (
+										<td style={{ ...tableCellStyle, textAlign: "right" }}>
+											{confirmDelete === ch.id ? (
+												<div
 													style={{
-														fontSize: 11,
-														fontFamily: themeVars.font,
-														color: themeVars.danger,
+														display: "flex",
+														gap: 6,
+														justifyContent: "flex-end",
+														alignItems: "center",
 													}}
 												>
-													Delete {ch.name}?
-												</span>
-												<button
-													onClick={() => handleDelete(ch.id)}
+													<span
+														style={{
+															fontSize: 11,
+															fontFamily: themeVars.font,
+															color: themeVars.danger,
+														}}
+													>
+														Delete {ch.name}?
+													</span>
+													<button
+														onClick={() => handleDelete(ch.id)}
+														style={{
+															...btnStyle,
+															color: "#fff",
+															background: themeVars.danger,
+															borderColor: themeVars.danger,
+															padding: "3px 10px",
+														}}
+													>
+														Confirm
+													</button>
+													<button
+														onClick={() => setConfirmDelete(null)}
+														style={{
+															...btnStyle,
+															color: themeVars.textMuted,
+															background: "transparent",
+															borderColor: themeVars.border,
+															padding: "3px 10px",
+														}}
+													>
+														Cancel
+													</button>
+												</div>
+											) : (
+												<div
 													style={{
-														...btnStyle,
-														color: "#fff",
-														background: themeVars.danger,
-														borderColor: themeVars.danger,
-														padding: "3px 10px",
+														display: "flex",
+														gap: 6,
+														justifyContent: "flex-end",
 													}}
 												>
-													Confirm
-												</button>
-												<button
-													onClick={() => setConfirmDelete(null)}
-													style={{
-														...btnStyle,
-														color: themeVars.textMuted,
-														background: "transparent",
-														borderColor: themeVars.border,
-														padding: "3px 10px",
-													}}
-												>
-													Cancel
-												</button>
-											</div>
-										) : (
-											<div
-												style={{
-													display: "flex",
-													gap: 6,
-													justifyContent: "flex-end",
-												}}
-											>
-												<button
-													onClick={() => openEdit(ch)}
-													style={{
-														...btnStyle,
-														color: themeVars.textMuted,
-														background: "transparent",
-														borderColor: themeVars.border,
-														padding: "3px 10px",
-													}}
-												>
-													Edit
-												</button>
-												<button
-													onClick={() => setConfirmDelete(ch.id)}
-													style={{
-														...btnStyle,
-														color: themeVars.danger,
-														background: "transparent",
-														borderColor: themeVars.danger,
-														padding: "3px 10px",
-													}}
-												>
-													Delete
-												</button>
-											</div>
-										)}
-									</td>
+													<button
+														onClick={() => openEdit(ch)}
+														style={{
+															...btnStyle,
+															color: themeVars.textMuted,
+															background: "transparent",
+															borderColor: themeVars.border,
+															padding: "3px 10px",
+														}}
+													>
+														Edit
+													</button>
+													<button
+														onClick={() => setConfirmDelete(ch.id)}
+														style={{
+															...btnStyle,
+															color: themeVars.danger,
+															background: "transparent",
+															borderColor: themeVars.danger,
+															padding: "3px 10px",
+														}}
+													>
+														Delete
+													</button>
+												</div>
+											)}
+										</td>
+									)}
 								</tr>
 							))}
 						</tbody>

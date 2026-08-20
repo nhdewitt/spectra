@@ -249,8 +249,10 @@ func TestPersistMetric_DBError(t *testing.T) {
 	s, _, _, mock := newTestServer()
 	mock.Err = errors.New("db connection lost")
 
-	// Should not panic — just logs the error
-	s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), &protocol.CPUMetric{Usage: 50.0})
+	err := s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), &protocol.CPUMetric{Usage: 50.0})
+	if err == nil {
+		t.Fatal("expected an error: a write failure that is only logged lets handleMetrics acknowledge data it never stored")
+	}
 
 	if mock.InsertCPUCount != 1 {
 		t.Errorf("InsertCPU should still be called, got %d", mock.InsertCPUCount)
@@ -268,12 +270,47 @@ func TestPersistMetric_ProcessListDBError(t *testing.T) {
 		},
 	}
 
-	// Should not panic — logs per-process errors and continues
-	s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), metric)
+	err := s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), metric)
+	if err == nil {
+		t.Fatal("expected an error so the batch is not acknowledged as durable")
+	}
 
-	// Both upserts should still be attempted
-	if mock.UpsertProcessCount != 2 {
-		t.Errorf("UpsertProcess called %d times, want 2", mock.UpsertProcessCount)
+	// Stops at the first failure rather than working through the list. The
+	// remaining upserts would fail the same way, and the agent resends the
+	// whole batch regardless.
+	if mock.UpsertProcessCount != 1 {
+		t.Errorf("UpsertProcess called %d times, want 1", mock.UpsertProcessCount)
+	}
+}
+
+func TestPersistMetric_ServiceListDBError(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	mock.Err = errors.New("upsert failed")
+
+	metric := &protocol.ServiceListMetric{
+		Services: []protocol.ServiceMetric{
+			{Name: "test-service-a", Status: "running"},
+			{Name: "test-service-b", Status: "running"},
+		},
+	}
+
+	err := s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), metric)
+	if err == nil {
+		t.Fatal("expected an error: service upserts used to log and report success, silently dropping rows during an outage")
+	}
+
+	if mock.UpsertServiceCount != 1 {
+		t.Errorf("UpsertService called %d times, want 1", mock.UpsertServiceCount)
+	}
+}
+
+func TestPersistMetric_UnknownMetricTypeReturnsNil(t *testing.T) {
+	s, _, _, _ := newTestServer()
+
+	// An unknown type is not something the agent can fix by resending, so it
+	// must not fail the batch.
+	if err := s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), unknownMetric{}); err != nil {
+		t.Errorf("unknown metric type: got %v, want nil", err)
 	}
 }
 

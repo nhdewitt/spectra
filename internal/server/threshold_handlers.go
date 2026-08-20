@@ -53,8 +53,8 @@ func (s *Server) handleGetThresholds(w http.ResponseWriter, r *http.Request) {
 // PUT /api/v1/admin/thresholds
 func (s *Server) handleUpdateThresholds(w http.ResponseWriter, r *http.Request) {
 	var in thresholdView
-	if err := decodeJSONBody(r, &in); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &in, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 

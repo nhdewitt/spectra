@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -55,23 +57,28 @@ type Config struct {
 	TLSCert        string
 	TLSKey         string
 	TLSCA          string
+	TrustedProxies []string // CIDRs or bare addresses of reverse proxies allowed to set X-Forwarded-For
 }
 
 type Server struct {
-	Config       Config
-	CmdQueue     *CommandQueue
-	Tokens       *TokenStore
-	DB           DB
-	Router       *http.ServeMux
-	Logger       *logging.Logger
-	LoginTracker *loginTracker
-	Limiters     *tieredLimiters
-	Releases     *releaseManifest
-	httpServer   *http.Server
-	Commands     *commandResultStore
-	versionCache *labels.VersionCache
-	Cipher       *secret.Cipher
-	thresholds   atomic.Pointer[thresholdValues]
+	Config         Config
+	CmdQueue       *CommandQueue
+	Tokens         *TokenStore
+	DB             DB
+	Router         *http.ServeMux
+	Logger         *logging.Logger
+	LoginTracker   *loginTracker
+	Limiters       *tieredLimiters
+	Releases       *releaseManifest
+	httpServer     *http.Server
+	Commands       *commandResultStore
+	versionCache   *labels.VersionCache
+	Cipher         *secret.Cipher
+	trustedProxies []netip.Prefix
+	xffWarnOnce    sync.Once
+	secureCookies  bool
+	WebhookClient  *http.Client
+	thresholds     atomic.Pointer[thresholdValues]
 
 	done chan struct{}
 }
@@ -98,20 +105,27 @@ func New(cfg Config, db DB) *Server {
 	} else {
 		logger = logging.New(logCfg)
 	}
+	trusted, invalidProxies := parseTrustedProxies(cfg.TrustedProxies)
+	for _, e := range invalidProxies {
+		logger.Warn("ignoring unparseable trusted_proxies entry", "value", e)
+	}
 
 	s := &Server{
-		Config:       cfg,
-		CmdQueue:     NewCommandQueue(),
-		Tokens:       NewTokenStore(),
-		DB:           db,
-		Router:       http.NewServeMux(),
-		Logger:       logger,
-		LoginTracker: newLoginTracker(),
-		Limiters:     newTieredLimiters(),
-		Releases:     newReleaseManifest(cfg.ReleasesDir),
-		Commands:     newCommandResultStore(10 * time.Minute),
-		versionCache: labels.NewVersionCache(),
-		done:         make(chan struct{}),
+		Config:         cfg,
+		CmdQueue:       NewCommandQueue(),
+		Tokens:         NewTokenStore(),
+		DB:             db,
+		Router:         http.NewServeMux(),
+		Logger:         logger,
+		LoginTracker:   newLoginTracker(),
+		Limiters:       newTieredLimiters(),
+		Releases:       newReleaseManifest(cfg.ReleasesDir),
+		Commands:       newCommandResultStore(10 * time.Minute),
+		versionCache:   labels.NewVersionCache(),
+		trustedProxies: trusted,
+		secureCookies:  useSecureCookies(cfg),
+		WebhookClient:  newWebhookClient(),
+		done:           make(chan struct{}),
 	}
 	s.routes()
 	return s
@@ -204,17 +218,17 @@ func (s *Server) routes() {
 
 	// Alert channels
 	s.Router.HandleFunc("GET /api/v1/alerts/channels", s.requireUserAuth(s.rateLimitAuthed(s.handleListAlertChannels)))
-	s.Router.HandleFunc("POST /api/v1/alerts/channels", s.requireUserAuth(s.rateLimitAuthed(s.handleCreateAlertChannel)))
-	s.Router.HandleFunc("PUT /api/v1/alerts/channels/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleUpdateAlertChannel)))
-	s.Router.HandleFunc("DELETE /api/v1/alerts/channels/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAlertChannel)))
+	s.Router.HandleFunc("POST /api/v1/alerts/channels", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleCreateAlertChannel))))
+	s.Router.HandleFunc("PUT /api/v1/alerts/channels/{id}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleUpdateAlertChannel))))
+	s.Router.HandleFunc("DELETE /api/v1/alerts/channels/{id}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleDeleteAlertChannel))))
 
 	// Alert rules
 	s.Router.HandleFunc("GET /api/v1/alerts/rules", s.requireUserAuth(s.rateLimitAuthed(s.handleListAlertRules)))
-	s.Router.HandleFunc("POST /api/v1/alerts/rules", s.requireUserAuth(s.rateLimitAuthed(s.handleCreateAlertRule)))
+	s.Router.HandleFunc("POST /api/v1/alerts/rules", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleCreateAlertRule))))
 	s.Router.HandleFunc("GET /api/v1/alerts/rules/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetAlertRule)))
-	s.Router.HandleFunc("PUT /api/v1/alerts/rules/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleUpdateAlertRule)))
-	s.Router.HandleFunc("PUT /api/v1/alerts/rules/{id}/enabled", s.requireUserAuth(s.rateLimitAuthed(s.handleSetAlertRuleEnabled)))
-	s.Router.HandleFunc("DELETE /api/v1/alerts/rules/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleDeleteAlertRule)))
+	s.Router.HandleFunc("PUT /api/v1/alerts/rules/{id}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleUpdateAlertRule))))
+	s.Router.HandleFunc("PUT /api/v1/alerts/rules/{id}/enabled", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleSetAlertRuleEnabled))))
+	s.Router.HandleFunc("DELETE /api/v1/alerts/rules/{id}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleDeleteAlertRule))))
 
 	// Alert events
 	s.Router.HandleFunc("GET /api/v1/alerts/active", s.requireUserAuth(s.rateLimitAuthed(s.handleListActiveAlerts)))

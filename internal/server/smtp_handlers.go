@@ -148,8 +148,8 @@ func (s *Server) handleGetSMTPConfig(w http.ResponseWriter, r *http.Request) {
 // PUT /api/v1/admin/smtp
 func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) {
 	var req smtpConfigRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 	req.normalize()
@@ -195,8 +195,8 @@ func (s *Server) handleUpdateSMTPConfig(w http.ResponseWriter, r *http.Request) 
 // POST /api/v1/admin/smtp/test
 func (s *Server) handleTestSMTPConfig(w http.ResponseWriter, r *http.Request) {
 	var req smtpConfigRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 	req.normalize()

@@ -55,8 +55,8 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 		Role     string `json:"role"`
 	}
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 
@@ -197,8 +197,8 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Role string `json:"role"`
 	}
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 	if !isValidRole(req.Role) {

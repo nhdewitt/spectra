@@ -50,14 +50,14 @@ func (s *Server) requireAgentAuth(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if !authOK {
-			s.Logger.Warn("agent auth failed", "agent_id", agentID, "ip", clientIP(r))
+			s.Logger.Warn("agent auth failed", "agent_id", agentID, "ip", s.clientIP(r))
 			http.Error(w, "invalid agent credentials", http.StatusUnauthorized)
 			return
 		}
 
 		if err := s.DB.TouchLastSeenIfStale(r.Context(), database.TouchLastSeenIfStaleParams{
 			ID:         id,
-			IpAddress:  pgText(clientIP(r)),
+			IpAddress:  pgText(s.clientIP(r)),
 			Version:    r.Header.Get("X-Agent-Version"),
 			Commit:     r.Header.Get("X-Agent-Commit"),
 			BinaryHash: r.Header.Get("X-Agent-Binary-Hash"),

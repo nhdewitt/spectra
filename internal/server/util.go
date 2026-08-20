@@ -21,13 +21,68 @@ import (
 
 var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
+// Request body size classes, in decompressed bytes. Every decodeJSONBody call
+// picks one, so adding an endpoint forces a deliberate choice rather than
+// inheriting a default.
+const (
+	// maxAuthBody covers login and registration - username/password
+	// These parse before any meaningful authentication, so they get
+	// the tightest ceiling.
+	maxAuthBody = 4 << 10
+	// maxStandardBody covers ordinary admin and config payloads.
+	maxStandardBody = 64 << 10
+	// maxCommandResultBody covers diagnostic output. A verbose FETCH_LOGS
+	// result from a chatty host runs to hundreds of KB, and squeezing it
+	// into the standard limit would break diagnostics exactly when they
+	// are needed.
+	maxCommandResultBody = 4 << 20
+	// maxMetricsBody covers a metric batch. A full maxUploadChunk drain is
+	// roughly 2MB decompressed, so thise leaves 8x headroom. It must stay
+	// above what an agent can produce in one request: the agent retries
+	// any rejected batch, so a limit below that wedges it permanently.
+	maxMetricsBody = 16 << 20
+)
+
+// errBodyTooLarge is returned when a request body exceeds its size class.
+// Distinct from a decode error so handlers can answer 413 instead of 400, and
+// so the agent can tell "this will never be accepted" from "this is malformed".
+var errBodyTooLarge = errors.New("request body too large")
+
+// limitedReader is io.LimitReader with a distinguishable error.
+//
+// io.LimitReader reports EOF at the limit, which json.Decoder surfaces as an
+// unexpected EOF, indistinguishable from a genuinely truncated body, so an
+// oversized request would be answered as malfored JSON.
+type limitedReader struct {
+	r         io.Reader
+	remaining int64
+}
+
+func (l *limitedReader) Read(p []byte) (int, error) {
+	if l.remaining <= 0 {
+		return 0, errBodyTooLarge
+	}
+	if int64(len(p)) > l.remaining {
+		p = p[:l.remaining]
+	}
+	n, err := l.r.Read(p)
+	l.remaining -= int64(n)
+	return n, err
+}
+
 // decodeJSONBody reads the request body, handling optional gzip compression,
 // and decodes it into the provided target struct.
-func decodeJSONBody(r *http.Request, target any) error {
-	var reader io.ReadCloser = r.Body
+//
+// maxBytes bounds the decompressed stream. Bounding Content-Length alone is
+// not enough; a small gzip body can expand by orders of magnitude, and this
+// decoder previously fed the gzip reader straight into json.Decoder with
+// nothing in between. The compressed side is bounded too, at the same figure,
+// so an endless body is cut off before it is ever inflated.
+func decodeJSONBody(r *http.Request, target any, maxBytes int64) error {
+	var reader io.ReadCloser = http.MaxBytesReader(nil, r.Body, maxBytes)
 
 	if r.Header.Get("Content-Encoding") == "gzip" {
-		gz, err := gzip.NewReader(r.Body)
+		gz, err := gzip.NewReader(reader)
 		if err != nil {
 			return fmt.Errorf("bad gzip body: %w", err)
 		}
@@ -35,11 +90,29 @@ func decodeJSONBody(r *http.Request, target any) error {
 	}
 	defer reader.Close()
 
-	if err := json.NewDecoder(reader).Decode(target); err != nil {
+	limited := &limitedReader{r: reader, remaining: maxBytes}
+
+	if err := json.NewDecoder(limited).Decode(target); err != nil {
+		if errors.Is(err, errBodyTooLarge) {
+			return errBodyTooLarge
+		}
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return errBodyTooLarge
+		}
 		return fmt.Errorf("invalid json: %w", err)
 	}
 
 	return nil
+}
+
+// badBodyStatus maps a decodeJSONBody error to a status code, so an oversized
+// body is reported as 413 rather than being lumped in with malformed JSON.
+func badBodyStatus(err error) int {
+	if errors.Is(err, errBodyTooLarge) {
+		return http.StatusRequestEntityTooLarge
+	}
+	return http.StatusBadRequest
 }
 
 func getAgentID(r *http.Request) string {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -20,9 +21,13 @@ func mustUUID(id string) pgtype.UUID {
 }
 
 // persistMetric writes a metric to a database.
-func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time, metric protocol.Metric) {
+//
+// The returned error is what makes a 202 on /agent/metrics honest: the agent
+// discards a batch on any 2xx, so a write failure that is only logged here is
+// data the fleet can never send again.
+func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time, metric protocol.Metric) error {
 	if s.DB == nil {
-		return
+		return nil
 	}
 
 	uid := mustUUID(agentID)
@@ -201,10 +206,12 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		})
 
 	case *protocol.ContainerListMetric:
-		for _, c := range m.Containers {
-			s.persistMetric(ctx, agentID, ts, &c)
+		for i := range m.Containers {
+			if err := s.persistMetric(ctx, agentID, ts, &m.Containers[i]); err != nil {
+				return err
+			}
 		}
-		return
+		return nil
 
 	case *protocol.ProcessListMetric:
 		cutoff := pgtype.Timestamptz{Time: ts.Add(-1 * time.Minute), Valid: true}
@@ -219,7 +226,9 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 				Status:     pgText(string(p.Status)),
 				Threads:    pgInt4(int32(p.ThreadsTotal)),
 			}); upsertErr != nil {
-				s.Logger.Warn("error upserting process", "pid", p.Pid, "error", upsertErr)
+				// Stop at the first failure: the rest of the list would fail
+				// the same way, and the agent resends the whole batch anyway.
+				return fmt.Errorf("upsert process %d: %w", p.Pid, upsertErr)
 			}
 		}
 		// Remove processes that weren't in this batch
@@ -236,10 +245,10 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 				Status:    pgText(svc.Status),
 				SubStatus: pgText(svc.SubStatus),
 			}); upsertErr != nil {
-				s.Logger.Warn("error upserting service", "service", svc.Name, "error", upsertErr)
+				return fmt.Errorf("upsert service %q: %w", svc.Name, upsertErr)
 			}
 		}
-		return
+		return nil
 
 	case *protocol.ApplicationListMetric:
 		for _, app := range m.Applications {
@@ -248,10 +257,10 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 				Name:    app.Name,
 				Version: pgText(app.Version),
 			}); upsertErr != nil {
-				s.Logger.Warn("error upserting application", "name", app.Name, "error", upsertErr)
+				return fmt.Errorf("upsert application %q: %w", app.Name, upsertErr)
 			}
 		}
-		return
+		return nil
 
 	case *protocol.ClockMetric:
 		err = s.DB.InsertPi(ctx, database.InsertPiParams{
@@ -315,13 +324,15 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		}
 
 	default:
-		// skip silently
-		return
+		// Unknown metric type: nothing to write, and nothing the agent can fix
+		// by resending.
+		return nil
 	}
 
 	if err != nil {
-		s.Logger.Error("failed to persist metric", "metric", metric.MetricType(), "agent_id", agentID, "error", err)
+		return fmt.Errorf("persist %s: %w", metric.MetricType(), err)
 	}
+	return nil
 }
 
 func pgText(s string) pgtype.Text {

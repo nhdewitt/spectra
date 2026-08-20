@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -540,6 +541,11 @@ func (s *Server) sendWebhook(ctx context.Context, ch database.AlertChannel, payl
 	if cfg.URL == "" {
 		return fmt.Errorf("webhook URL is empty")
 	}
+	// Re-validate at send time: the row may predate validateWebhookURL, or have
+	// been written directly to the database.
+	if err := validateWebhookURL(cfg.URL); err != nil {
+		return err
+	}
 
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -549,14 +555,14 @@ func (s *Server) sendWebhook(ctx context.Context, ch database.AlertChannel, payl
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, cfg.URL, strings.NewReader(string(body)))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, cfg.URL, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Spectra-Alerting/1.0")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.WebhookClient.Do(req)
 	if err != nil {
 		return err
 	}

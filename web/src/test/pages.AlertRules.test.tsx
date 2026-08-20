@@ -62,8 +62,8 @@ function makeChannel(overrides: Partial<AlertChannel> = {}): AlertChannel {
     return { id: 'ch-1', name: 'ops-webhook', type: 'webhook', config: { url: 'https://x.test' }, created_at: '', ...overrides }
 }
 
-function makeUser(): User {
-    return { id: 'u1', username: 'test-admin', role: 'admin' } as User
+function makeUser(overrides: Partial<User> = {}): User {
+    return { id: 'u1', username: 'test-admin', role: 'admin', ...overrides } as User
 }
 
 beforeEach(() => {
@@ -349,5 +349,46 @@ describe('AlertRules - editing', () => {
                 channel_ids: [],
             })
         )
+    })
+})
+
+describe('AlertRules - viewer permissions', () => {
+    it('hides create, edit, delete and the Actions column from a viewer', async () => {
+        mockListRules.mockResolvedValue([makeRule({ name: 'Agent offline' })])
+
+        render(<AlertRules user={makeUser({ username: 'test-viewer', role: 'viewer' })} />)
+        await waitFor(() => expect(screen.getByText('Agent offline')).toBeInTheDocument())
+
+        expect(screen.queryByText('+ Create Rule')).not.toBeInTheDocument()
+        expect(screen.queryByText('Actions')).not.toBeInTheDocument()
+        expect(screen.queryByText('Edit')).not.toBeInTheDocument()
+        expect(screen.queryByText('Delete')).not.toBeInTheDocument()
+    })
+
+    it('renders the enabled state as a non-interactive badge for a viewer', async () => {
+        mockListRules.mockResolvedValue([makeRule({ name: 'Agent offline', enabled: true })])
+
+        render(<AlertRules user={makeUser({ username: 'test-viewer', role: 'viewer' })} />)
+        await waitFor(() => expect(screen.getByText('Agent offline')).toBeInTheDocument())
+
+        // 'Enabled' is also the column header, so match on the badge element itself.
+        expect(screen.queryByRole('button', { name: 'Enabled' })).not.toBeInTheDocument()
+        const badge = screen.getAllByText('Enabled').find((el) => el.tagName === 'SPAN')
+        expect(badge).toBeDefined()
+
+        fireEvent.click(badge!)
+        expect(mockSetEnabled).not.toHaveBeenCalled()
+    })
+
+    it('still shows create, edit and delete to an admin', async () => {
+        mockListRules.mockResolvedValue([makeRule({ name: 'Agent offline' })])
+
+        render(<AlertRules user={makeUser()} />)
+        await waitFor(() => expect(screen.getByText('Agent offline')).toBeInTheDocument())
+
+        expect(screen.getByText('+ Create Rule')).toBeInTheDocument()
+        expect(screen.getByText('Actions')).toBeInTheDocument()
+        expect(screen.getByText('Edit')).toBeInTheDocument()
+        expect(screen.getByText('Delete')).toBeInTheDocument()
     })
 })

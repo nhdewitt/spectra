@@ -40,6 +40,9 @@ func validateChannelRequest(req channelRequest) error {
 		if err := json.Unmarshal(req.Config, &c); err != nil || strings.TrimSpace(c.URL) == "" {
 			return errors.New("webhook config requires a non-empty url")
 		}
+		if err := validateWebhookURL(c.URL); err != nil {
+			return err
+		}
 	case "email":
 		var c struct {
 			To string `json:"to"`
@@ -71,8 +74,8 @@ func (s *Server) handleListAlertChannels(w http.ResponseWriter, r *http.Request)
 // POST /api/v1/alerts/channels
 func (s *Server) handleCreateAlertChannel(w http.ResponseWriter, r *http.Request) {
 	var req channelRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 	if err := validateChannelRequest(req); err != nil {
@@ -105,8 +108,8 @@ func (s *Server) handleUpdateAlertChannel(w http.ResponseWriter, r *http.Request
 	}
 
 	var req channelRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 	if err := validateChannelRequest(req); err != nil {
@@ -305,8 +308,8 @@ func (s *Server) handleGetAlertRule(w http.ResponseWriter, r *http.Request) {
 // POST /api/v1/alerts/rules
 func (s *Server) handleCreateAlertRule(w http.ResponseWriter, r *http.Request) {
 	var req ruleRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 	if err := validateRuleRequest(req); err != nil {
@@ -366,8 +369,8 @@ func (s *Server) handleUpdateAlertRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req ruleRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 
@@ -421,8 +424,8 @@ func (s *Server) handleSetAlertRuleEnabled(w http.ResponseWriter, r *http.Reques
 	var req struct {
 		Enabled bool `json:"enabled"`
 	}
-	if err := decodeJSONBody(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeJSONBody(r, &req, maxStandardBody); err != nil {
+		http.Error(w, err.Error(), badBodyStatus(err))
 		return
 	}
 
