@@ -233,7 +233,7 @@ func TestGetPhysicalDiskNumber_InvalidDrive(t *testing.T) {
 	}
 }
 
-func TestUpdateDriveCacheNative_FiltersUSB(t *testing.T) {
+func TestUpdateDriveCacheNative_FiltersByBusType(t *testing.T) {
 	cache := NewDriveCache()
 	updateDriveCacheNative(cache)
 
@@ -246,10 +246,16 @@ func TestUpdateDriveCacheNative_FiltersUSB(t *testing.T) {
 			t.Errorf("PhysicalDrive%d: USB drive should be filtered", idx)
 		case winapi.BusType1394:
 			t.Errorf("PhysicalDrive%d: 1394 drive should be filtered", idx)
+		case winapi.BusTypeVirtual, winapi.BusTypeFileBackedVirtual:
+			t.Errorf("PhysicalDrive%d: mounted VHD/ISO should be filtered (bus %d)",
+				idx, drive.InterfaceType)
 		}
-		if strings.Contains(strings.ToLower(drive.Model), "virtual") {
-			t.Errorf("PhysicalDrive%d: Virtual drive should be filtered", idx)
-		}
+
+		// Deliberately no model-string check. A VM's boot disk is commonly
+		// named "Virtual_Disk ..." while arriving over a real NVMe or SCSI
+		// bus, and filtering on the name dropped it -- the agent reported
+		// every drive except the one that mattered. windows-latest is exactly
+		// that case.
 	}
 }
 
