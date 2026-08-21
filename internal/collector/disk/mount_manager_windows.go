@@ -40,11 +40,16 @@ func updateDriveCacheNative(cache *DriveCache) {
 
 	allowedMap := make(map[uint32]MountInfo)
 	for _, d := range allDrives {
-		if d.InterfaceType == winapi.BusTypeUsb || d.InterfaceType == winapi.BusType1394 {
-			continue
-		}
-
-		if strings.Contains(strings.ToLower(d.Model), "virtual") {
+		// Filter on Windows' own bus classification rather than the model
+		// string. BusTypeVirtual and BusTypeFileBackedVirtual are mounted VHDs
+		// and ISOs, which are genuinely not worth monitoring. A VM's boot disk
+		// is not either of these, it arrives over a paravirtualized NVMe or SCSI
+		// controller and reports that bus, even though its model string often
+		// contains "Virtual". Matching the model dropped the boot disk of every
+		// Windows VM.
+		switch d.InterfaceType {
+		case winapi.BusTypeUsb, winapi.BusType1394,
+			winapi.BusTypeVirtual, winapi.BusTypeFileBackedVirtual:
 			continue
 		}
 

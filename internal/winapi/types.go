@@ -54,8 +54,8 @@ const (
 	busTypeSata              BusType = 0x0B
 	busTypeSd                BusType = 0x0C
 	busTypeMmc               BusType = 0x0D
-	busTypeVirtual           BusType = 0x0E
-	busTypeFileBackedVirtual BusType = 0x0F
+	BusTypeVirtual           BusType = 0x0E
+	BusTypeFileBackedVirtual BusType = 0x0F
 	busTypeNvme              BusType = 0x11
 
 	// Processes
