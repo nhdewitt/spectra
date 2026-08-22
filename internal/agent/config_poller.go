@@ -61,7 +61,7 @@ func (a *Agent) fetchAndApplyConfig(ctx context.Context) {
 				a.Logger.SetConsoleLevel(parsed)
 				a.Logger.SetFileLevel(parsed)
 				a.Logger.Info("log level updated from remote config",
-					"previous", previous, "level", level)
+					"previous", previous, "level", parsed)
 			}
 		}
 	}
