@@ -239,11 +239,11 @@ func mustMarshal(v any) []byte {
 	return b
 }
 
-// parsePathID extracts and validates the agent UUID from the path.
+// parsePathID extracts and validates the UUID from the path.
 func parsePathID(r *http.Request) (string, error) {
 	id := r.PathValue("id")
 	if !uuidRegex.MatchString(id) {
-		return "", fmt.Errorf("invalid agent ID")
+		return "", fmt.Errorf("invalid ID")
 	}
 	return id, nil
 }

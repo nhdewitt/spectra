@@ -112,9 +112,9 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 //
 // DELETE /api/v1/admin/users/{id}
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
-	targetID := r.PathValue("id")
-	if targetID == "" {
-		http.Error(w, "user ID is required", http.StatusBadRequest)
+	targetID, err := parsePathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -182,9 +182,9 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 //
 // PUT /api/v1/admin/users/{id}/role
 func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
-	targetID := r.PathValue("id")
-	if targetID == "" {
-		http.Error(w, "user ID is required", http.StatusBadRequest)
+	targetID, err := parsePathID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
