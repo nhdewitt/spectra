@@ -93,6 +93,15 @@ type MockDB struct {
 	// Stored agents: agentID (string) -> secret hash
 	Agents map[string]string
 
+	// Metric transaction state. BeginErr and CommitErr fail either boundary
+	// independently of the writes, so a test can prove the handler answers
+	// non-2xx for each.
+	BeginErr          error
+	CommitErr         error
+	WithMetricTxCount int
+	Committed         bool
+	RolledBack        bool
+
 	// Counters for verifying calls
 	InsertCPUCount         int
 	InsertMemoryCount      int
@@ -293,6 +302,35 @@ func (m *MockDB) AgentExists(_ context.Context, id pgtype.UUID) (bool, error) {
 	idStr := formatUUID(id)
 	_, ok := m.Agents[idStr]
 	return ok, nil
+}
+
+func (m *MockDB) WithMetricTx(ctx context.Context, fn func(MetricWriter) error) error {
+	return m.RunMetricTx(ctx, m, fn)
+}
+
+// RunMetricTx applies the mock's transaction bookkeeping while handing w to fn.
+//
+// A type that embeds *MockDB to override some writes MUST implement
+// WithMetricTx itself and call this with the wrapper: the promoted
+// WithMetricTx passes the inner MockDB, so the wrapper's overridden methods
+// would never be reached and its injected failure would silently not happen.
+func (m *MockDB) RunMetricTx(ctx context.Context, w MetricWriter, fn func(MetricWriter) error) error {
+	m.WithMetricTxCount++
+
+	if m.BeginErr != nil {
+		return m.BeginErr
+	}
+	if err := fn(w); err != nil {
+		m.RolledBack = true
+		return err
+	}
+	if m.CommitErr != nil {
+		m.RolledBack = true
+		return m.CommitErr
+	}
+
+	m.Committed = true
+	return nil
 }
 
 func (m *MockDB) InsertCPU(_ context.Context, _ database.InsertCPUParams) error {

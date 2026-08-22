@@ -7,9 +7,50 @@ import (
 	"github.com/nhdewitt/spectra/internal/database"
 )
 
+// MetricWriter is the subset of writes whose failure must fail an entire metric
+// batch. handleMetrics runs them inside one transaction, so a batch is either
+// wholly durable or wholly absent.
+//
+// It exists because the agent treats any 2xx as "the whole batch landed" and
+// re-sends everything otherwise. Without the transaction, a batch failing at
+// envelopt 51 left 1-50 committed, and the retry inserted them a second time.
+//
+// Membership rule: a write belongs here if its failure already fails the batch.
+// The current_metrics upserts are deliberately absent. They log and continue,
+// and making them transactional would mean a broken dashboard cache forced replay
+// of correctly stored history.
+type MetricWriter interface {
+	// Time-series inserts
+	InsertCPU(ctx context.Context, arg database.InsertCPUParams) error
+	InsertMemory(ctx context.Context, arg database.InsertMemoryParams) error
+	InsertDisk(ctx context.Context, arg database.InsertDiskParams) error
+	InsertDiskIO(ctx context.Context, arg database.InsertDiskIOParams) error
+	InsertNetwork(ctx context.Context, arg database.InsertNetworkParams) error
+	InsertTemperature(ctx context.Context, arg database.InsertTemperatureParams) error
+	InsertWifi(ctx context.Context, arg database.InsertWifiParams) error
+	InsertSystem(ctx context.Context, arg database.InsertSystemParams) error
+	InsertContainer(ctx context.Context, arg database.InsertContainerParams) error
+	InsertPi(ctx context.Context, arg database.InsertPiParams) error
+
+	// State upserts. Not caches, there is no history table behind these, so
+	// this row is the only record. Already idempotent under retry, but they
+	// belong in the same all-or-nothing contract.
+	UpsertProcess(ctx context.Context, arg database.UpsertProcessParams) error
+	DeleteStaleProcesses(ctx context.Context, arg database.DeleteStaleProcessesParams) error
+	UpsertService(ctx context.Context, arg database.UpsertServiceParams) error
+	UpsertApplication(ctx context.Context, arg database.UpsertApplicationParams) error
+	UpsertUpdates(ctx context.Context, arg database.UpsertUpdatesParams) error
+}
+
 // DB defines the database operations the server depends on.
-// Implemented by *database.Queries for production and MockDB for tests.
+// Implemented by *Store for production and MockDB for tests.
 type DB interface {
+	MetricWriter
+
+	// WithMetricTx runs fn inside a transaction, committing only if it returns
+	// nil. The MetricWriter handed to fn is bound to that transaction.
+	WithMetricTx(ctx context.Context, fn func(MetricWriter) error) error
+
 	// Agent management
 	RegisterAgent(ctx context.Context, arg database.RegisterAgentParams) error
 	GetAgentSecret(ctx context.Context, id pgtype.UUID) (string, error)
@@ -27,24 +68,8 @@ type DB interface {
 	DeleteExpiredSessions(ctx context.Context) error
 	DeleteUserSessions(ctx context.Context, userID pgtype.UUID) error
 
-	// Metric inserts
-	InsertCPU(ctx context.Context, arg database.InsertCPUParams) error
-	InsertMemory(ctx context.Context, arg database.InsertMemoryParams) error
-	InsertDisk(ctx context.Context, arg database.InsertDiskParams) error
-	InsertDiskIO(ctx context.Context, arg database.InsertDiskIOParams) error
-	InsertNetwork(ctx context.Context, arg database.InsertNetworkParams) error
-	InsertTemperature(ctx context.Context, arg database.InsertTemperatureParams) error
-	InsertWifi(ctx context.Context, arg database.InsertWifiParams) error
-	InsertSystem(ctx context.Context, arg database.InsertSystemParams) error
-	InsertContainer(ctx context.Context, arg database.InsertContainerParams) error
-	InsertPi(ctx context.Context, arg database.InsertPiParams) error
-
-	// Current-state upserts
-	UpsertProcess(ctx context.Context, arg database.UpsertProcessParams) error
-	DeleteStaleProcesses(ctx context.Context, arg database.DeleteStaleProcessesParams) error
-	UpsertService(ctx context.Context, arg database.UpsertServiceParams) error
-	UpsertApplication(ctx context.Context, arg database.UpsertApplicationParams) error
-	UpsertUpdates(ctx context.Context, arg database.UpsertUpdatesParams) error
+	// Derived dashboard cache. Best-effort: refreshed after the metric transaction commits,
+	// and a failure is logged rather than returned.
 	UpsertCurrentCPU(ctx context.Context, arg database.UpsertCurrentCPUParams) error
 	UpsertCurrentMemory(ctx context.Context, arg database.UpsertCurrentMemoryParams) error
 	UpsertCurrentDiskMax(ctx context.Context, id pgtype.UUID) error
@@ -188,5 +213,11 @@ type DB interface {
 	UpsertStatusThresholds(ctx context.Context, arg database.UpsertStatusThresholdsParams) error
 }
 
-// Compile-time check that *database.Queries satisfies the DB interface.
-var _ DB = (*database.Queries)(nil)
+// Compile-time checks. *Store is the DB implementation, *database.Queries covers everything
+// except WithMetricTx, which is why Store wraps it, and is asserted against MetricWriter so
+// a change to the generated query signatures still fails here rather than inside a transaction
+// callback.
+var (
+	_ DB           = (*Store)(nil)
+	_ MetricWriter = (*database.Queries)(nil)
+)

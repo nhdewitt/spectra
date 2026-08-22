@@ -36,7 +36,9 @@ func main() {
 	}
 	defer pool.Close()
 
-	queries := database.New(pool)
+	// Store wraps the generated queries with the pool, so the server can open a
+	// transaction for a metric batch without holding a pool reference itself.
+	store := server.NewStore(pool)
 
 	srvCfg := server.Config{
 		Port:           cfg.ListenPort,
@@ -49,7 +51,7 @@ func main() {
 		TrustedProxies: cfg.TrustedProxies,
 	}
 
-	srv := server.New(srvCfg, queries)
+	srv := server.New(srvCfg, store)
 
 	if applied, err := setup.RunMigrations(ctx, pool); err != nil {
 		srv.Logger.Error("migration failed", "error", err)

@@ -134,14 +134,43 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Persist before acknowledging. The agent treats any 2xx as durable and
-	// drops the batch, so a status sent ahead of the write turns a transient
-	// database failure into permanent, silent gaps in the metric history.
+	// Decode first. An envelope that will not decode is dropped rather than failing the
+	// batch. It fails identically on every retry, so rejecting it would wedge this agent's
+	// pipeline behind a batch that can never succeed.
+	decoded := make([]decodedMetric, 0, len(rawEnvelopes))
 	for _, env := range rawEnvelopes {
-		if err := s.processMetric(r.Context(), agentID, env); err != nil {
+		metric, err := s.unmarshalMetric(env.Type, env.Data)
+		if err != nil {
+			s.Logger.Warn("dropping undecodable metric",
+				"hostname", env.Hostname, "type", env.Type, "error", err)
+			continue
+		}
+		decoded = append(decoded, decodedMetric{metric: metric, ts: env.Timestamp})
+	}
+
+	// Persist before acknowledging, and persist atomically. The agent treats any 2xx as
+	// "the whole batch is durable" and re-sends everything otherwise, so a partially
+	// applied batch turns each retry into duplicate history (these tables have no
+	// uniqueness constraints)./
+	if s.DB != nil {
+		if err := s.DB.WithMetricTx(r.Context(), func(tx MetricWriter) error {
+			for _, d := range decoded {
+				if err := s.persistMetric(r.Context(), tx, agentID, d.ts, d.metric); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
 			s.dbError(w, err, "handleMetrics")
 			return
 		}
+	}
+
+	// Derived cache, after the commit. A failure here is logged, not returned. The
+	// next batch recomputes these rows from a few seconds later, and failing the
+	// request would make the agent replay history that stored correctly.
+	for _, d := range decoded {
+		s.refreshCurrent(r.Context(), agentID, d.metric)
 	}
 
 	w.WriteHeader(http.StatusAccepted)

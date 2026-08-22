@@ -210,7 +210,7 @@ func TestPersistMetric(t *testing.T) {
 			mock := NewMockDB()
 			s := &Server{DB: mock}
 
-			s.persistMetric(ctx, agentID, ts, tt.metric)
+			s.persistMetric(ctx, mock, agentID, ts, tt.metric)
 
 			tt.checkMock(t, mock)
 		})
@@ -223,13 +223,13 @@ func TestPersistMetric_NilDB(t *testing.T) {
 	_ = mock
 
 	// Should not panic
-	s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), &protocol.CPUMetric{})
+	s.persistMetric(context.Background(), mock, "00000000-0000-0000-0000-000000000001", time.Now(), &protocol.CPUMetric{})
 }
 
 func TestPersistMetric_UnknownMetricType(t *testing.T) {
 	s, _, _, mock := newTestServer()
 
-	s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), unknownMetric{})
+	s.persistMetric(context.Background(), mock, "00000000-0000-0000-0000-000000000001", time.Now(), unknownMetric{})
 
 	// Verify no DB methods were called
 	if mock.InsertCPUCount+mock.InsertMemoryCount+mock.InsertDiskCount+mock.InsertDiskIOCount+
@@ -249,7 +249,7 @@ func TestPersistMetric_DBError(t *testing.T) {
 	s, _, _, mock := newTestServer()
 	mock.Err = errors.New("db connection lost")
 
-	err := s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), &protocol.CPUMetric{Usage: 50.0})
+	err := s.persistMetric(context.Background(), mock, "00000000-0000-0000-0000-000000000001", time.Now(), &protocol.CPUMetric{Usage: 50.0})
 	if err == nil {
 		t.Fatal("expected an error: a write failure that is only logged lets handleMetrics acknowledge data it never stored")
 	}
@@ -270,7 +270,7 @@ func TestPersistMetric_ProcessListDBError(t *testing.T) {
 		},
 	}
 
-	err := s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), metric)
+	err := s.persistMetric(context.Background(), mock, "00000000-0000-0000-0000-000000000001", time.Now(), metric)
 	if err == nil {
 		t.Fatal("expected an error so the batch is not acknowledged as durable")
 	}
@@ -294,7 +294,7 @@ func TestPersistMetric_ServiceListDBError(t *testing.T) {
 		},
 	}
 
-	err := s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), metric)
+	err := s.persistMetric(context.Background(), mock, "00000000-0000-0000-0000-000000000001", time.Now(), metric)
 	if err == nil {
 		t.Fatal("expected an error: service upserts used to log and report success, silently dropping rows during an outage")
 	}
@@ -305,11 +305,11 @@ func TestPersistMetric_ServiceListDBError(t *testing.T) {
 }
 
 func TestPersistMetric_UnknownMetricTypeReturnsNil(t *testing.T) {
-	s, _, _, _ := newTestServer()
+	s, _, _, mock := newTestServer()
 
 	// An unknown type is not something the agent can fix by resending, so it
 	// must not fail the batch.
-	if err := s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), unknownMetric{}); err != nil {
+	if err := s.persistMetric(context.Background(), mock, "00000000-0000-0000-0000-000000000001", time.Now(), unknownMetric{}); err != nil {
 		t.Errorf("unknown metric type: got %v, want nil", err)
 	}
 }
@@ -317,7 +317,7 @@ func TestPersistMetric_UnknownMetricTypeReturnsNil(t *testing.T) {
 func TestPersistMetric_ContainerListEmpty(t *testing.T) {
 	s, _, _, mock := newTestServer()
 
-	s.persistMetric(context.Background(), "00000000-0000-0000-0000-000000000001", time.Now(), &protocol.ContainerListMetric{
+	s.persistMetric(context.Background(), mock, "00000000-0000-0000-0000-000000000001", time.Now(), &protocol.ContainerListMetric{
 		Containers: []protocol.ContainerMetric{},
 	})
 

@@ -551,6 +551,8 @@ func TestHandleVersion(t *testing.T) {
 	}
 }
 
+// --- Metrics durability (finding #3) ---
+
 // failingWriteDB fails metric writes only.
 //
 // MockDB.Err fails every query, which means agent auth (GetAgentSecretSHA256)
@@ -689,4 +691,166 @@ func TestHandleMetrics_UndecodableEnvelopeDoesNotFailBatch(t *testing.T) {
 	if mock.InsertMemoryCount != 1 {
 		t.Errorf("InsertMemory: got %d, want 1: the good envelope after it must still persist", mock.InsertMemoryCount)
 	}
+}
+
+// --- Metric batch atomicity ---
+
+// TestHandleMetrics_BatchIsTransactional is the regression test for duplicate
+// history. Without a transaction, a batch failing partway left the earlier
+// envelopes committed; the agent treats any non-2xx as "none of it landed" and
+// re-sends the whole batch, so those rows were inserted a second time. These
+// tables have no uniqueness constraints and the inserts have no conflict
+// handling, so nothing downstream deduplicates them.
+func TestHandleMetrics_BatchIsTransactional(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+	s.DB = &failingWriteDB{MockDB: mock, err: errors.New("db connection lost")}
+
+	batch := []RawEnvelope{
+		{Type: "cpu", Hostname: "test-host", Data: json.RawMessage(`{"usage": 50.0}`)},
+	}
+
+	body, _ := json.Marshal(batch)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d, want 500", rec.Code)
+	}
+	if mock.Committed {
+		t.Error("a batch with a failed write must not commit")
+	}
+	if !mock.RolledBack {
+		t.Error("a batch with a failed write must roll back")
+	}
+}
+
+func TestHandleMetrics_SuccessfulBatchCommits(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+
+	batch := []RawEnvelope{
+		{Type: "cpu", Hostname: "test-host", Data: json.RawMessage(`{"usage": 50.0}`)},
+		{Type: "memory", Hostname: "test-host", Data: json.RawMessage(`{"used_pct": 40.0}`)},
+	}
+
+	body, _ := json.Marshal(batch)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status: got %d, want 202", rec.Code)
+	}
+	if mock.WithMetricTxCount != 1 {
+		t.Errorf("WithMetricTx called %d times, want 1: the batch must be one transaction, not one per envelope",
+			mock.WithMetricTxCount)
+	}
+	if !mock.Committed {
+		t.Error("a successful batch must commit")
+	}
+}
+
+// TestHandleMetrics_BeginFailureReturns500 covers the case where the batch
+// never starts. Nothing is written, so the agent's retry is correct.
+func TestHandleMetrics_BeginFailureReturns500(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+	mock.BeginErr = errors.New("connection pool exhausted")
+
+	batch := []RawEnvelope{
+		{Type: "cpu", Hostname: "test-host", Data: json.RawMessage(`{"usage": 50.0}`)},
+	}
+
+	body, _ := json.Marshal(batch)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status: got %d, want 500", rec.Code)
+	}
+	if mock.InsertCPUCount != 0 {
+		t.Errorf("InsertCPU: got %d, want 0 when the transaction never opened", mock.InsertCPUCount)
+	}
+}
+
+// TestHandleMetrics_CommitFailureReturns500 is the subtle one: every write
+// succeeded, so a handler that only checked the writes would answer 202 for a
+// batch that was never durable.
+func TestHandleMetrics_CommitFailureReturns500(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+	mock.CommitErr = errors.New("commit failed")
+
+	batch := []RawEnvelope{
+		{Type: "cpu", Hostname: "test-host", Data: json.RawMessage(`{"usage": 50.0}`)},
+	}
+
+	body, _ := json.Marshal(batch)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status: got %d, want 500 even though every write succeeded", rec.Code)
+	}
+}
+
+// TestHandleMetrics_CacheRefreshFailureStillAccepts pins the other half of the
+// split: current_metrics is derived and recomputed by the next batch, so a
+// failure there must not make the agent replay history that stored correctly.
+func TestHandleMetrics_CacheRefreshFailureStillAccepts(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+	s.DB = &failingCacheDB{MockDB: mock, err: errors.New("current_metrics unavailable")}
+
+	batch := []RawEnvelope{
+		{Type: "cpu", Hostname: "test-host", Data: json.RawMessage(`{"usage": 50.0}`)},
+	}
+
+	body, _ := json.Marshal(batch)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("status: got %d, want 202: a cache failure must not fail the batch", rec.Code)
+	}
+	if !mock.Committed {
+		t.Error("the metric transaction should still have committed")
+	}
+}
+
+// failingCacheDB fails only the derived current_metrics writes.
+type failingCacheDB struct {
+	*MockDB
+	err error
+}
+
+func (d *failingCacheDB) UpsertCurrentCPU(ctx context.Context, p database.UpsertCurrentCPUParams) error {
+	return d.err
+}
+
+// WithMetricTx must be overridden, not inherited. The promoted version would
+// hand the inner MockDB to the callback, so these failing writes would never
+// be called and the batch would succeed.
+func (d *failingWriteDB) WithMetricTx(ctx context.Context, fn func(MetricWriter) error) error {
+	return d.MockDB.RunMetricTx(ctx, d, fn)
 }

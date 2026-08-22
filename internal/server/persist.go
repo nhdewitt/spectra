@@ -20,13 +20,16 @@ func mustUUID(id string) pgtype.UUID {
 	return u
 }
 
-// persistMetric writes a metric to a database.
+// persistMetric writes the durable part of a metric through tx.
 //
-// The returned error is what makes a 202 on /agent/metrics honest: the agent
-// discards a batch on any 2xx, so a write failure that is only logged here is
-// data the fleet can never send again.
-func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time, metric protocol.Metric) error {
-	if s.DB == nil {
+// Only writes whose failure must fail the whole batch belong here; the current_metrics
+// refresh is handled separately by refreshCurrent, after the transaction commits. Splitting
+// them keeps a broken dashboard cache from forcing replay of history that stored correctly.
+//
+// The returned error is what makes 202 on /agent/metrics honest. The agent discards a batch
+// on any 2xx, so a write failure that is only logged here is data the fleet can never send again.
+func (s *Server) persistMetric(ctx context.Context, tx MetricWriter, agentID string, ts time.Time, metric protocol.Metric) error {
+	if tx == nil {
 		return nil
 	}
 
@@ -37,7 +40,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 
 	switch m := metric.(type) {
 	case *protocol.CPUMetric:
-		err = s.DB.InsertCPU(ctx, database.InsertCPUParams{
+		err = tx.InsertCPU(ctx, database.InsertCPUParams{
 			Time:       t,
 			AgentID:    uid,
 			Usage:      pgFloat8(m.Usage),
@@ -48,21 +51,8 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			Iowait:     pgFloat8(m.IOWait),
 		})
 
-		var normalized float64
-		if cores := len(m.CoreUsage); cores > 0 {
-			normalized = m.LoadAvg1 / float64(cores)
-		}
-
-		if cacheErr := s.DB.UpsertCurrentCPU(ctx, database.UpsertCurrentCPUParams{
-			AgentID:        uid,
-			CpuUsage:       pgFloat8(m.Usage),
-			LoadNormalized: pgFloat8(normalized),
-		}); cacheErr != nil {
-			s.Logger.Warn("error updating current_metrics", "metric", "cpu", "error", cacheErr)
-		}
-
 	case *protocol.MemoryMetric:
-		err = s.DB.InsertMemory(ctx, database.InsertMemoryParams{
+		err = tx.InsertMemory(ctx, database.InsertMemoryParams{
 			Time:         t,
 			AgentID:      uid,
 			RamTotal:     pgInt8(int64(m.Total)),
@@ -74,16 +64,8 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			SwapPercent:  pgFloat8(m.SwapPct),
 		})
 
-		if cacheErr := s.DB.UpsertCurrentMemory(ctx, database.UpsertCurrentMemoryParams{
-			AgentID:     uid,
-			RamPercent:  pgFloat8(m.UsedPct),
-			SwapPercent: pgFloat8(m.SwapPct),
-		}); cacheErr != nil {
-			s.Logger.Warn("error updating current_metrics", "metric", "memory", "error", cacheErr)
-		}
-
 	case *protocol.DiskMetric:
-		err = s.DB.InsertDisk(ctx, database.InsertDiskParams{
+		err = tx.InsertDisk(ctx, database.InsertDiskParams{
 			Time:          t,
 			AgentID:       uid,
 			Device:        pgText(m.Device),
@@ -99,12 +81,8 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			InodesPercent: pgFloat8(m.InodesPct),
 		})
 
-		if cacheErr := s.DB.UpsertCurrentDiskMax(ctx, uid); cacheErr != nil {
-			s.Logger.Warn("error updating current_metrics", "metric", "disk", "error", cacheErr)
-		}
-
 	case *protocol.DiskIOMetric:
-		err = s.DB.InsertDiskIO(ctx, database.InsertDiskIOParams{
+		err = tx.InsertDiskIO(ctx, database.InsertDiskIOParams{
 			Time:         t,
 			AgentID:      uid,
 			Device:       pgText(m.Device),
@@ -118,7 +96,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		})
 
 	case *protocol.NetworkMetric:
-		err = s.DB.InsertNetwork(ctx, database.InsertNetworkParams{
+		err = tx.InsertNetwork(ctx, database.InsertNetworkParams{
 			Time:      t,
 			AgentID:   uid,
 			Interface: pgText(m.Interface),
@@ -135,16 +113,12 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			TxDrops:   pgInt8(int64(m.TxDrops)),
 		})
 
-		if cacheErr := s.DB.UpsertCurrentNetwork(ctx, uid); cacheErr != nil {
-			s.Logger.Warn("error updating current_metrics", "metric", "network", "error", cacheErr)
-		}
-
 	case *protocol.TemperatureMetric:
 		maxTemp := pgtype.Float8{}
 		if m.Max != nil {
 			maxTemp = pgFloat8(*m.Max)
 		}
-		err = s.DB.InsertTemperature(ctx, database.InsertTemperatureParams{
+		err = tx.InsertTemperature(ctx, database.InsertTemperatureParams{
 			Time:        t,
 			AgentID:     uid,
 			Sensor:      pgText(m.Sensor),
@@ -152,12 +126,8 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			MaxTemp:     maxTemp,
 		})
 
-		if cacheErr := s.DB.UpsertCurrentTemperature(ctx, uid); cacheErr != nil {
-			s.Logger.Warn("error updating current_metrics", "metric", "temperature", "error", cacheErr)
-		}
-
 	case *protocol.SystemMetric:
-		err = s.DB.InsertSystem(ctx, database.InsertSystemParams{
+		err = tx.InsertSystem(ctx, database.InsertSystemParams{
 			Time:         t,
 			AgentID:      uid,
 			Uptime:       pgInt8(int64(m.Uptime)),
@@ -166,16 +136,8 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			BootTime:     pgInt8(int64(m.BootTime)),
 		})
 
-		if cacheErr := s.DB.UpsertCurrentSystem(ctx, database.UpsertCurrentSystemParams{
-			AgentID:      uid,
-			Uptime:       pgInt8(int64(m.Uptime)),
-			ProcessCount: pgInt4(int32(m.Processes)),
-		}); cacheErr != nil {
-			s.Logger.Warn("error updating current_metrics", "metric", "system", "error", cacheErr)
-		}
-
 	case *protocol.WiFiMetric:
-		err = s.DB.InsertWifi(ctx, database.InsertWifiParams{
+		err = tx.InsertWifi(ctx, database.InsertWifiParams{
 			Time:         t,
 			AgentID:      uid,
 			Interface:    pgText(m.Interface),
@@ -188,7 +150,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		})
 
 	case *protocol.ContainerMetric:
-		err = s.DB.InsertContainer(ctx, database.InsertContainerParams{
+		err = tx.InsertContainer(ctx, database.InsertContainerParams{
 			Time:        t,
 			AgentID:     uid,
 			ContainerID: pgText(m.ID),
@@ -207,7 +169,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 
 	case *protocol.ContainerListMetric:
 		for i := range m.Containers {
-			if err := s.persistMetric(ctx, agentID, ts, &m.Containers[i]); err != nil {
+			if err := s.persistMetric(ctx, tx, agentID, ts, &m.Containers[i]); err != nil {
 				return err
 			}
 		}
@@ -216,7 +178,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 	case *protocol.ProcessListMetric:
 		cutoff := pgtype.Timestamptz{Time: ts.Add(-1 * time.Minute), Valid: true}
 		for _, p := range m.Processes {
-			if upsertErr := s.DB.UpsertProcess(ctx, database.UpsertProcessParams{
+			if upsertErr := tx.UpsertProcess(ctx, database.UpsertProcessParams{
 				AgentID:    uid,
 				Pid:        int32(p.Pid),
 				Name:       pgText(p.Name),
@@ -232,14 +194,14 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 			}
 		}
 		// Remove processes that weren't in this batch
-		err = s.DB.DeleteStaleProcesses(ctx, database.DeleteStaleProcessesParams{
+		err = tx.DeleteStaleProcesses(ctx, database.DeleteStaleProcessesParams{
 			AgentID:   uid,
 			UpdatedAt: cutoff,
 		})
 
 	case *protocol.ServiceListMetric:
 		for _, svc := range m.Services {
-			if upsertErr := s.DB.UpsertService(ctx, database.UpsertServiceParams{
+			if upsertErr := tx.UpsertService(ctx, database.UpsertServiceParams{
 				AgentID:   uid,
 				Name:      svc.Name,
 				Status:    pgText(svc.Status),
@@ -252,7 +214,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 
 	case *protocol.ApplicationListMetric:
 		for _, app := range m.Applications {
-			if upsertErr := s.DB.UpsertApplication(ctx, database.UpsertApplicationParams{
+			if upsertErr := tx.UpsertApplication(ctx, database.UpsertApplicationParams{
 				AgentID: uid,
 				Name:    app.Name,
 				Version: pgText(app.Version),
@@ -263,7 +225,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		return nil
 
 	case *protocol.ClockMetric:
-		err = s.DB.InsertPi(ctx, database.InsertPiParams{
+		err = tx.InsertPi(ctx, database.InsertPiParams{
 			Time:       t,
 			AgentID:    uid,
 			MetricType: "clock",
@@ -273,7 +235,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		})
 
 	case *protocol.VoltageMetric:
-		err = s.DB.InsertPi(ctx, database.InsertPiParams{
+		err = tx.InsertPi(ctx, database.InsertPiParams{
 			Time:        t,
 			AgentID:     uid,
 			MetricType:  "voltage",
@@ -284,7 +246,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		})
 
 	case *protocol.ThrottleMetric:
-		err = s.DB.InsertPi(ctx, database.InsertPiParams{
+		err = tx.InsertPi(ctx, database.InsertPiParams{
 			Time:                  t,
 			AgentID:               uid,
 			MetricType:            "throttle",
@@ -299,7 +261,7 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		})
 
 	case *protocol.GPUMetric:
-		err = s.DB.InsertPi(ctx, database.InsertPiParams{
+		err = tx.InsertPi(ctx, database.InsertPiParams{
 			Time:        t,
 			AgentID:     uid,
 			MetricType:  "gpu",
@@ -308,20 +270,13 @@ func (s *Server) persistMetric(ctx context.Context, agentID string, ts time.Time
 		})
 
 	case *protocol.UpdateMetric:
-		err = s.DB.UpsertUpdates(ctx, database.UpsertUpdatesParams{
+		err = tx.UpsertUpdates(ctx, database.UpsertUpdatesParams{
 			AgentID:        uid,
 			PendingCount:   int32(m.PendingCount),
 			SecurityCount:  int32(m.SecurityCount),
 			RebootRequired: m.RebootRequired,
 			PackageManager: pgText(m.PackageManager),
 		})
-
-		if cacheErr := s.DB.UpsertCurrentReboot(ctx, database.UpsertCurrentRebootParams{
-			AgentID:        uid,
-			RebootRequired: m.RebootRequired,
-		}); cacheErr != nil {
-			s.Logger.Warn("error updating current_metrics", "metric", "updates", "error", cacheErr)
-		}
 
 	default:
 		// Unknown metric type: nothing to write, and nothing the agent can fix
@@ -360,4 +315,94 @@ func float64SliceToPgArray(s []float64) []float64 {
 		return []float64{}
 	}
 	return s
+}
+
+// refreshCurrent updates the derived current_metrics cache for a metric.
+//
+// Deliberately outside the batch transaction and deliberately silent on failure.
+// These rows are recomputed from whatever the next batch delivers, so a failure
+// here costs a few seconds of dashboard staleness, while making them transactional
+// would mean a broken cache write forced the agent to replay history that had
+// already stored correctly.
+//
+// Running after the commit rather than alongside the inserts also keeps the cache
+// from advertising values that a later rollback erased.
+func (s *Server) refreshCurrent(ctx context.Context, agentID string, metric protocol.Metric) {
+	if s.DB == nil {
+		return
+	}
+
+	uid := mustUUID(agentID)
+
+	switch m := metric.(type) {
+	case *protocol.CPUMetric:
+		var normalized float64
+		if cores := len(m.CoreUsage); cores > 0 {
+			normalized = m.LoadAvg1 / float64(cores)
+		}
+
+		if err := s.DB.UpsertCurrentCPU(ctx, database.UpsertCurrentCPUParams{
+			AgentID:        uid,
+			CpuUsage:       pgFloat8(m.Usage),
+			LoadNormalized: pgFloat8(normalized),
+		}); err != nil {
+			s.Logger.Warn("error updating current_metrics", "metric", "cpu", "error", err)
+		}
+
+	case *protocol.MemoryMetric:
+		if err := s.DB.UpsertCurrentMemory(ctx, database.UpsertCurrentMemoryParams{
+			AgentID:     uid,
+			RamPercent:  pgFloat8(m.UsedPct),
+			SwapPercent: pgFloat8(m.SwapPct),
+		}); err != nil {
+			s.Logger.Warn("error updating current_metrics", "metric", "memory", "error", err)
+		}
+
+	case *protocol.DiskMetric:
+		if err := s.DB.UpsertCurrentDiskMax(ctx, uid); err != nil {
+			s.Logger.Warn("error updating current_metrics", "metric", "disk", "error", err)
+		}
+
+	case *protocol.NetworkMetric:
+		if err := s.DB.UpsertCurrentNetwork(ctx, uid); err != nil {
+			s.Logger.Warn("error updating current_metrics", "metric", "network", "error", err)
+		}
+
+	case *protocol.TemperatureMetric:
+		if err := s.DB.UpsertCurrentTemperature(ctx, uid); err != nil {
+			s.Logger.Warn("error updating current_metrics", "metric", "temperature", "error", err)
+		}
+
+	case *protocol.SystemMetric:
+		if err := s.DB.UpsertCurrentSystem(ctx, database.UpsertCurrentSystemParams{
+			AgentID:      uid,
+			Uptime:       pgInt8(int64(m.Uptime)),
+			ProcessCount: pgInt4(int32(m.Processes)),
+		}); err != nil {
+			s.Logger.Warn("error updating current_metrics", "metric", "system", "error", err)
+		}
+
+	case *protocol.UpdateMetric:
+		if err := s.DB.UpsertCurrentReboot(ctx, database.UpsertCurrentRebootParams{
+			AgentID:        uid,
+			RebootRequired: m.RebootRequired,
+		}); err != nil {
+			s.Logger.Warn("error updating current_metrics", "metric", "updates", "error", err)
+		}
+
+	case *protocol.ContainerListMetric:
+		// Containers have no current_metrics row of their own, but the list
+		// wrapper is what arrives, so recurse for symmetry with persistMetric.
+		for i := range m.Containers {
+			s.refreshCurrent(ctx, agentID, &m.Containers[i])
+		}
+	}
+}
+
+// decodedMetric pairs a decoded metric with its envelope timestamp, so handleMetrics
+// can decode once and then walk the batch twice: durable writes inside the transaction,
+// cache refresh after it commits.
+type decodedMetric struct {
+	metric protocol.Metric
+	ts     time.Time
 }
