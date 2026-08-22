@@ -1,6 +1,8 @@
 package server
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -115,5 +117,78 @@ func TestCommandResultStore_CompleteOnUnknownIDIsSafe(t *testing.T) {
 
 	if _, ok := s.Get("cmd-never-tracked"); ok {
 		t.Error("Complete should not create an entry for an untracked command")
+	}
+}
+
+// TestCommandResultStore_ConcurrentGetAndComplete is a race-detector test: it
+// only fails under -race, and only against a Get that returns the stored
+// pointer instead of a copy. The real handler reads the entry after Get has
+// released the lock, so a concurrent Complete writes Result, Done, and
+// completedAt while it is being encoded.
+func TestCommandResultStore_ConcurrentGetAndComplete(t *testing.T) {
+	s := newCommandResultStore(time.Minute)
+	defer s.Stop()
+
+	const ids = 50
+	for i := range ids {
+		s.Track(fmt.Sprintf("cmd-%d", i), protocol.CmdFetchLogs, "test-agent")
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for i := range ids {
+			id := fmt.Sprintf("cmd-%d", i)
+			s.Complete(id, protocol.CommandResult{ID: id, Type: protocol.CmdFetchLogs})
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := range ids {
+			id := fmt.Sprintf("cmd-%d", i)
+			if entry, ok := s.Get(id); ok {
+				// Read every field the writer touches, the way an encoder would.
+				_ = entry.Done
+				_ = entry.completedAt
+				_ = entry.Result
+				_ = entry.AgentID
+			}
+		}
+	}()
+
+	wg.Wait()
+}
+
+// TestCommandResultStore_GetReturnsSnapshot pins the copy directly, so the
+// guarantee holds even when the suite runs without -race.
+func TestCommandResultStore_GetReturnsSnapshot(t *testing.T) {
+	s := newCommandResultStore(time.Minute)
+	defer s.Stop()
+
+	s.Track("cmd-snap", protocol.CmdDiskUsage, "test-agent")
+
+	before, ok := s.Get("cmd-snap")
+	if !ok {
+		t.Fatal("entry missing after Track")
+	}
+	if before.Done {
+		t.Fatal("entry is already marked done")
+	}
+
+	s.Complete("cmd-snap", protocol.CommandResult{ID: "cmd-snap", Type: protocol.CmdDiskUsage})
+
+	if before.Done {
+		t.Error("a previously returned entry was mutated by Complete: Get handed back the stored pointer")
+	}
+
+	after, ok := s.Get("cmd-snap")
+	if !ok {
+		t.Fatal("entry missing after Complete")
+	}
+	if !after.Done {
+		t.Error("a snapshot taken after Complete should reflect it")
 	}
 }

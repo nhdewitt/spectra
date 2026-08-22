@@ -64,14 +64,21 @@ func (s *commandResultStore) Complete(id string, result protocol.CommandResult) 
 }
 
 // Get returns the current state of a command.
+//
+// The shallow copy is sufficient only because Complete assigns a fresh
+// *protocol.CommandResult rather than mutating the existing one in place.
+// If that ever changes, this needs to deep-copy the result too.
 func (s *commandResultStore) Get(id string) (*commandEntry, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	entry, ok := s.entries[id]
 	if !ok {
 		return nil, false
 	}
-	return entry, true
+
+	snapshot := *entry
+	return &snapshot, true
 }
 
 // maxCommandLifetime bounds how long an unfinished command is tracked.
