@@ -163,13 +163,31 @@ release: clean
 	@echo "  Built $$(ls $(RELEASE_DIR)/spectra-agent-* 2>/dev/null | wc -l) binaries"
 	@echo "  Checksums: $(RELEASE_DIR)/checksums.sha256"
 
+# deploy-releases stages into releases/.staging and renames into place, rather
+# than copying directly into the live directory.
+#
+# The server re-reads checksums.sha256 whenever its mtime changes, so a direct
+# copy is observable mid-write: it can see a truncated manifest, or a complete
+# manifest naming a binary that has not finished copying. Integrity
+# verification makes that fail closed rather than serve a bad binary, but it
+# still turns a deploy into a window of spurious download failures.
+#
+# Ordering inside the rename matters. Binaries move first, then
+# checksums.sha256 last, because the manifest is what the server watches -- a
+# binary present but unlisted is inert, while a manifest entry with no binary
+# behind it is a failed download.
 deploy-releases:
 	@test -f $(RELEASE_DIR)/checksums.sha256 || { echo "No checksums. Run 'make release' first."; exit 1; }
 	@test "$$(ls $(RELEASE_DIR)/spectra-agent-* 2>/dev/null | wc -l)" -gt 0 || { echo "No agent binaries. Run 'make release' first."; exit 1; }
 	@if [ -n "$(DEPLOY_HOST)" ]; then \
-		scp $(RELEASE_DIR)/spectra-agent-* $(RELEASE_DIR)/checksums.sha256 $(DEPLOY_USER)@$(DEPLOY_HOST):$(DEPLOY_PATH)/releases/; \
+		ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'rm -rf $(DEPLOY_PATH)/releases/.staging && mkdir -p $(DEPLOY_PATH)/releases/.staging'; \
+		scp $(RELEASE_DIR)/spectra-agent-* $(RELEASE_DIR)/checksums.sha256 $(DEPLOY_USER)@$(DEPLOY_HOST):$(DEPLOY_PATH)/releases/.staging/; \
+		ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'set -e; cd $(DEPLOY_PATH)/releases/.staging; mv -f spectra-agent-* ..; mv -f checksums.sha256 ..; cd ..; rm -rf .staging'; \
 	else \
-		sudo cp $(RELEASE_DIR)/spectra-agent-* $(RELEASE_DIR)/checksums.sha256 $(DEPLOY_PATH)/releases/; \
+		sudo rm -rf $(DEPLOY_PATH)/releases/.staging; \
+		sudo mkdir -p $(DEPLOY_PATH)/releases/.staging; \
+		sudo cp $(RELEASE_DIR)/spectra-agent-* $(RELEASE_DIR)/checksums.sha256 $(DEPLOY_PATH)/releases/.staging/; \
+		sudo sh -c 'set -e; cd $(DEPLOY_PATH)/releases/.staging; mv -f spectra-agent-* ..; mv -f checksums.sha256 ..; cd ..; rm -rf .staging'; \
 	fi
 	@echo "  Releases deployed."
 
