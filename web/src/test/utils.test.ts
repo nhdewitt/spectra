@@ -5,7 +5,8 @@ import {
     statusColor,
     severityColor,
     sortAgentsBySeverity,
-    sortAgentsByStatus
+    sortAgentsByStatus,
+    formatNetworkRate
 } from '../utils';
 import { themeVars } from '../theme';
 import type { OverviewAgent } from '../types';
@@ -223,5 +224,42 @@ describe('sortAgentsByStatus', () => {
         const original = [...agents]
         sortAgentsByStatus(agents, DEFAULT_THRESHOLDS)
         expect(agents.map(a => a.id)).toEqual(original.map(a => a.id))
+    })
+})
+
+describe('formatNetworkRate', () => {
+    // The agent normalizes every platform to bits per second before sending.
+    it('formats the common ethernet link speeds', () => {
+        expect(formatNetworkRate(10_000_000)).toBe('10Mbps')
+        expect(formatNetworkRate(100_000_000)).toBe('100Mbps')
+        expect(formatNetworkRate(1_000_000_000)).toBe('1Gbps')
+        expect(formatNetworkRate(2_500_000_000)).toBe('2.5Gbps')
+        expect(formatNetworkRate(5_000_000_000)).toBe('5Gbps')
+    })
+
+    it('handles speeds above 10G', () => {
+        // These are the ones a hardcoded switch would miss, falling through to
+        // a fallback that was wrong by a factor of a million.
+        expect(formatNetworkRate(10_000_000_000)).toBe('10Gbps')
+        expect(formatNetworkRate(25_000_000_000)).toBe('25Gbps')
+        expect(formatNetworkRate(40_000_000_000)).toBe('40Gbps')
+        expect(formatNetworkRate(100_000_000_000)).toBe('100Gbps')
+    })
+
+    it('drops a trailing zero but keeps a real fraction', () => {
+        expect(formatNetworkRate(1_000_000_000)).toBe('1Gbps')
+        expect(formatNetworkRate(1_500_000_000)).toBe('1.5Gbps')
+    })
+
+    it('returns null when the speed is unknown', () => {
+        // Collectors report 0 for a downed link, a virtual interface, or an
+        // unreadable sysfs entry.
+        expect(formatNetworkRate(0)).toBeNull()
+        expect(formatNetworkRate(-1)).toBeNull()
+        expect(formatNetworkRate(NaN)).toBeNull()
+    })
+
+    it('falls back to bits per second below 1Kbps', () => {
+        expect(formatNetworkRate(500)).toBe('500bps')
     })
 })

@@ -242,3 +242,34 @@ export function timeAgo(dateStr: string | null): string {
     const years = Math.floor(months / 12);
     return `${years}y ago`;
 }
+
+/**
+ * Link speed for display.
+ * 
+ * The agent normalizes every platform to bits per second before sending:
+ *  - Linux reads /sys/class/net/<if>/speed (megabits) and multiplies by 1e6
+ *  - Windows reports ReceiveLinkSpeed in bps
+ *  - BSD uses Baudrate
+ * 
+ * Returns null for 0, which is what every collector reports when the speed
+ * is unavailable, so callers can omit the field instead of printing 0bps.
+ */
+export function formatNetworkRate(bitsPerSecond: number): string | null {
+    if (!Number.isFinite(bitsPerSecond) || bitsPerSecond <= 0) return null;
+
+    const units: [number, string][] = [
+        [1e12, "Tbps"],
+        [1e9, "Gbps"],
+        [1e6, "Mbps"],
+        [1e3, "Kbps"],
+    ];
+
+    for (const [limit, suffix] of units) {
+        if (bitsPerSecond >= limit) {
+            // Number() drops a trailing .0, so 1Gbps stays 1Gbps while
+            // 2.5Gbps keeps the fraction
+            return `${Number((bitsPerSecond / limit).toFixed(1))}${suffix}`;
+        }
+    }
+    return `${bitsPerSecond}bps`;
+}

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { ReactNode } from "react";
 import {
     ResponsiveContainer,
     LineChart,
@@ -48,6 +49,10 @@ export interface MetricChartProps<T extends { time: string }> {
     };
     refLines?: RefLine[];
     rangeSel?: RangeSelection;
+    /** Rendered next to the title, used for the findings badge */
+    badge?: ReactNode;
+    /** Rendered right-aligned in the title row, used for the drill-in hint */
+    action?: ReactNode;
 }
 
 const GRID_OPACITY = 0.15;
@@ -198,6 +203,8 @@ export function MetricChart<T extends { time: string} >({
     secondaryY,
     refLines,
     rangeSel,
+    badge,
+    action,
 }: MetricChartProps<T>) {
     const colors = useMemo(() => palette(), []);
 
@@ -222,18 +229,32 @@ export function MetricChart<T extends { time: string} >({
             {/* Title */}
             <div
                 style={{
-                    fontFamily: themeVars.font,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: themeVars.textMuted,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
                     marginBottom: 8,
                 }}
             >
-                {title}
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        minWidth: 0,
+                        fontFamily: themeVars.font,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: themeVars.textMuted,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                    }}
+                >
+                    {title}
+                    {badge}
+                </div>
+                {action}
             </div>
-
+ 
             {/* Series */}
             {loading && <LoadingSpinner />}
             {!loading && error && (
@@ -261,7 +282,7 @@ export function MetricChart<T extends { time: string} >({
                     No data for this range.
                 </div>
             )}
-
+ 
             {/* Chart */}
             {!loading && !error && data.length > 0 && (
                 <div

@@ -173,6 +173,31 @@ function prepareMetricData<T extends { time: string }>(
     return downsampled;
 }
 
+/**
+ * Fields useMetric attaches to every point for charting: the numeric timestamp
+ * MetricChart uses as its X axis, and the gape markers the tooltip filters out.
+ */
+export const CHART_META_KEYS = ["_ts", "_gap", "_gapEnd"] as const;
+
+/**
+ * Copy charting metadata from a source point onto a derived row.
+ * 
+ * Any transform that builds new row objects loses these, and MetricChart then
+ * renders a legend with no lines because every point has an undefined X value.
+ * Call this on each derived row.
+ */
+export function withChartMeta<T extends { time: string }>(
+    source: { time: string },
+    target: T
+): T {
+    const src = source as unknown as Record<string, unknown>;
+    const dst = target as unknown as Record<string, unknown>;
+    for (const key of CHART_META_KEYS) {
+        if (src[key] !== undefined) dst[key] = src[key];
+    }
+    return target;
+}
+
 function isAbortError(err: unknown): boolean {
     return (
         err instanceof DOMException && err.name === "AbortError"
