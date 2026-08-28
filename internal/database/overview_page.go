@@ -70,13 +70,24 @@ type GetOverviewPageResult struct {
 // overviewSortExprs whitelists selectable sort keys to their SQL expressions,
 // evaluated against the classified CTE (so column names are unqualified). A key
 // absent here falls back to hostname, so the interpolated token is always safe.
-// "status" sorts by health severity via the classified status alias.
+// "status" sorts by health severity via the classified status alias, and "net"
+// combines rx+tx because the UI shows them as one column.
+//
+// Each value must be a SINGLE expression: buildOverviewPageQuery writes the
+// direction immediately after it, so a comma-separated pair like "os, platform"
+// would apply the direction to platform only.
 var overviewSortExprs = map[string]string{
 	"hostname":  "hostname",
+	"os":        "os",
+	"platform":  "platform",
+	"arch":      "arch",
 	"cpu":       "COALESCE(cpu_usage, 0)",
 	"memory":    "COALESCE(ram_percent, 0)",
 	"disk":      "COALESCE(disk_max_percent, 0)",
 	"temp":      "COALESCE(max_temp, 0)",
+	"uptime":    "COALESCE(uptime, 0)",
+	"procs":     "COALESCE(process_count, 0)",
+	"net":       "(COALESCE(net_rx_bytes,0) + COALESCE(net_tx_bytes,0))",
 	"severity":  "(COALESCE(cpu_usage,0) + COALESCE(disk_max_percent,0) + COALESCE(ram_percent,0))",
 	"last_seen": "last_seen",
 	"status":    "CASE status WHEN 'offline' THEN 0 WHEN 'crit' THEN 1 WHEN 'warn' THEN 2 WHEN 'stale' THEN 3 ELSE 4 END",
@@ -272,6 +283,11 @@ func buildOverviewPageQuery(arg GetOverviewPageParams) (string, []any) {
 	sb.WriteString(sortExpr)
 	sb.WriteByte(' ')
 	sb.WriteString(dir)
+	// NULLS LAST so rows with no value for the sorted column stay at the
+	// bottom in both directions. Postgres defaults to NULLS FIRST on DESC,
+	// which would put never-seen agents at the top of a "most recent first"
+	// sort. Most exprs are COALESCE'd already, last_seen is not.
+	sb.WriteString(" NULLS LAST")
 	sb.WriteString(", hostname ASC")
 	sb.WriteString("\nLIMIT ")
 	sb.WriteString(acc.p(limit))

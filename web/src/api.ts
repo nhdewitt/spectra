@@ -2,6 +2,8 @@ import type {
     User,
     Agent,
     OverviewAgent,
+    OverviewSortKey,
+    OverviewSortDir,
     CPUMetric,
     MemoryMetric,
     DiskMetric,
@@ -65,8 +67,8 @@ export interface OverviewLabelFilter {
 export interface OverviewPageParams {
     page?: number;
     size?: number;
-    sort?: "hostname" | "cpu" | "memory" | "disk" | "temp" | "severity" | "last_seen" | "status";
-    order?: "asc" | "desc";
+    sort?: OverviewSortKey;
+    order?: OverviewSortDir;
     status?: string;
     os?: string;
     arch?: string;

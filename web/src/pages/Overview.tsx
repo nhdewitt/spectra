@@ -10,7 +10,7 @@ import { useThresholds } from "../ThresholdsContext";
 import type { SparkData } from "../hooks";
 import { StatBlock, LoadingSpinner } from "../components";
 import { LabelChip } from "../components/LabelChip";
-import type { OverviewAgent, AgentLabel, LabelKey } from "../types";
+import type { OverviewAgent, AgentLabel, LabelKey, OverviewSortKey, OverviewSortDir } from "../types";
 import {
 	formatBytes,
 	formatUptime,
@@ -20,7 +20,8 @@ import {
 } from "../utils";
 import type { AgentStatus } from "../utils";
 
-type SortOption = "severity" | "status" | "hostname" | "cpu" | "memory" | "disk" | "temp";
+type SortOption = OverviewSortKey;
+type SortDir = OverviewSortDir;
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 250];
 const DEFAULT_PAGE_SIZE = 25;
@@ -31,15 +32,33 @@ const POLL_INTERVAL_MS = 10_000;
 // everything except hostname. Matches the server's own severity/status
 // ordering (offline=0, crit=1, warn=2, stale=3, online=4 - ascending
 // on "status" surfaces the worst case first).
-const SORT_ORDER: Record<SortOption, "asc" | "desc"> = {
+const DEFAULT_SORT_ORDER: Record<SortOption, SortDir> = {
+	platform: "asc",
+	arch: "asc",
 	severity: "desc",
 	status: "asc",
 	hostname: "asc",
+	os: "asc",
 	cpu: "desc",
 	memory: "desc",
 	disk: "desc",
 	temp: "desc",
+	uptime: "desc",
+	procs: "desc",
+	net: "desc",
+	last_seen: "desc",
 };
+
+// Severity is the resting sort: it has no column of its own (it sums cpu, disk
+// and memory), so a third click on any header returns here rather than leaving
+// the default unreachable once the user has sorted by something else.
+const DEFAULT_SORT: SortOption = "severity";
+
+// Cards are always alphabetical by hostname. Sorting a grid by a metric makes
+// tiles jump between positions on every poll, so the view pins its own order
+// regardless of what the table is sorted by.
+const CARD_SORT: SortOption = "hostname";
+const CARD_SORT_DIR: SortDir = "asc";
 
 interface OverviewProps {
 	stats: OverviewStats | null;
@@ -388,8 +407,6 @@ function FilterToolbar({
 	onArchFilterChange,
 	hardwareFilter,
 	onHardwareFilterChange,
-	sort,
-	onSortChange,
 	osOptions,
 	archOptions,
 	hardwareOptions,
@@ -404,8 +421,6 @@ function FilterToolbar({
 	onArchFilterChange: (v: string) => void;
 	hardwareFilter: string;
 	onHardwareFilterChange: (v: string) => void;
-	sort: SortOption;
-	onSortChange: (v: SortOption) => void;
 	osOptions: string[];
 	archOptions: string[];
 	hardwareOptions: string[];
@@ -483,20 +498,6 @@ function FilterToolbar({
 					))}
 				</select>
 			)}
- 
-			<select
-				value={sort}
-				onChange={(e) => onSortChange(e.target.value as SortOption)}
-				style={selectStyle}
-			>
-				<option value="severity">Sort: Severity</option>
-				<option value="status">Sort: Status</option>
-				<option value="hostname">Sort: Hostname</option>
-				<option value="cpu">Sort: CPU</option>
-				<option value="memory">Sort: Memory</option>
-				<option value="disk">Sort: Disk</option>
-				<option value="temp">Sort: Temperature</option>
-			</select>
 		</div>
 	);
 }
@@ -514,25 +515,105 @@ const headerStyle: React.CSSProperties = {
 	whiteSpace: "nowrap",
 };
 
-function TableHeader() {
+/**
+ * One clickable column header. The button fills the cell so the whole header is
+ * a hit target, and carries the padding headerStyle would otherwise put on the
+ * th. The arrow renders even when inactive so the column does not change width
+ * on the first click. */
+function SortableTh({
+	label,
+	columnKey,
+	sort,
+	sortDir,
+	onSort,
+	align = "right",
+	width,
+}: {
+	label: string;
+	columnKey: SortOption;
+	sort: SortOption;
+	sortDir: SortDir;
+	onSort: (key: SortOption) => void;
+	align?: "left" | "right";
+	width?: number;
+}) {
+	const active = sort === columnKey;
+
+	return (
+		<th
+			aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+			style={{ ...headerStyle, textAlign: align, width, padding: 0 }}
+		>
+			<button
+				type="button"
+				onClick={() => onSort(columnKey)}
+				title={`Sort by ${label}`}
+				style={{
+					display: "flex",
+					alignItems: "center",
+					justifyContent: align === "right" ? "flex-end" : "flex-start",
+					gap: 4,
+					width: "100%",
+					padding: "8px 10px",
+					margin: 0,
+					border: "none",
+					background: "transparent",
+					fontSize: 10,
+					fontFamily: themeVars.font,
+					color: active ? themeVars.text : themeVars.textDim,
+					letterSpacing: "0.05em",
+					textTransform: "uppercase",
+					cursor: "pointer",
+					userSelect: "none",
+					whiteSpace: "nowrap",
+				}}
+			>
+				{label}
+				<span
+					aria-hidden="true"
+					style={{ width: 8, flexShrink: 0, color: active ? themeVars.accent : "transparent" }}
+				>
+					{active && sortDir === "desc" ? "\u25bc" : "\u25b2"}
+				</span>
+			</button>
+		</th>
+	);	
+}
+
+function TableHeader({
+	sort,
+	sortDir,
+	onSort,
+}: {
+	sort: SortOption;
+	sortDir: SortDir;
+	onSort: (key: SortOption) => void;
+}) {
+	const common = { sort, sortDir, onSort };
+
 	return (
 		<tr style={{ borderBottom: `1px solid ${themeVars.border}` }}>
+			{/* Star toggle - nothing to sort. */}
 			<th style={{ ...headerStyle, textAlign: "left", width: 28 }} />
-			<th style={{ ...headerStyle, textAlign: "left" }}>Hostname</th>
-			<th style={{ ...headerStyle, textAlign: "left", width: 80 }}>Status</th>
-			<th style={{ ...headerStyle, textAlign: "left", width: 100 }}>OS / Platform</th>
-			<th style={{ ...headerStyle, width: 60 }}>CPU</th>
+			<SortableTh label="Hostname" columnKey="hostname" align="left" {...common} />
+			<SortableTh label="Status" columnKey="status" align="left" width={80} {...common} />
+			<SortableTh label="OS / Platform" columnKey="os" align="left" width={100} {...common} />
+			<SortableTh label="CPU" columnKey="cpu" width={60} {...common} />
+			{/* Bar graphic for the column to its left. */}
 			<th style={{ ...headerStyle, width: 60 }} />
-			<th style={{ ...headerStyle, width: 60 }}>Memory</th>
+			<SortableTh label="Memory" columnKey="memory" width={60} {...common} />
 			<th style={{ ...headerStyle, width: 60 }} />
-			<th style={{ ...headerStyle, width: 60 }}>Disk</th>
+			<SortableTh label="Disk" columnKey="disk" width={60} {...common} />
 			<th style={{ ...headerStyle, width: 60 }} />
-			<th style={{ ...headerStyle, width: 50 }}>Temp</th>
+			<SortableTh label="Temp" columnKey="temp" width={50} {...common} />
+			{/* CPU Trend is a sparkline of history - there is no single value to
+			    order by, and sorting it by current CPU would duplicate the CPU
+			    column while implying the trend itself was ranked. */}
 			<th style={{ ...headerStyle, width: 70 }}>CPU Trend</th>
-			<th style={{ ...headerStyle, width: 70 }}>Uptime</th>
-			<th style={{ ...headerStyle, width: 70 }}>Last Seen</th>
-			<th style={{ ...headerStyle, width: 50 }}>Procs</th>
-			<th style={{ ...headerStyle, width: 100 }}>Net RX/TX</th>
+			<SortableTh label="Uptime" columnKey="uptime" width={70} {...common} />
+			<SortableTh label="Last Seen" columnKey="last_seen" width={70} {...common} />
+			<SortableTh label="Procs" columnKey="procs" width={50} {...common} />
+			<SortableTh label="Net RX/TX" columnKey="net" width={100} {...common} />
 		</tr>
 	);
 }
@@ -841,7 +922,14 @@ export function Overview({ stats, onSelectAgent, starredIds, onToggleStar }: Ove
 	const [osFilter, setOsFilter] = useState("all");
 	const [archFilter, setArchFilter] = useState("all");
 	const [hardwareFilter, setHardwareFilter] = useState("all");
-	const [sort, setSort] = useState<SortOption>("severity");
+	// One object rather than two useStates: a column switch changes key and
+	// direction together, and splitting them makes that two renders with a
+	// transiently mismatched pair in between.
+	const [sortState, setSortState] = useState<{ key: SortOption; dir: SortDir }>({
+		key: DEFAULT_SORT,
+		dir: DEFAULT_SORT_ORDER[DEFAULT_SORT],
+	});
+	const { key: sort, dir: sortDir } = sortState;
 	const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 	const [activeFilters, setActiveFilters] = useState<LabelFilter[]>([]);
 	const [page, setPage] = useState(0);
@@ -883,7 +971,19 @@ export function Overview({ stats, onSelectAgent, starredIds, onToggleStar }: Ove
 	const changeOsFilter = useCallback((v: string) => { setOsFilter(v); setPage(0); }, []);
 	const changeArchFilter = useCallback((v: string) => { setArchFilter(v); setPage(0); }, []);
 	const changeHardwareFilter = useCallback((v: string) => { setHardwareFilter(v); setPage(0); }, []);
-	const changeSort = useCallback((v: SortOption) => { setSort(v); setPage(0); }, []);
+	// Header clicks cycle: default direction -> reversed -> back to severity.
+	// The third step matters because severity has no column of its own; without
+	// it the resting sort would be unreachable once any header was clicked.
+	const changeSort = useCallback((v: SortOption) => {
+		setSortState((prev) => {
+			if (prev.key !== v) return { key: v, dir: DEFAULT_SORT_ORDER[v] };
+			if (prev.dir === DEFAULT_SORT_ORDER[v]) {
+				return { key: v, dir: prev.dir === "asc" ? "desc" : "asc" };
+			}
+			return { key: DEFAULT_SORT, dir: DEFAULT_SORT_ORDER[DEFAULT_SORT] };
+		});
+		setPage(0);
+	}, []);
 	const changePageSize = useCallback((n: number) => { setPageSize(n); setPage(0); }, []);
 
 	const addFilter = useCallback((key: string, value: string) => {
@@ -901,6 +1001,12 @@ export function Overview({ stats, onSelectAgent, starredIds, onToggleStar }: Ove
 
 	const clearFilters = useCallback(() => { setActiveFilters([]); setPage(0); }, []);
 
+	// Cards ignore the table's sort entirely, so the effective sort, not the
+	// sort state, is what the query and the cache key are built from.
+	const isCards = viewMode === "cards";
+	const effectiveSort = isCards ? CARD_SORT : sort;
+	const effectiveSortDir = isCards ? CARD_SORT_DIR : sortDir;
+
 	const filtersKey = useMemo(() => {
 		const labelsPart = [
 			...activeFilters,
@@ -909,8 +1015,8 @@ export function Overview({ stats, onSelectAgent, starredIds, onToggleStar }: Ove
 			.map((f) => `${f.key}:${f.value}`)
 			.sort()
 			.join(",");
-		return [search, statusFilter, osFilter, archFilter, sort, pageSize, labelsPart].join("|");
-	}, [search, statusFilter, osFilter, archFilter, hardwareFilter, sort, pageSize, activeFilters]);
+		return [search, statusFilter, osFilter, archFilter, effectiveSort, effectiveSortDir, pageSize, labelsPart].join("|");
+	}, [search, statusFilter, osFilter, archFilter, hardwareFilter, effectiveSort, effectiveSortDir, pageSize, activeFilters]);
 
 	const buildParams = useCallback((withCount: boolean): Parameters<typeof api.overviewPage>[0] => {
 		const labels: OverviewLabelFilter[] = [...activeFilters];
@@ -918,8 +1024,8 @@ export function Overview({ stats, onSelectAgent, starredIds, onToggleStar }: Ove
 		return {
 			page: page + 1,
 			size: pageSize,
-			sort,
-			order: SORT_ORDER[sort],
+			sort: effectiveSort,
+			order: effectiveSortDir,
 			status: statusFilter,
 			os: osFilter,
 			arch: archFilter,
@@ -927,7 +1033,7 @@ export function Overview({ stats, onSelectAgent, starredIds, onToggleStar }: Ove
 			labels,
 			count: withCount,
 		};
-	}, [page, pageSize, sort, statusFilter, osFilter, archFilter, search, activeFilters, hardwareFilter]);
+	}, [page, pageSize, effectiveSort, effectiveSortDir, statusFilter, osFilter, archFilter, search, activeFilters, hardwareFilter]);
 
 	const filtersKeyRef = useRef<string | null>(null);
 
@@ -1023,8 +1129,6 @@ export function Overview({ stats, onSelectAgent, starredIds, onToggleStar }: Ove
 					onArchFilterChange={changeArchFilter}
 					hardwareFilter={hardwareFilter}
 					onHardwareFilterChange={changeHardwareFilter}
-					sort={sort}
-					onSortChange={changeSort}
 					osOptions={osOptions}
 					archOptions={archOptions}
 					hardwareOptions={hardwareOptions}
@@ -1054,7 +1158,7 @@ export function Overview({ stats, onSelectAgent, starredIds, onToggleStar }: Ove
 				<div style={{ overflowX: "auto", border: `1px solid ${themeVars.border}` }}>
 					<table style={{ width: "100%", borderCollapse: "collapse" }}>
 						<thead>
-							<TableHeader />
+							<TableHeader sort={sort} sortDir={sortDir} onSort={changeSort} />
 						</thead>
 						<tbody>
 							{agentsPage.map((agent) => (

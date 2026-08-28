@@ -314,31 +314,201 @@ describe('Overview', () => {
         vi.useRealTimers()
     })
 
-    it('sends the correct order for every sort option', async () => {
+    // Column headers are the sorting mechanism; the sort dropdown is gone.
+    // Anchored at BOTH ends: "CPU" is a prefix of "CPU Trend", so a leading-only
+    // anchor matches two columns.
+    function exactly(label: string) {
+        return new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+    }
+
+    function sortHeader(label: string) {
+        return screen.getByRole('button', { name: exactly(label) })
+    }
+
+    it('sends each column its default direction on first click', async () => {
         vi.useFakeTimers()
         mockOverviewPage.mockResolvedValue(page({ total: 0, total_pages: 1 }))
 
         render(<Overview stats={null} onSelectAgent={noop} starredIds={[]} onToggleStar={noop} />)
         await flush()
 
-        const cases: Array<[string, 'asc' | 'desc']> = [
-            ['status', 'asc'],
-            ['hostname', 'asc'],
-            ['cpu', 'desc'],
-            ['memory', 'desc'],
-            ['disk', 'desc'],
-            ['temp', 'desc'],
+        // Names sort alphabetically; metrics put the worst case first.
+        const cases: Array<[string, string, 'asc' | 'desc']> = [
+            ['Status', 'status', 'asc'],
+            ['Hostname', 'hostname', 'asc'],
+            ['OS / Platform', 'os', 'asc'],
+            ['CPU', 'cpu', 'desc'],
+            ['Memory', 'memory', 'desc'],
+            ['Disk', 'disk', 'desc'],
+            ['Temp', 'temp', 'desc'],
+            ['Uptime', 'uptime', 'desc'],
+            ['Last Seen', 'last_seen', 'desc'],
+            ['Procs', 'procs', 'desc'],
+            ['Net RX/TX', 'net', 'desc'],
         ]
 
-        for (const [sort, order] of cases) {
+        for (const [label, sort, order] of cases) {
             mockOverviewPage.mockClear()
             mockOverviewPage.mockResolvedValue(page({ total: 0, total_pages: 1 }))
 
-            fireEvent.change(screen.getByDisplayValue(/^Sort:/), { target: { value: sort } })
+            fireEvent.click(sortHeader(label))
             await flush()
 
             expect(mockOverviewPage).toHaveBeenCalledWith(expect.objectContaining({ sort, order }))
         }
+
+        vi.useRealTimers()
+    })
+
+    it('cycles a column default -> reversed -> back to severity', async () => {
+        vi.useFakeTimers()
+        mockOverviewPage.mockResolvedValue(page({ total: 0, total_pages: 1 }))
+
+        render(<Overview stats={null} onSelectAgent={noop} starredIds={[]} onToggleStar={noop} />)
+        await flush()
+
+        async function clickCPU() {
+            mockOverviewPage.mockClear()
+            mockOverviewPage.mockResolvedValue(page({ total: 0, total_pages: 1 }))
+            fireEvent.click(sortHeader('CPU'))
+            await flush()
+        }
+
+        await clickCPU()
+        expect(mockOverviewPage).toHaveBeenCalledWith(expect.objectContaining({ sort: 'cpu', order: 'desc' }))
+
+        await clickCPU()
+        expect(mockOverviewPage).toHaveBeenCalledWith(expect.objectContaining({ sort: 'cpu', order: 'asc' }))
+
+        // Third click clears back to the resting sort. Severity has no column
+        // of its own, so without this it would be unreachable.
+        await clickCPU()
+        expect(mockOverviewPage).toHaveBeenCalledWith(expect.objectContaining({ sort: 'severity', order: 'desc' }))
+
+        vi.useRealTimers()
+    })
+
+    it('starts a new column at its own default rather than inheriting the current direction', async () => {
+        vi.useFakeTimers()
+        mockOverviewPage.mockResolvedValue(page({ total: 0, total_pages: 1 }))
+
+        render(<Overview stats={null} onSelectAgent={noop} starredIds={[]} onToggleStar={noop} />)
+        await flush()
+
+        fireEvent.click(sortHeader('CPU'))
+        await flush()
+        fireEvent.click(sortHeader('CPU')) // now cpu/asc
+        await flush()
+
+        mockOverviewPage.mockClear()
+        mockOverviewPage.mockResolvedValue(page({ total: 0, total_pages: 1 }))
+        fireEvent.click(sortHeader('Hostname'))
+        await flush()
+
+        expect(mockOverviewPage).toHaveBeenCalledWith(expect.objectContaining({ sort: 'hostname', order: 'asc' }))
+
+        vi.useRealTimers()
+    })
+
+    it('marks the active column with aria-sort and leaves the rest at none', async () => {
+        vi.useFakeTimers()
+        mockOverviewPage.mockResolvedValue(page({ total: 0, total_pages: 1 }))
+
+        render(<Overview stats={null} onSelectAgent={noop} starredIds={[]} onToggleStar={noop} />)
+        await flush()
+
+        fireEvent.click(sortHeader('CPU'))
+        await flush()
+
+        expect(screen.getByRole('columnheader', { name: exactly('CPU') })).toHaveAttribute('aria-sort', 'descending')
+        expect(screen.getByRole('columnheader', { name: exactly('Disk') })).toHaveAttribute('aria-sort', 'none')
+
+        // CPU Trend is a separate, unsortable column - it must not have picked
+        // up aria-sort just by sharing a name prefix with CPU.
+        expect(screen.getByRole('columnheader', { name: exactly('CPU Trend') })).not.toHaveAttribute('aria-sort')
+
+        fireEvent.click(sortHeader('CPU'))
+        await flush()
+        expect(screen.getByRole('columnheader', { name: exactly('CPU') })).toHaveAttribute('aria-sort', 'ascending')
+
+        vi.useRealTimers()
+    })
+
+    it('returns to the first page when the sort changes', async () => {
+        vi.useFakeTimers()
+        mockOverviewPage.mockResolvedValue(page({ agents: [makeAgent()], total: 60, total_pages: 3 }))
+
+        render(<Overview stats={null} onSelectAgent={noop} starredIds={[]} onToggleStar={noop} />)
+        await flush()
+
+        fireEvent.click(screen.getByText('Next →'))
+        await flush()
+        expect(mockOverviewPage).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }))
+
+        mockOverviewPage.mockClear()
+        mockOverviewPage.mockResolvedValue(page({ agents: [makeAgent()], total: 60, total_pages: 3 }))
+        fireEvent.click(sortHeader('CPU'))
+        await flush()
+
+        expect(mockOverviewPage).toHaveBeenCalledWith(expect.objectContaining({ page: 1, sort: 'cpu' }))
+
+        vi.useRealTimers()
+    })
+
+    it('has no sort dropdown', async () => {
+        vi.useFakeTimers()
+        mockOverviewPage.mockResolvedValue(page({ total: 0, total_pages: 1 }))
+
+        render(<Overview stats={null} onSelectAgent={noop} starredIds={[]} onToggleStar={noop} />)
+        await flush()
+
+        expect(screen.queryByDisplayValue(/^Sort:/)).not.toBeInTheDocument()
+
+        vi.useRealTimers()
+    })
+
+    it('pins cards to hostname ascending regardless of the table sort', async () => {
+        vi.useFakeTimers()
+        mockOverviewPage.mockResolvedValue(page({ agents: [makeAgent()], total: 1, total_pages: 1 }))
+
+        render(<Overview stats={null} onSelectAgent={noop} starredIds={[]} onToggleStar={noop} />)
+        await flush()
+
+        fireEvent.click(sortHeader('CPU'))
+        await flush()
+
+        mockOverviewPage.mockClear()
+        mockOverviewPage.mockResolvedValue(page({ agents: [makeAgent()], total: 1, total_pages: 1 }))
+        fireEvent.click(screen.getByText('⊞ Cards'))
+        await flush()
+
+        // Sorting a grid by a metric makes tiles jump position on every poll,
+        // so cards ignore the table's sort entirely.
+        expect(mockOverviewPage).toHaveBeenCalledWith(
+            expect.objectContaining({ sort: 'hostname', order: 'asc' })
+        )
+
+        vi.useRealTimers()
+    })
+
+    it('restores the table sort when switching back from cards', async () => {
+        vi.useFakeTimers()
+        mockOverviewPage.mockResolvedValue(page({ agents: [makeAgent()], total: 1, total_pages: 1 }))
+
+        render(<Overview stats={null} onSelectAgent={noop} starredIds={[]} onToggleStar={noop} />)
+        await flush()
+
+        fireEvent.click(sortHeader('CPU'))
+        await flush()
+        fireEvent.click(screen.getByText('⊞ Cards'))
+        await flush()
+
+        mockOverviewPage.mockClear()
+        mockOverviewPage.mockResolvedValue(page({ agents: [makeAgent()], total: 1, total_pages: 1 }))
+        fireEvent.click(screen.getByText('☰ Table'))
+        await flush()
+
+        expect(mockOverviewPage).toHaveBeenCalledWith(expect.objectContaining({ sort: 'cpu', order: 'desc' }))
 
         vi.useRealTimers()
     })

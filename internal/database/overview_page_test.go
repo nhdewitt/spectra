@@ -106,7 +106,7 @@ func TestBuildQuery_UnknownSortFallsBackToHostname(t *testing.T) {
 	p.SortBy = "invalid"
 	sql, _ := buildOverviewPageQuery(p)
 
-	if !strings.Contains(sql, "ORDER BY hostname ASC") {
+	if !strings.Contains(sql, "ORDER BY hostname ASC NULLS LAST") {
 		t.Errorf("unknown sort should fall back to hostname; got:\n%s", sql)
 	}
 }
@@ -117,7 +117,7 @@ func TestBuildQuery_DescDirection(t *testing.T) {
 	p.SortDir = "desc"
 	sql, _ := buildOverviewPageQuery(p)
 
-	if !strings.Contains(sql, "ORDER BY COALESCE(cpu_usage, 0) DESC") {
+	if !strings.Contains(sql, "ORDER BY COALESCE(cpu_usage, 0) DESC NULLS LAST") {
 		t.Errorf("SortDir=desc should order cpu DESC; got:\n%s", sql)
 	}
 }
@@ -127,7 +127,7 @@ func TestBuildQuery_InvalidDirectionFallsBackToAsc(t *testing.T) {
 	p.SortDir = "sideways"
 	sql, _ := buildOverviewPageQuery(p)
 
-	if !strings.Contains(sql, "ORDER BY hostname ASC") {
+	if !strings.Contains(sql, "ORDER BY hostname ASC NULLS LAST") {
 		t.Errorf("invalid sort dir should fall back to ASC; got:\n%s", sql)
 	}
 }
@@ -170,6 +170,81 @@ func TestBuildQuery_NoIDsNoANY(t *testing.T) {
 	sql, _ := buildOverviewPageQuery(baseParams())
 	if strings.Contains(sql, "a.id = ANY(") {
 		t.Error("empty IDs should not contain an a.id = ANY(...) clause")
+	}
+}
+
+// Every column the Overview table renders must have a sort expression, so no
+// header is clickable in the UI without a query that can honor it.
+func TestBuildQuery_AllTableColumnsSortable(t *testing.T) {
+	// Keys the frontend's SortOption union offers. "severity" has no column
+	// of its own but is the default sort.
+	keys := []string{
+		"hostname", "status", "os", "platform", "arch",
+		"cpu", "memory", "disk", "temp",
+		"uptime", "procs", "net", "last_seen", "severity",
+	}
+	for _, k := range keys {
+		if _, ok := overviewSortExprs[k]; !ok {
+			t.Errorf("sort key %q is offered by the UI but missing from overviewSortExprs", k)
+		}
+	}
+}
+
+// The direction is written immediately after the expression, so a value
+// containing a comma would apply the direction to its last term only.
+func TestBuildQuery_SortExprsAreSingleExpressions(t *testing.T) {
+	for k, expr := range overviewSortExprs {
+		depth := 0
+		for _, r := range expr {
+			switch r {
+			case '(':
+				depth++
+			case ')':
+				depth--
+			case ',':
+				if depth == 0 {
+					t.Errorf("sort expr for %q has a top-level comma: %s", k, expr)
+				}
+			}
+		}
+	}
+}
+
+func TestBuildQuery_NetSortCombinesRxAndTx(t *testing.T) {
+	p := baseParams()
+	p.SortBy = "net"
+	p.SortDir = "desc"
+	sql, _ := buildOverviewPageQuery(p)
+
+	if !strings.Contains(sql, "ORDER BY (COALESCE(net_rx_bytes,0) + COALESCE(net_tx_bytes,0)) DESC") {
+		t.Errorf("net sort should combine rx and tx; got:\n%s", sql)
+	}
+}
+
+func TestBuildQuery_UptimeAndProcsCoalesceNulls(t *testing.T) {
+	for _, tc := range []struct{ key, want string }{
+		{"uptime", "ORDER BY COALESCE(uptime, 0)"},
+		{"procs", "ORDER BY COALESCE(process_count, 0)"},
+	} {
+		p := baseParams()
+		p.SortBy = tc.key
+		sql, _ := buildOverviewPageQuery(p)
+		if !strings.Contains(sql, tc.want) {
+			t.Errorf("%s sort: want %q; got:\n%s", tc.key, tc.want, sql)
+		}
+	}
+}
+
+// Postgres defaults to NULLS FIRST on DESC, which would float never-seen
+// agents to the top of a "most recent first" sort.
+func TestBuildQuery_LastSeenDescKeepsNullsLast(t *testing.T) {
+	p := baseParams()
+	p.SortBy = "last_seen"
+	p.SortDir = "desc"
+	sql, _ := buildOverviewPageQuery(p)
+
+	if !strings.Contains(sql, "ORDER BY last_seen DESC NULLS LAST") {
+		t.Errorf("last_seen desc should keep nulls last; got:\n%s", sql)
 	}
 }
 

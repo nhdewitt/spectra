@@ -1,3 +1,27 @@
+// Overview sorting
+ 
+// Sort keys the /overview/page endpoint accepts. Mirrors overviewSortExprs in
+// internal/database/overview_page.go - a key the server does not whitelist
+// silently falls back to hostname there, so the two must stay in step. Declared
+// here rather than in api.ts or Overview.tsx so there is exactly one copy.
+export type OverviewSortKey =
+    | "severity"
+    | "status"
+    | "hostname"
+    | "os"
+    | "platform"
+    | "arch"
+    | "cpu"
+    | "memory"
+    | "disk"
+    | "temp"
+    | "uptime"
+    | "procs"
+    | "net"
+    | "last_seen";
+ 
+export type OverviewSortDir = "asc" | "desc";
+
 // Auth
 
 export interface User {
@@ -83,6 +107,9 @@ export interface MemoryMetric {
     swap_total: number;
     swap_used: number;
     swap_percent: number;
+    swap_in_pages: number | null;
+    swap_out_pages: number | null;
+    has_paging?: boolean;
 }
 
 export interface DiskMetric {
@@ -109,8 +136,24 @@ export interface DiskIOMetric {
     write_bytes: number;
     read_ops: number;
     write_ops: number;
+
+    /**
+     * Device service time in ms, mislabeled as latency since migration 002.
+     * Summed across concurrent requests, so it routinely exceeds the interval.
+     * Present only for rows written before migration 021 - do not chart it.
+     */
     read_latency: number;
     write_latency: number;
+
+    /** Average service time per operation. Null before migration 021. */
+    read_latency_ms: number | null;
+    write_latency_ms: number | null;
+
+    /** Share of the interval device spent servicing IO (iostat %util). */
+    read_busy_pct: number | null;
+    write_busy_pct: number | null;
+    has_io_detail?: boolean;
+    
     io_in_progress: number;
 }
 
