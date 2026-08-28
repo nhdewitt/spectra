@@ -58,7 +58,7 @@ func TestCollector_Run(t *testing.T) {
 		return []protocol.Metric{mockMetric{Value: runCount}}, nil
 	}
 
-	go h.c.Run(h.ctx, 50*time.Millisecond, collectFn)
+	go h.c.Run(h.ctx, "TestCollector_Run", 50*time.Millisecond, collectFn)
 
 	// Verify Baseline
 	select {
@@ -111,7 +111,7 @@ func TestCollector_PanicRecovery(t *testing.T) {
 		return []protocol.Metric{mockMetric{Value: 999}}, nil
 	}
 
-	go h.c.Run(h.ctx, 10*time.Millisecond, flakyCollect)
+	go h.c.Run(h.ctx, "TestCollector_PanicRecovery", 10*time.Millisecond, flakyCollect)
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -133,7 +133,7 @@ func TestCollector_ErrorHandling(t *testing.T) {
 		return nil, errors.New("fail")
 	}
 
-	go h.c.Run(h.ctx, 10*time.Millisecond, errorCollect)
+	go h.c.Run(h.ctx, "TestCollector_ErrorHandling", 10*time.Millisecond, errorCollect)
 
 	select {
 	case <-h.out:
@@ -151,7 +151,7 @@ func TestCollector_ContextCancellation(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		h.c.Run(h.ctx, time.Hour, func(ctx context.Context) ([]protocol.Metric, error) {
+		h.c.Run(h.ctx, "TestCollector_ContextCancellation", time.Hour, func(ctx context.Context) ([]protocol.Metric, error) {
 			return []protocol.Metric{mockMetric{}}, nil
 		})
 		close(done)
@@ -173,7 +173,7 @@ func TestCollector_EmptyMetrics(t *testing.T) {
 		return []protocol.Metric{}, nil
 	}
 
-	go h.c.Run(h.ctx, 10*time.Millisecond, emptyCollect)
+	go h.c.Run(h.ctx, "TestCollector_EmptyMetrics", 10*time.Millisecond, emptyCollect)
 
 	select {
 	case <-h.out:
@@ -195,7 +195,7 @@ func TestCollector_MultipleMetrics(t *testing.T) {
 		}, nil
 	}
 
-	go h.c.Run(h.ctx, time.Hour, batchCollect)
+	go h.c.Run(h.ctx, "TestCollector_MultipleMetrics", time.Hour, batchCollect)
 
 	var received []int
 	timeout := time.After(100 * time.Millisecond)
@@ -225,7 +225,7 @@ func TestCollector_CancelDuringSend(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		h.c.Run(h.ctx, time.Hour, slowCollect)
+		h.c.Run(h.ctx, "TestCollector_CancelDuringSend", time.Hour, slowCollect)
 		close(done)
 	}()
 
@@ -251,7 +251,7 @@ func TestCollector_NilMetricInSlice(t *testing.T) {
 		}, nil
 	}
 
-	go h.c.Run(h.ctx, time.Hour, nilCollect)
+	go h.c.Run(h.ctx, "TestCollector_NilMetricInSlice", time.Hour, nilCollect)
 
 	expectedValues := []int{1, 2}
 

@@ -68,7 +68,7 @@ func calculateDeltas(current, previous map[string]Raw) (map[string]Delta, bool) 
 		}
 
 		if cur.User < prev.User || cur.Nice < prev.Nice || cur.System < prev.System || cur.Idle < prev.Idle || cur.IOWait < prev.IOWait ||
-			cur.IRQ < prev.IRQ || cur.SoftIRQ < prev.SoftIRQ || cur.Steal < prev.Steal {
+			cur.IRQ < prev.IRQ || cur.SoftIRQ < prev.SoftIRQ || cur.Steal < prev.Steal || cur.Guest < prev.Guest || cur.GuestNice < prev.GuestNice {
 			return nil, false
 		}
 

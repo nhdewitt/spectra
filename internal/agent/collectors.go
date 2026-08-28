@@ -22,6 +22,7 @@ import (
 
 // job is a helper struct for internal use.
 type job struct {
+	Name     string
 	Interval time.Duration
 	Fn       collector.CollectFunc
 }
@@ -35,32 +36,32 @@ func (a *Agent) startCollectors(ctx context.Context) {
 	tempCol := temperature.MakeCollector(a.Platform.ThermalZones)
 
 	jobs := []job{
-		{5 * time.Second, cpu.Collect},
-		{10 * time.Second, memory.Collect},
-		{5 * time.Second, network.Collect},
-		{300 * time.Second, system.Collect},
-		{60 * time.Second, diskCol},
-		{5 * time.Second, diskIOCol},
-		{60 * time.Second, svcCol},
-		{15 * time.Second, processes.Collect},
-		{10 * time.Second, tempCol},
-		{30 * time.Second, wifi.Collect},
-		{60 * time.Second, containers.Collect},
+		{"cpu", 5 * time.Second, cpu.Collect},
+		{"memory", 10 * time.Second, memory.Collect},
+		{"network", 5 * time.Second, network.Collect},
+		{"system", 300 * time.Second, system.Collect},
+		{"disk", 60 * time.Second, diskCol},
+		{"disk_io", 5 * time.Second, diskIOCol},
+		{"services", 60 * time.Second, svcCol},
+		{"processes", 15 * time.Second, processes.Collect},
+		{"temperature", 10 * time.Second, tempCol},
+		{"wifi", 30 * time.Second, wifi.Collect},
+		{"containers", 60 * time.Second, containers.Collect},
 	}
 
 	for _, j := range jobs {
-		go c.Run(ctx, j.Interval, j.Fn)
+		go c.Run(ctx, j.Name, j.Interval, j.Fn)
 	}
 
 	if a.Platform.IsRaspberryPi {
 		piJobs := []job{
-			{15 * time.Second, pi.CollectClocks},
-			{10 * time.Second, pi.CollectThrottle},
-			{60 * time.Second, pi.CollectVoltage},
-			{60 * time.Second, pi.CollectGPU},
+			{"pi_clocks", 15 * time.Second, pi.CollectClocks},
+			{"pi_throttle", 10 * time.Second, pi.CollectThrottle},
+			{"pi_voltage", 60 * time.Second, pi.CollectVoltage},
+			{"pi_gpu", 60 * time.Second, pi.CollectGPU},
 		}
 		for _, j := range piJobs {
-			go c.Run(ctx, j.Interval, j.Fn)
+			go c.Run(ctx, j.Name, j.Interval, j.Fn)
 		}
 	}
 

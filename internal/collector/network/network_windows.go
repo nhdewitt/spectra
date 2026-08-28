@@ -97,10 +97,10 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 			continue
 		}
 
-		errsIn := curr.raw.InErrors - prev.raw.InErrors
-		errsOut := curr.raw.OutErrors - prev.raw.OutErrors
-		dropIn := curr.raw.InDiscards - prev.raw.InDiscards
-		dropOut := curr.raw.OutDiscards - prev.raw.OutDiscards
+		errsIn := util.Delta(curr.raw.InErrors, prev.raw.InErrors)
+		errsOut := util.Delta(curr.raw.OutErrors, prev.raw.OutErrors)
+		dropIn := util.Delta(curr.raw.InDiscards, prev.raw.InDiscards)
+		dropOut := util.Delta(curr.raw.OutDiscards, prev.raw.OutDiscards)
 
 		speed := curr.raw.ReceiveLinkSpeed
 		// Guard against -1 overflow
@@ -113,12 +113,12 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 			MAC:       strings.ToUpper(formatMAC(curr.raw.PhysicalAddress, curr.raw.PhysicalAddressLength)),
 			MTU:       curr.raw.Mtu,
 			Speed:     speed,
-			RxBytes:   util.Rate(curr.raw.InOctets-prev.raw.InOctets, secondsElapsed),
-			RxPackets: util.Rate(curr.raw.InUcastPkts-prev.raw.InUcastPkts, secondsElapsed),
+			RxBytes:   util.Rate(util.Delta(curr.raw.InOctets, prev.raw.InOctets), secondsElapsed),
+			RxPackets: util.Rate(util.Delta(curr.raw.InUcastPkts, prev.raw.InUcastPkts), secondsElapsed),
 			RxErrors:  util.Rate(errsIn, secondsElapsed),
 			RxDrops:   util.Rate(dropIn, secondsElapsed),
-			TxBytes:   util.Rate(curr.raw.OutOctets-prev.raw.OutOctets, secondsElapsed),
-			TxPackets: util.Rate(curr.raw.OutUcastPkts-prev.raw.OutUcastPkts, secondsElapsed),
+			TxBytes:   util.Rate(util.Delta(curr.raw.OutOctets, prev.raw.OutOctets), secondsElapsed),
+			TxPackets: util.Rate(util.Delta(curr.raw.OutUcastPkts, prev.raw.OutUcastPkts), secondsElapsed),
 			TxErrors:  util.Rate(errsOut, secondsElapsed),
 			TxDrops:   util.Rate(dropOut, secondsElapsed),
 		})

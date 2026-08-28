@@ -16,8 +16,12 @@ type Collector struct {
 	out      chan<- protocol.Envelope
 	logger   *slog.Logger
 
-	mu       sync.Mutex
+	mu sync.Mutex
+	// reported gates first-occurrence logging for non-finite metric types.
 	reported map[string]bool
+	// failing gates first-occurrence logging for collector failures.
+	// Separate from reported to prevent name clobbering.
+	failing map[string]bool
 }
 
 func New(hostname string, out chan<- protocol.Envelope, logger *slog.Logger) *Collector {
@@ -29,6 +33,7 @@ func New(hostname string, out chan<- protocol.Envelope, logger *slog.Logger) *Co
 		out:      out,
 		logger:   logger,
 		reported: make(map[string]bool),
+		failing:  make(map[string]bool),
 	}
 }
 
@@ -55,6 +60,26 @@ func (c *Collector) send(ctx context.Context, m protocol.Metric) {
 	}
 }
 
+// firstTime reports whether this is the first occurrence of key, and records
+// it. Used to log a persistent condition once at Warn and thereafter at Debug.
+func (c *Collector) firstTime(m map[string]bool, key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if m[key] {
+		return false
+	}
+	m[key] = true
+	return true
+}
+
+// clearFirstTime forgets a key so its next occurrence logs at Warn again.
+func (c *Collector) clearFirstTime(m map[string]bool, key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(m, key)
+}
+
 // reportNonFinite logs the first rejection of each metric type at Warn and
 // every later one at Debug.
 //
@@ -62,14 +87,7 @@ func (c *Collector) send(ctx context.Context, m protocol.Metric) {
 // persistent one recurs on every collection interval. The first line is what
 // distinguishes a broken collector from hardware that simply does not report.
 func (c *Collector) reportNonFinite(metricType string) {
-	c.mu.Lock()
-	first := !c.reported[metricType]
-	if first {
-		c.reported[metricType] = true
-	}
-	c.mu.Unlock()
-
-	if first {
+	if c.firstTime(c.reported, metricType) {
 		c.logger.Warn("dropping metric with a non-finite value; check the collector for a zero denominator",
 			"metric", metricType)
 		return
@@ -78,7 +96,7 @@ func (c *Collector) reportNonFinite(metricType string) {
 }
 
 // Run executes a collection function at the specified interval
-func (c *Collector) Run(ctx context.Context, interval time.Duration, collect CollectFunc) {
+func (c *Collector) Run(ctx context.Context, name string, interval time.Duration, collect CollectFunc) {
 	collectAndSend := func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -88,7 +106,15 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, collect Col
 
 		data, err := collect(ctx)
 		if err != nil {
-			return
+			// Log the first failure at Warn and the rest at Debug
+			if c.firstTime(c.failing, name) {
+				c.logger.Warn("collector failed", "collector", name, "error", err)
+			} else {
+				c.logger.Debug("collector failed", "collector", name, "error", err)
+			}
+		} else {
+			// A later success re-arms the warning so a recurrence is reported.
+			c.clearFirstTime(c.failing, name)
 		}
 
 		for _, m := range data {
