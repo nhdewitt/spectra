@@ -72,6 +72,9 @@ type MemoryMetric struct {
 	SwapTotal uint64  `json:"swap_total"`
 	SwapUsed  uint64  `json:"swap_used"`
 	SwapPct   float64 `json:"swap_pct"`
+
+	SwapIn  *float64 `json:"swap_in_pages,omitempty"`
+	SwapOut *float64 `json:"swap_out_pages,omitempty"`
 }
 
 type DiskMetric struct {
@@ -124,8 +127,25 @@ type DiskIOMetric struct {
 	WriteBytes uint64 `json:"write_bytes"`
 	ReadOps    uint64 `json:"read_ops"`
 	WriteOps   uint64 `json:"write_ops"`
-	ReadTime   uint64 `json:"read_time_ms"`
-	WriteTime  uint64 `json:"write_time_ms"`
+
+	// ReadTime/WriteTime are the raw device service-time deltas in
+	// ms. Retained for agent compatibility only. Agents self-update
+	// independently of the server, so an older agent still sends
+	// these and nothing else. Do not add new consumers, use the
+	// derived fields below.
+	ReadTime  uint64 `json:"read_time_ms"`
+	WriteTime uint64 `json:"write_time_ms"`
+
+	// Average service time per operation.
+	ReadLatency  *float64 `json:"read_latency_ms"`
+	WriteLatency *float64 `json:"write_latency_ms"`
+
+	// Share of the collection interval the device spent servicing
+	// IO (iostat %util). May exceed 100 on devices with parallel
+	// queues.
+	ReadBusyPct  *float64 `json:"read_busy_pct"`
+	WriteBusyPct *float64 `json:"write_busy_pct"`
+
 	InProgress uint64 `json:"io_in_progress"`
 }
 

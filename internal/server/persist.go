@@ -62,6 +62,8 @@ func (s *Server) persistMetric(ctx context.Context, tx MetricWriter, agentID str
 			SwapTotal:    pgInt8(int64(m.SwapTotal)),
 			SwapUsed:     pgInt8(int64(m.SwapUsed)),
 			SwapPercent:  pgFloat8(m.SwapPct),
+			SwapInPages:  pgFloat8Ptr(m.SwapIn),
+			SwapOutPages: pgFloat8Ptr(m.SwapOut),
 		})
 
 	case *protocol.DiskMetric:
@@ -83,15 +85,27 @@ func (s *Server) persistMetric(ctx context.Context, tx MetricWriter, agentID str
 
 	case *protocol.DiskIOMetric:
 		err = tx.InsertDiskIO(ctx, database.InsertDiskIOParams{
-			Time:         t,
-			AgentID:      uid,
-			Device:       pgText(m.Device),
-			ReadBytes:    pgInt8(int64(m.ReadBytes)),
-			WriteBytes:   pgInt8(int64(m.WriteBytes)),
-			ReadOps:      pgInt8(int64(m.ReadOps)),
-			WriteOps:     pgInt8(int64(m.WriteOps)),
+			Time:       t,
+			AgentID:    uid,
+			Device:     pgText(m.Device),
+			ReadBytes:  pgInt8(int64(m.ReadBytes)),
+			WriteBytes: pgInt8(int64(m.WriteBytes)),
+			ReadOps:    pgInt8(int64(m.ReadOps)),
+			WriteOps:   pgInt8(int64(m.WriteOps)),
+
+			// Legacy columns: device service time, mislabeled as latency since
+			// migration 002. Still written so older agents keep producing rows
+			// the old charts can read.
 			ReadLatency:  pgInt8(int64(m.ReadTime)),
 			WriteLatency: pgInt8(int64(m.WriteTime)),
+
+			// Corrected columns from migration 021. Zero from an older agent that
+			// does not compute them.
+			ReadLatencyMs:  pgFloat8Ptr(m.ReadLatency),
+			WriteLatencyMs: pgFloat8Ptr(m.WriteLatency),
+			ReadBusyPct:    pgFloat8Ptr(m.ReadBusyPct),
+			WriteBusyPct:   pgFloat8Ptr(m.WriteBusyPct),
+
 			IoInProgress: pgInt8(int64(m.InProgress)),
 		})
 
@@ -300,6 +314,13 @@ func pgInt4(n int32) pgtype.Int4 {
 
 func pgInt8(n int64) pgtype.Int8 {
 	return pgtype.Int8{Int64: n, Valid: true}
+}
+
+func pgFloat8Ptr(f *float64) pgtype.Float8 {
+	if f == nil {
+		return pgtype.Float8{}
+	}
+	return pgtype.Float8{Float64: *f, Valid: true}
 }
 
 func pgFloat8(f float64) pgtype.Float8 {

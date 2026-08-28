@@ -17,6 +17,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// DISK_PERFORMANCE counters are expressed in 100ns ticks.
+const ticksPerMillisecond = 10_000
+
 // perfGetter allows mocking getDrivePerformance in tests
 type perfGetter func(driveIndex uint32) (winapi.DiskPerformance, error)
 
@@ -76,22 +79,40 @@ func CollectDiskIO(ctx context.Context, driveCache *DriveCache) ([]protocol.Metr
 		driveInfo := allowedDrives[idx]
 		deviceName := formatDeviceName(idx, driveInfo, letterMap)
 
-		readBytesDelta := float64(curr.BytesRead - prev.BytesRead)
-		writeBytesDelta := float64(curr.BytesWritten - prev.BytesWritten)
-		readOpsDelta := float64(curr.ReadCount - prev.ReadCount)
-		writeOpsDelta := float64(curr.WriteCount - prev.WriteCount)
+		readBytesDelta := float64(util.Delta(uint64(curr.BytesRead), uint64(prev.BytesRead)))
+		writeBytesDelta := float64(util.Delta(uint64(curr.BytesWritten), uint64(prev.BytesWritten)))
 
-		readTimeDelta := uint64(curr.ReadTime - prev.ReadTime)
-		writeTimeDelta := uint64(curr.WriteTime - prev.WriteTime)
+		readOpsDelta := util.Delta(uint64(curr.ReadCount), uint64(prev.ReadCount))
+		writeOpsDelta := util.Delta(uint64(curr.WriteCount), uint64(prev.WriteCount))
+
+		// DISK_PERFORMANCE.ReadTime is a LARGE_INTEGER of 100ns ticks, not ms. It
+		// was previously passed through unconverted, so Windows agents reported
+		// values 10000x larger than Linux agents into the same column. util.Delta
+		// clamps counter resets, which bare uint64 subtraction on an int64 counter
+		// did not.
+		readTimeDelta := util.Delta(uint64(curr.ReadTime), uint64(prev.ReadTime)) / ticksPerMillisecond
+		writeTimeDelta := util.Delta(uint64(curr.WriteTime), uint64(prev.WriteTime)) / ticksPerMillisecond
+
+		readLatency := AwaitMs(readTimeDelta, readOpsDelta)
+		writeLatency := AwaitMs(writeTimeDelta, writeOpsDelta)
+		readBusy := BusyPct(readTimeDelta, secondsElapsed)
+		writeBusy := BusyPct(writeTimeDelta, secondsElapsed)
 
 		result = append(result, protocol.DiskIOMetric{
 			Device:     deviceName,
 			ReadBytes:  uint64(readBytesDelta / secondsElapsed),
 			WriteBytes: uint64(writeBytesDelta / secondsElapsed),
-			ReadOps:    uint64(readOpsDelta / secondsElapsed),
-			WriteOps:   uint64(writeOpsDelta / secondsElapsed),
-			ReadTime:   readTimeDelta,
-			WriteTime:  writeTimeDelta,
+			ReadOps:    util.Rate(readOpsDelta, secondsElapsed),
+			WriteOps:   util.Rate(writeOpsDelta, secondsElapsed),
+
+			ReadTime:  readTimeDelta,
+			WriteTime: writeTimeDelta,
+
+			ReadLatency:  &readLatency,
+			WriteLatency: &writeLatency,
+			ReadBusyPct:  &readBusy,
+			WriteBusyPct: &writeBusy,
+
 			InProgress: uint64(curr.QueueDepth),
 		})
 	}

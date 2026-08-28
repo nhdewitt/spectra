@@ -22,6 +22,9 @@ sql:
       - "internal/database/migrations/017_smtp_config.up.sql"
       - "internal/database/migrations/018_status_thresholds.up.sql"
       - "internal/database/migrations/019_overview_indexes.up.sql"
+      - "internal/database/migrations/020_compression.up.sql"
+      - "internal/database/migrations/021_diskio_latency.up.sql"
+      - "internal/database/migrations/022_swap_paging.up.sql"
     gen:
       go:
         package: "database"

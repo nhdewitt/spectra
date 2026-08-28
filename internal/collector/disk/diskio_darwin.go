@@ -78,14 +78,30 @@ func CollectDiskIO(ctx context.Context) ([]protocol.Metric, error) {
 }
 
 func buildDiskIOMetric(device string, cur, prev IORaw, elapsed float64) protocol.DiskIOMetric {
+	readOpsDelta := util.Delta(cur.ReadOps, prev.ReadOps)
+	writeOpsDelta := util.Delta(cur.WriteOps, prev.WriteOps)
+	readTimeDelta := util.Delta(cur.ReadTime, prev.ReadTime)
+	writeTimeDelta := util.Delta(cur.WriteTime, prev.WriteTime)
+
+	readLatency := AwaitMs(readTimeDelta, readOpsDelta)
+	writeLatency := AwaitMs(writeTimeDelta, writeOpsDelta)
+	readBusy := BusyPct(readTimeDelta, elapsed)
+	writeBusy := BusyPct(writeTimeDelta, elapsed)
+
 	return protocol.DiskIOMetric{
 		Device:     device,
 		ReadBytes:  uint64(float64(util.Delta(cur.ReadBytes, prev.ReadBytes)) / elapsed),
 		WriteBytes: uint64(float64(util.Delta(cur.WriteBytes, prev.WriteBytes)) / elapsed),
-		ReadOps:    util.Rate(cur.ReadOps-prev.ReadOps, elapsed),
-		WriteOps:   util.Rate(cur.WriteOps-prev.WriteOps, elapsed),
-		ReadTime:   util.Delta(cur.ReadTime, prev.ReadTime),
-		WriteTime:  util.Delta(cur.WriteTime, prev.WriteTime),
+		ReadOps:    util.Rate(readOpsDelta, elapsed),
+		WriteOps:   util.Rate(writeOpsDelta, elapsed),
+
+		ReadTime:  readTimeDelta,
+		WriteTime: writeTimeDelta,
+
+		ReadLatency:  &readLatency,
+		WriteLatency: &writeLatency,
+		ReadBusyPct:  &readBusy,
+		WriteBusyPct: &writeBusy,
 	}
 }
 

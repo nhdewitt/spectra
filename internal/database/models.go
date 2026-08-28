@@ -175,16 +175,20 @@ type MetricsDisk struct {
 }
 
 type MetricsDiskIo struct {
-	Time         pgtype.Timestamptz `json:"time"`
-	AgentID      pgtype.UUID        `json:"agent_id"`
-	Device       pgtype.Text        `json:"device"`
-	ReadBytes    pgtype.Int8        `json:"read_bytes"`
-	WriteBytes   pgtype.Int8        `json:"write_bytes"`
-	ReadOps      pgtype.Int8        `json:"read_ops"`
-	WriteOps     pgtype.Int8        `json:"write_ops"`
-	ReadLatency  pgtype.Int8        `json:"read_latency"`
-	WriteLatency pgtype.Int8        `json:"write_latency"`
-	IoInProgress pgtype.Int8        `json:"io_in_progress"`
+	Time           pgtype.Timestamptz `json:"time"`
+	AgentID        pgtype.UUID        `json:"agent_id"`
+	Device         pgtype.Text        `json:"device"`
+	ReadBytes      pgtype.Int8        `json:"read_bytes"`
+	WriteBytes     pgtype.Int8        `json:"write_bytes"`
+	ReadOps        pgtype.Int8        `json:"read_ops"`
+	WriteOps       pgtype.Int8        `json:"write_ops"`
+	ReadLatency    pgtype.Int8        `json:"read_latency"`
+	WriteLatency   pgtype.Int8        `json:"write_latency"`
+	IoInProgress   pgtype.Int8        `json:"io_in_progress"`
+	ReadLatencyMs  pgtype.Float8      `json:"read_latency_ms"`
+	WriteLatencyMs pgtype.Float8      `json:"write_latency_ms"`
+	ReadBusyPct    pgtype.Float8      `json:"read_busy_pct"`
+	WriteBusyPct   pgtype.Float8      `json:"write_busy_pct"`
 }
 
 type MetricsMemory struct {
@@ -197,6 +201,8 @@ type MetricsMemory struct {
 	SwapTotal    pgtype.Int8        `json:"swap_total"`
 	SwapUsed     pgtype.Int8        `json:"swap_used"`
 	SwapPercent  pgtype.Float8      `json:"swap_percent"`
+	SwapInPages  pgtype.Float8      `json:"swap_in_pages"`
+	SwapOutPages pgtype.Float8      `json:"swap_out_pages"`
 }
 
 type MetricsNetwork struct {

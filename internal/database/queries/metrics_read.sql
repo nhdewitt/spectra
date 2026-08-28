@@ -5,7 +5,7 @@ WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 ORDER BY TIME ASC;
 
 -- name: GetMemoryRange :many
-SELECT time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent
+SELECT time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent, swap_in_pages, swap_out_pages
 FROM metrics_memory
 WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 ORDER BY TIME ASC;
@@ -17,7 +17,7 @@ WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 ORDER BY TIME ASC;
 
 -- name: GetDiskIORange :many
-SELECT time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress
+SELECT time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress, read_latency_ms, write_latency_ms, read_busy_pct, write_busy_pct
 FROM metrics_disk_io
 WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 ORDER BY TIME ASC;

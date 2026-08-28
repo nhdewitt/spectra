@@ -90,17 +90,39 @@ func CollectDiskIO(ctx context.Context, cache *DriveCache) ([]protocol.Metric, e
 }
 
 func buildDiskIOMetric(device string, curr, prev IORaw, elapsed float64) protocol.DiskIOMetric {
-	readBytesDelta := float64(curr.ReadSectors-prev.ReadSectors) * bytesPerSector
-	writeBytesDelta := float64(curr.WriteSectors-prev.WriteSectors) * bytesPerSector
+	readBytesDelta := float64(util.Delta(curr.ReadSectors, prev.ReadSectors)) * bytesPerSector
+	writeBytesDelta := float64(util.Delta(curr.WriteSectors, prev.WriteSectors)) * bytesPerSector
+
+	// Raw deltas, kept separate from the rate-converted fields below. Latency is time-per-op,
+	// so both sides of that division must cover the same interval. util.Delta clamps counter
+	// resets to 0 (a device that reappears after a reset would otherwise report its entire
+	// since-boot total as one interval's worth, which is where the multi-million ms spikes
+	// came from).
+	readOpsDelta := util.Delta(curr.ReadOps, prev.ReadOps)
+	writeOpsDelta := util.Delta(curr.WriteOps, prev.WriteOps)
+	readTimeDelta := util.Delta(curr.ReadTime, prev.ReadTime)
+	writeTimeDelta := util.Delta(curr.WriteTime, prev.WriteTime)
+
+	readLatency := AwaitMs(readTimeDelta, readOpsDelta)
+	writeLatency := AwaitMs(writeTimeDelta, writeOpsDelta)
+	readBusy := BusyPct(readTimeDelta, elapsed)
+	writeBusy := BusyPct(readTimeDelta, elapsed)
 
 	return protocol.DiskIOMetric{
 		Device:     device,
 		ReadBytes:  uint64(readBytesDelta / elapsed),
 		WriteBytes: uint64(writeBytesDelta / elapsed),
-		ReadOps:    util.Rate(curr.ReadOps-prev.ReadOps, elapsed),
-		WriteOps:   util.Rate(curr.WriteOps-prev.WriteOps, elapsed),
-		ReadTime:   curr.ReadTime - prev.ReadTime,
-		WriteTime:  curr.WriteTime - prev.WriteTime,
+		ReadOps:    util.Rate(readOpsDelta, elapsed),
+		WriteOps:   util.Rate(writeOpsDelta, elapsed),
+
+		ReadTime:  readTimeDelta,
+		WriteTime: writeTimeDelta,
+
+		ReadLatency:  &readLatency,
+		WriteLatency: &writeLatency,
+		ReadBusyPct:  &readBusy,
+		WriteBusyPct: &writeBusy,
+
 		InProgress: curr.InProgress,
 	}
 }

@@ -3,16 +3,16 @@ INSERT INTO metrics_cpu (time, agent_id, usage, core_usages, load_1m, load_5m, l
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: InsertMemory :exec
-INSERT INTO metrics_memory (time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+INSERT INTO metrics_memory (time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent, swap_in_pages, swap_out_pages)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
 
 -- name: InsertDisk :exec
 INSERT INTO metrics_disk (time, agent_id, device, mountpoint, filesystem, disk_type, total_bytes, used_bytes, free_bytes, used_percent, inodes_total, inodes_used, inodes_percent)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
 
 -- name: InsertDiskIO :exec
-INSERT INTO metrics_disk_io (time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+INSERT INTO metrics_disk_io (time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress, read_latency_ms, write_latency_ms, read_busy_pct, write_busy_pct)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
 
 -- name: InsertNetwork :exec
 INSERT INTO metrics_network (time, agent_id, interface, mac, mtu, speed, rx_bytes, rx_packets, rx_errors, rx_drops, tx_bytes, tx_packets, tx_errors, tx_drops)

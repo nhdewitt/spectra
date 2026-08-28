@@ -268,6 +268,23 @@ SELECT
     AVG(read_ops)::float8 AS read_ops,
     AVG(write_ops)::float8 AS write_ops,
     AVG(read_latency)::float8 AS read_latency,
+    -- Latency is per-operation, so a plain AVG weights a bucket containing one
+    -- slow op and a thousand fast ones equally between them. Weight by the op
+    -- count instead. read_ops is a rate rather than a raw count, but the
+    -- collection interval is fixed, so the constant factor cancels in the
+    -- ratio.
+    --
+    -- The denominator counts ops only from rows that actually have a latency.
+    -- Rows written before migration 021 have NULL latency, and SUM skips them
+    -- in the numerator while their ops would otherwise still inflate the
+    -- divisor and drag the bucket toward zero.
+    COALESCE(SUM(read_latency_ms * read_ops)
+        / NULLIF(SUM(CASE WHEN read_latency_ms IS NOT NULL THEN read_ops END)::float8, 0), 0)::float8 AS read_latency_ms,
+    COALESCE(SUM(write_latency_ms * write_ops)
+        / NULLIF(SUM(CASE WHEN write_latency_ms IS NOT NULL THEN write_ops END)::float8, 0), 0)::float8 AS write_latency_ms,
+    COALESCE(AVG(read_busy_pct), 0)::float8 AS read_busy_pct,
+    COALESCE(AVG(write_busy_pct), 0)::float8 AS write_busy_pct,
+    COUNT(read_latency_ms) > 0 AS has_io_detail,
     AVG(write_latency)::float8 AS write_latency,
     AVG(io_in_progress)::float8 AS io_in_progress
 FROM metrics_disk_io
@@ -284,16 +301,21 @@ type GetDiskIOBucketedParams struct {
 }
 
 type GetDiskIOBucketedRow struct {
-	Time         pgtype.Timestamptz `json:"time"`
-	AgentID      pgtype.UUID        `json:"agent_id"`
-	Device       pgtype.Text        `json:"device"`
-	ReadBytes    float64            `json:"read_bytes"`
-	WriteBytes   float64            `json:"write_bytes"`
-	ReadOps      float64            `json:"read_ops"`
-	WriteOps     float64            `json:"write_ops"`
-	ReadLatency  float64            `json:"read_latency"`
-	WriteLatency float64            `json:"write_latency"`
-	IoInProgress float64            `json:"io_in_progress"`
+	Time           pgtype.Timestamptz `json:"time"`
+	AgentID        pgtype.UUID        `json:"agent_id"`
+	Device         pgtype.Text        `json:"device"`
+	ReadBytes      float64            `json:"read_bytes"`
+	WriteBytes     float64            `json:"write_bytes"`
+	ReadOps        float64            `json:"read_ops"`
+	WriteOps       float64            `json:"write_ops"`
+	ReadLatency    float64            `json:"read_latency"`
+	ReadLatencyMs  float64            `json:"read_latency_ms"`
+	WriteLatencyMs float64            `json:"write_latency_ms"`
+	ReadBusyPct    float64            `json:"read_busy_pct"`
+	WriteBusyPct   float64            `json:"write_busy_pct"`
+	HasIoDetail    bool               `json:"has_io_detail"`
+	WriteLatency   float64            `json:"write_latency"`
+	IoInProgress   float64            `json:"io_in_progress"`
 }
 
 func (q *Queries) GetDiskIOBucketed(ctx context.Context, arg GetDiskIOBucketedParams) ([]GetDiskIOBucketedRow, error) {
@@ -319,6 +341,11 @@ func (q *Queries) GetDiskIOBucketed(ctx context.Context, arg GetDiskIOBucketedPa
 			&i.ReadOps,
 			&i.WriteOps,
 			&i.ReadLatency,
+			&i.ReadLatencyMs,
+			&i.WriteLatencyMs,
+			&i.ReadBusyPct,
+			&i.WriteBusyPct,
+			&i.HasIoDetail,
 			&i.WriteLatency,
 			&i.IoInProgress,
 		); err != nil {
@@ -342,7 +369,10 @@ SELECT
     AVG(ram_percent)::float8 AS ram_percent,
     AVG(swap_total)::float8 AS swap_total,
     AVG(swap_used)::float8 AS swap_used,
-    AVG(swap_percent)::float8 AS swap_percent
+    AVG(swap_percent)::float8 AS swap_percent,
+    COALESCE(AVG(swap_in_pages), 0)::float8 AS swap_in_pages,
+    COALESCE(AVG(swap_out_pages), 0)::float8 AS swap_out_pages,
+    COUNT(swap_in_pages) > 0 AS has_paging
 FROM metrics_memory
 WHERE agent_id = $2 AND time >= $3 AND time <= $4
 GROUP BY 1, 2
@@ -366,6 +396,9 @@ type GetMemoryBucketedRow struct {
 	SwapTotal    float64            `json:"swap_total"`
 	SwapUsed     float64            `json:"swap_used"`
 	SwapPercent  float64            `json:"swap_percent"`
+	SwapInPages  float64            `json:"swap_in_pages"`
+	SwapOutPages float64            `json:"swap_out_pages"`
+	HasPaging    bool               `json:"has_paging"`
 }
 
 func (q *Queries) GetMemoryBucketed(ctx context.Context, arg GetMemoryBucketedParams) ([]GetMemoryBucketedRow, error) {
@@ -392,6 +425,9 @@ func (q *Queries) GetMemoryBucketed(ctx context.Context, arg GetMemoryBucketedPa
 			&i.SwapTotal,
 			&i.SwapUsed,
 			&i.SwapPercent,
+			&i.SwapInPages,
+			&i.SwapOutPages,
+			&i.HasPaging,
 		); err != nil {
 			return nil, err
 		}

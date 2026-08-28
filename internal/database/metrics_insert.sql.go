@@ -124,21 +124,25 @@ func (q *Queries) InsertDisk(ctx context.Context, arg InsertDiskParams) error {
 }
 
 const insertDiskIO = `-- name: InsertDiskIO :exec
-INSERT INTO metrics_disk_io (time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO metrics_disk_io (time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress, read_latency_ms, write_latency_ms, read_busy_pct, write_busy_pct)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 `
 
 type InsertDiskIOParams struct {
-	Time         pgtype.Timestamptz `json:"time"`
-	AgentID      pgtype.UUID        `json:"agent_id"`
-	Device       pgtype.Text        `json:"device"`
-	ReadBytes    pgtype.Int8        `json:"read_bytes"`
-	WriteBytes   pgtype.Int8        `json:"write_bytes"`
-	ReadOps      pgtype.Int8        `json:"read_ops"`
-	WriteOps     pgtype.Int8        `json:"write_ops"`
-	ReadLatency  pgtype.Int8        `json:"read_latency"`
-	WriteLatency pgtype.Int8        `json:"write_latency"`
-	IoInProgress pgtype.Int8        `json:"io_in_progress"`
+	Time           pgtype.Timestamptz `json:"time"`
+	AgentID        pgtype.UUID        `json:"agent_id"`
+	Device         pgtype.Text        `json:"device"`
+	ReadBytes      pgtype.Int8        `json:"read_bytes"`
+	WriteBytes     pgtype.Int8        `json:"write_bytes"`
+	ReadOps        pgtype.Int8        `json:"read_ops"`
+	WriteOps       pgtype.Int8        `json:"write_ops"`
+	ReadLatency    pgtype.Int8        `json:"read_latency"`
+	WriteLatency   pgtype.Int8        `json:"write_latency"`
+	IoInProgress   pgtype.Int8        `json:"io_in_progress"`
+	ReadLatencyMs  pgtype.Float8      `json:"read_latency_ms"`
+	WriteLatencyMs pgtype.Float8      `json:"write_latency_ms"`
+	ReadBusyPct    pgtype.Float8      `json:"read_busy_pct"`
+	WriteBusyPct   pgtype.Float8      `json:"write_busy_pct"`
 }
 
 func (q *Queries) InsertDiskIO(ctx context.Context, arg InsertDiskIOParams) error {
@@ -153,13 +157,17 @@ func (q *Queries) InsertDiskIO(ctx context.Context, arg InsertDiskIOParams) erro
 		arg.ReadLatency,
 		arg.WriteLatency,
 		arg.IoInProgress,
+		arg.ReadLatencyMs,
+		arg.WriteLatencyMs,
+		arg.ReadBusyPct,
+		arg.WriteBusyPct,
 	)
 	return err
 }
 
 const insertMemory = `-- name: InsertMemory :exec
-INSERT INTO metrics_memory (time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO metrics_memory (time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent, swap_in_pages, swap_out_pages)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 `
 
 type InsertMemoryParams struct {
@@ -172,6 +180,8 @@ type InsertMemoryParams struct {
 	SwapTotal    pgtype.Int8        `json:"swap_total"`
 	SwapUsed     pgtype.Int8        `json:"swap_used"`
 	SwapPercent  pgtype.Float8      `json:"swap_percent"`
+	SwapInPages  pgtype.Float8      `json:"swap_in_pages"`
+	SwapOutPages pgtype.Float8      `json:"swap_out_pages"`
 }
 
 func (q *Queries) InsertMemory(ctx context.Context, arg InsertMemoryParams) error {
@@ -185,6 +195,8 @@ func (q *Queries) InsertMemory(ctx context.Context, arg InsertMemoryParams) erro
 		arg.SwapTotal,
 		arg.SwapUsed,
 		arg.SwapPercent,
+		arg.SwapInPages,
+		arg.SwapOutPages,
 	)
 	return err
 }

@@ -39,8 +39,10 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 		return nil, err
 	}
 
-	used := raw.Total - raw.Available
-	swapUsed := raw.SwapTotal - raw.SwapFree
+	used := util.Delta(raw.Total, raw.Available)
+	swapUsed := util.Delta(raw.SwapTotal, raw.SwapFree)
+
+	swapIn, swapOut, swapErr := SwapPaging()
 
 	return []protocol.Metric{protocol.MemoryMetric{
 		Total:     raw.Total,
@@ -50,7 +52,9 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 		SwapTotal: raw.SwapTotal,
 		SwapUsed:  swapUsed,
 		SwapPct:   util.Percent(swapUsed, raw.SwapTotal),
-	}}, nil
+		SwapIn:    swapIn,
+		SwapOut:   swapOut,
+	}}, swapErr
 }
 
 func parseMemInfo() (memRaw, error) {

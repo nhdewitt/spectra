@@ -32,7 +32,10 @@ SELECT
     AVG(ram_percent)::float8 AS ram_percent,
     AVG(swap_total)::float8 AS swap_total,
     AVG(swap_used)::float8 AS swap_used,
-    AVG(swap_percent)::float8 AS swap_percent
+    AVG(swap_percent)::float8 AS swap_percent,
+    COALESCE(AVG(swap_in_pages), 0)::float8 AS swap_in_pages,
+    COALESCE(AVG(swap_out_pages), 0)::float8 AS swap_out_pages,
+    COUNT(swap_in_pages) > 0 AS has_paging
 FROM metrics_memory
 WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 GROUP BY 1, 2
@@ -68,6 +71,23 @@ SELECT
     AVG(read_ops)::float8 AS read_ops,
     AVG(write_ops)::float8 AS write_ops,
     AVG(read_latency)::float8 AS read_latency,
+    -- Latency is per-operation, so a plain AVG weights a bucket containing one
+    -- slow op and a thousand fast ones equally between them. Weight by the op
+    -- count instead. read_ops is a rate rather than a raw count, but the
+    -- collection interval is fixed, so the constant factor cancels in the
+    -- ratio.
+    --
+    -- The denominator counts ops only from rows that actually have a latency.
+    -- Rows written before migration 021 have NULL latency, and SUM skips them
+    -- in the numerator while their ops would otherwise still inflate the
+    -- divisor and drag the bucket toward zero.
+    COALESCE(SUM(read_latency_ms * read_ops)
+        / NULLIF(SUM(CASE WHEN read_latency_ms IS NOT NULL THEN read_ops END)::float8, 0), 0)::float8 AS read_latency_ms,
+    COALESCE(SUM(write_latency_ms * write_ops)
+        / NULLIF(SUM(CASE WHEN write_latency_ms IS NOT NULL THEN write_ops END)::float8, 0), 0)::float8 AS write_latency_ms,
+    COALESCE(AVG(read_busy_pct), 0)::float8 AS read_busy_pct,
+    COALESCE(AVG(write_busy_pct), 0)::float8 AS write_busy_pct,
+    COUNT(read_latency_ms) > 0 AS has_io_detail,
     AVG(write_latency)::float8 AS write_latency,
     AVG(io_in_progress)::float8 AS io_in_progress
 FROM metrics_disk_io
