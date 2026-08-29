@@ -83,7 +83,7 @@ func readRaw() (map[string]Raw, error) {
 	var cpuInfo C.processor_info_array_t
 	var numCPUInfo C.mach_msg_type_number_t
 
-	ret := C.spectra_processorinfo(&numCPU, &cpuInfo, &numCPUInfo)
+	ret := C.spectra_processor_info(&numCPU, &cpuInfo, &numCPUInfo)
 	if ret != C.KERN_SUCCESS {
 		return nil, fmt.Errorf("host_processor_info failed: %d", ret)
 	}
