@@ -31,28 +31,50 @@ func parseMemInfoFrom(r io.Reader) (memRaw, error) {
 		"SwapFree":     &raw.SwapFree,
 	}
 
+	var commitLimit, commitUsed uint64
+	optional := map[string]*uint64{
+		"CommitLimit":  &commitLimit,
+		"Committed_AS": &commitUsed,
+	}
+	found := make(map[string]bool, len(optional))
+
 	scanner := bufio.NewScanner(r)
 
-	for scanner.Scan() && len(targets) > 0 {
+	for scanner.Scan() && len(targets)+len(optional) > 0 {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) < 2 {
 			continue
 		}
 
 		key := strings.TrimSuffix(fields[0], ":")
+
 		target, ok := targets[key]
-		if !ok {
+		optionalTarget, optionalOK := optional[key]
+		if !ok && !optionalOK {
 			continue
+		}
+		if optionalOK {
+			target = optionalTarget
 		}
 
 		value, err := strconv.ParseUint(fields[1], 10, 64)
 		if err != nil {
+			if optionalOK {
+				// An unparseable optional field is never fatal.
+				delete(optional, key)
+				continue
+			}
 			return memRaw{}, fmt.Errorf("parsing %s: %w", key, err)
 		}
 
 		*target = value * 1024
 		// Remove the key to prevent duplicates from changing the value
-		delete(targets, key)
+		if ok {
+			delete(targets, key)
+		} else {
+			delete(optional, key)
+			found[key] = true
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -64,6 +86,12 @@ func parseMemInfoFrom(r io.Reader) (memRaw, error) {
 			missing = append(missing, k)
 		}
 		return memRaw{}, fmt.Errorf("missing fields in /proc/meminfo: %v", missing)
+	}
+
+	// Both or neither
+	if found["CommitLimit"] && found["Committed_AS"] {
+		raw.CommitLimit = &commitLimit
+		raw.CommitUsed = &commitUsed
 	}
 
 	return raw, nil

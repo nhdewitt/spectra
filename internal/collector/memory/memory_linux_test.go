@@ -1,5 +1,4 @@
 //go:build linux
-// +build linux
 
 package memory
 
@@ -227,9 +226,11 @@ MemTotal:		99999999 kB
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// Duplicate keys are skipped by the map delete on first match. The loop
+	// no longer stops once the required fields are found, since CommitLimit
+	// and Committed_AS appear later in /proc/meminfo.
 	if raw.Total != 16307664*1024 {
-		// Should stop after finding all 4 fields, not continue on to duplicate field
-		t.Logf("Note: duplicate fields use value %d", raw.Total)
+		t.Errorf("duplicate MemTotal overwrote the first: got %d, want %d", raw.Total, 16307664*1024)
 	}
 }
 
@@ -247,9 +248,10 @@ SwapFree:		 3000000 kB
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// Duplicate keys are skipped because the key is removed from the map on
+	// first match, regardless of whether all required fields have been found.
 	if raw.Total != 16307664*1024 {
-		// Should ignore the duplicate field even if it hasn't found all 4 fields
-		t.Logf("Note: duplicate fields in a different order use value %d", raw.Total)
+		t.Errorf("duplicate MemTotal overwrote the first: got %d, want %d", raw.Total, 16307664*1024)
 	}
 }
 
@@ -312,6 +314,168 @@ SwapFree:		 1000000 kB
 	expectedSwapUsed := uint64(3000000 * 1024)
 	if swapUsed != expectedSwapUsed {
 		t.Errorf("swap used calculation: got %d, want %d", swapUsed, expectedSwapUsed)
+	}
+}
+
+// Real /proc/meminfo lists CommitLimit and Committed_AS well after SwapFree.
+// The parse loop must not stop once the four required keys are found, or
+// commit reporting silently never populates on any real host.
+func TestParseMemInfoFrom_CommitAppearsAfterSwapFree(t *testing.T) {
+	input := `
+MemTotal:		16307664 kB
+MemFree:		 1000000 kB
+MemAvailable:	 8000000 kB
+Buffers:		  500000 kB
+Cached:			 2000000 kB
+SwapTotal:		 4000000 kB
+SwapFree:		 3000000 kB
+Dirty:			     100 kB
+Writeback:		       0 kB
+CommitLimit:	12153832 kB
+Committed_AS:	 5000000 kB
+`
+	raw, err := parseMemInfoFrom(strings.NewReader(strings.TrimSpace(input)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if raw.CommitLimit == nil {
+		t.Fatal("CommitLimit is nil; the parse loop stopped before reaching it")
+	}
+	if raw.CommitUsed == nil {
+		t.Fatal("CommitUsed is nil; the parse loop stopped before reaching it")
+	}
+
+	if want := uint64(12153832 * 1024); *raw.CommitLimit != want {
+		t.Errorf("CommitLimit: got %d, want %d", *raw.CommitLimit, want)
+	}
+	if want := uint64(5000000 * 1024); *raw.CommitUsed != want {
+		t.Errorf("CommitUsed: got %d, want %d", *raw.CommitUsed, want)
+	}
+}
+
+func TestParseMemInfoFrom_NoCommitFields(t *testing.T) {
+	input := `
+MemTotal:		16307664 kB
+MemAvailable:	 8000000 kB
+SwapTotal:		 4000000 kB
+SwapFree:		 3000000 kB
+`
+	raw, err := parseMemInfoFrom(strings.NewReader(strings.TrimSpace(input)))
+	if err != nil {
+		t.Fatalf("commit fields are optional and must not fail the parse: %v", err)
+	}
+
+	if raw.CommitLimit != nil || raw.CommitUsed != nil {
+		t.Errorf("expected both commit fields nil, got %v / %v", raw.CommitLimit, raw.CommitUsed)
+	}
+}
+
+// A limit with no usage figure is not chartable, so one without the other is
+// reported as neither rather than inviting a ratio nobody can compute.
+func TestParseMemInfoFrom_CommitRequiresBothKeys(t *testing.T) {
+	tests := []struct {
+		name  string
+		extra string
+	}{
+		{name: "LimitOnly", extra: "CommitLimit:\t12153832 kB"},
+		{name: "CommittedOnly", extra: "Committed_AS:\t 5000000 kB"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := `
+MemTotal:		16307664 kB
+MemAvailable:	 8000000 kB
+SwapTotal:		 4000000 kB
+SwapFree:		 3000000 kB
+` + tt.extra
+
+			raw, err := parseMemInfoFrom(strings.NewReader(strings.TrimSpace(input)))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if raw.CommitLimit != nil || raw.CommitUsed != nil {
+				t.Errorf("expected both nil when only one key is present, got %v / %v",
+					raw.CommitLimit, raw.CommitUsed)
+			}
+		})
+	}
+}
+
+// An optional field that cannot be parsed is dropped. Memory collection is
+// far more important than commit reporting and must not fail with it.
+func TestParseMemInfoFrom_MalformedCommitIsNotFatal(t *testing.T) {
+	input := `
+MemTotal:		16307664 kB
+MemAvailable:	 8000000 kB
+SwapTotal:		 4000000 kB
+SwapFree:		 3000000 kB
+CommitLimit:	NotANumber kB
+Committed_AS:	 5000000 kB
+`
+	raw, err := parseMemInfoFrom(strings.NewReader(strings.TrimSpace(input)))
+	if err != nil {
+		t.Fatalf("a malformed optional field must not fail the parse: %v", err)
+	}
+
+	if want := uint64(16307664 * 1024); raw.Total != want {
+		t.Errorf("MemTotal: got %d, want %d", raw.Total, want)
+	}
+	if raw.CommitLimit != nil || raw.CommitUsed != nil {
+		t.Errorf("expected both nil when CommitLimit is unparseable, got %v / %v",
+			raw.CommitLimit, raw.CommitUsed)
+	}
+}
+
+func TestParseMemInfoFrom_DuplicateCommitKeysUseFirst(t *testing.T) {
+	input := `
+MemTotal:		16307664 kB
+MemAvailable:	 8000000 kB
+SwapTotal:		 4000000 kB
+SwapFree:		 3000000 kB
+CommitLimit:	12153832 kB
+Committed_AS:	 5000000 kB
+CommitLimit:	99999999 kB
+`
+	raw, err := parseMemInfoFrom(strings.NewReader(strings.TrimSpace(input)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if raw.CommitLimit == nil {
+		t.Fatal("CommitLimit is nil")
+	}
+	if want := uint64(12153832 * 1024); *raw.CommitLimit != want {
+		t.Errorf("CommitLimit: got %d, want %d (duplicate overwrote the first)", *raw.CommitLimit, want)
+	}
+}
+
+// Commit accounting on a large host exceeds 32 bits of kilobytes, so the
+// kB-to-byte conversion must happen in uint64 space.
+func TestParseMemInfoFrom_LargeCommitValues(t *testing.T) {
+	input := `
+MemTotal:		536870912 kB
+MemAvailable:	268435456 kB
+SwapTotal:		 4000000 kB
+SwapFree:		 3000000 kB
+CommitLimit:	805306368 kB
+Committed_AS:	402653184 kB
+`
+	raw, err := parseMemInfoFrom(strings.NewReader(strings.TrimSpace(input)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if raw.CommitLimit == nil || raw.CommitUsed == nil {
+		t.Fatal("commit fields are nil")
+	}
+	if want := uint64(805306368) * 1024; *raw.CommitLimit != want {
+		t.Errorf("CommitLimit: got %d, want %d", *raw.CommitLimit, want)
+	}
+	if want := uint64(402653184) * 1024; *raw.CommitUsed != want {
+		t.Errorf("CommitUsed: got %d, want %d", *raw.CommitUsed, want)
 	}
 }
 

@@ -257,10 +257,7 @@ function MemoryDetail({ agentId, rangeSel }: DetailProps) {
 
 	const anomalies = useMemo<Anomaly[]>(() => memoryAnomalies(data, thresholds), [data, thresholds]);
 
-    const hasPaging = useMemo(
-        () => data.some((d) => d.has_paging ?? d.swap_in_pages != null),
-        [data]
-    );
+    const hasPaging = useMemo(() => data.some((d) => d.has_paging), [data]);
 
     return (
         <div>
@@ -273,22 +270,20 @@ function MemoryDetail({ agentId, rangeSel }: DetailProps) {
                 </FactRow>
             )}
 
-            {hasPaging && (
-                <MetricChart
-                    title="Utilization"
-                    data={data}
-                    loading={loading}
-                    error={error}
-                    unit="%"
-                    yDomain={[0, 100]}
-                    series={MEM_PERCENT}
-                    rangeSel={rangeSel}
-                    refLines={[
-                        { y: thresholds.mem_warn, label: "warn", color: themeVars.warn },
-                        { y: thresholds.mem_crit, label: "crit", color: themeVars.danger },
-                    ]}
-                />
-            )}
+            <MetricChart
+                title="Utilization"
+                data={data}
+                loading={loading}
+                error={error}
+                unit="%"
+                yDomain={[0, 100]}
+                series={MEM_PERCENT}
+                rangeSel={rangeSel}
+                refLines={[
+                    { y: thresholds.mem_warn, label: "warn", color: themeVars.warn },
+                    { y: thresholds.mem_crit, label: "crit", color: themeVars.danger },
+                ]}
+            />
 
             <Section title="Absolute">
                 <MetricChart
@@ -447,10 +442,7 @@ function DiskIODetail({ agentId, rangeSel }: DetailProps) {
 
 	const anomalies = useMemo<Anomaly[]>(() => diskIOAnomalies(rows), [rows]);
 
-    const hasIODetail = useMemo(
-        () => rows.some((d) => d.has_io_detail ?? d.read_latency_ms != null),
-        [rows]
-    );
+    const hasIODetail = useMemo(() => rows.some((d) => d.has_io_detail), [rows]);
 
     return (
         <div>

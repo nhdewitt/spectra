@@ -3,8 +3,8 @@ INSERT INTO metrics_cpu (time, agent_id, usage, core_usages, load_1m, load_5m, l
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: InsertMemory :exec
-INSERT INTO metrics_memory (time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent, swap_in_pages, swap_out_pages)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+INSERT INTO metrics_memory (time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent, swap_in_pages, swap_out_pages, commit_limit, commit_used)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
 
 -- name: InsertDisk :exec
 INSERT INTO metrics_disk (time, agent_id, device, mountpoint, filesystem, disk_type, total_bytes, used_bytes, free_bytes, used_percent, inodes_total, inodes_used, inodes_percent)

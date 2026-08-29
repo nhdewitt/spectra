@@ -25,6 +25,7 @@ sql:
       - "internal/database/migrations/020_compression.up.sql"
       - "internal/database/migrations/021_diskio_latency.up.sql"
       - "internal/database/migrations/022_swap_paging.up.sql"
+      - "internal/database/migrations/023_commit_charge.up.sql"
     gen:
       go:
         package: "database"

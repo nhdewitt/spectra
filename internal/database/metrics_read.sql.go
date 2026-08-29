@@ -102,7 +102,8 @@ func (q *Queries) GetContainerRange(ctx context.Context, arg GetContainerRangePa
 }
 
 const getDiskIORange = `-- name: GetDiskIORange :many
-SELECT time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress, read_latency_ms, write_latency_ms, read_busy_pct, write_busy_pct
+SELECT time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress, read_latency_ms, write_latency_ms, read_busy_pct, write_busy_pct,
+  COUNT(read_latency_ms) OVER () > 0 AS has_io_detail
 FROM metrics_disk_io
 WHERE agent_id = $1 AND time >= $2 AND time <= $3
 ORDER BY TIME ASC
@@ -114,15 +115,33 @@ type GetDiskIORangeParams struct {
 	EndTime   pgtype.Timestamptz `json:"end_time"`
 }
 
-func (q *Queries) GetDiskIORange(ctx context.Context, arg GetDiskIORangeParams) ([]MetricsDiskIo, error) {
+type GetDiskIORangeRow struct {
+	Time           pgtype.Timestamptz `json:"time"`
+	AgentID        pgtype.UUID        `json:"agent_id"`
+	Device         pgtype.Text        `json:"device"`
+	ReadBytes      pgtype.Int8        `json:"read_bytes"`
+	WriteBytes     pgtype.Int8        `json:"write_bytes"`
+	ReadOps        pgtype.Int8        `json:"read_ops"`
+	WriteOps       pgtype.Int8        `json:"write_ops"`
+	ReadLatency    pgtype.Int8        `json:"read_latency"`
+	WriteLatency   pgtype.Int8        `json:"write_latency"`
+	IoInProgress   pgtype.Int8        `json:"io_in_progress"`
+	ReadLatencyMs  pgtype.Float8      `json:"read_latency_ms"`
+	WriteLatencyMs pgtype.Float8      `json:"write_latency_ms"`
+	ReadBusyPct    pgtype.Float8      `json:"read_busy_pct"`
+	WriteBusyPct   pgtype.Float8      `json:"write_busy_pct"`
+	HasIoDetail    bool               `json:"has_io_detail"`
+}
+
+func (q *Queries) GetDiskIORange(ctx context.Context, arg GetDiskIORangeParams) ([]GetDiskIORangeRow, error) {
 	rows, err := q.db.Query(ctx, getDiskIORange, arg.AgentID, arg.StartTime, arg.EndTime)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []MetricsDiskIo{}
+	items := []GetDiskIORangeRow{}
 	for rows.Next() {
-		var i MetricsDiskIo
+		var i GetDiskIORangeRow
 		if err := rows.Scan(
 			&i.Time,
 			&i.AgentID,
@@ -138,6 +157,7 @@ func (q *Queries) GetDiskIORange(ctx context.Context, arg GetDiskIORangeParams) 
 			&i.WriteLatencyMs,
 			&i.ReadBusyPct,
 			&i.WriteBusyPct,
+			&i.HasIoDetail,
 		); err != nil {
 			return nil, err
 		}
@@ -261,7 +281,8 @@ func (q *Queries) GetLatestSystem(ctx context.Context, agentID pgtype.UUID) (Met
 }
 
 const getMemoryRange = `-- name: GetMemoryRange :many
-SELECT time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent, swap_in_pages, swap_out_pages
+SELECT time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent, swap_in_pages, swap_out_pages, commit_limit, commit_used,
+  COUNT(swap_in_pages) OVER () > 0 AS has_paging, COUNT(commit_used) OVER () > 0 AS has_commit
 FROM metrics_memory
 WHERE agent_id = $1 AND time >= $2 AND time <= $3
 ORDER BY TIME ASC
@@ -273,15 +294,33 @@ type GetMemoryRangeParams struct {
 	EndTime   pgtype.Timestamptz `json:"end_time"`
 }
 
-func (q *Queries) GetMemoryRange(ctx context.Context, arg GetMemoryRangeParams) ([]MetricsMemory, error) {
+type GetMemoryRangeRow struct {
+	Time         pgtype.Timestamptz `json:"time"`
+	AgentID      pgtype.UUID        `json:"agent_id"`
+	RamTotal     pgtype.Int8        `json:"ram_total"`
+	RamUsed      pgtype.Int8        `json:"ram_used"`
+	RamAvailable pgtype.Int8        `json:"ram_available"`
+	RamPercent   pgtype.Float8      `json:"ram_percent"`
+	SwapTotal    pgtype.Int8        `json:"swap_total"`
+	SwapUsed     pgtype.Int8        `json:"swap_used"`
+	SwapPercent  pgtype.Float8      `json:"swap_percent"`
+	SwapInPages  pgtype.Float8      `json:"swap_in_pages"`
+	SwapOutPages pgtype.Float8      `json:"swap_out_pages"`
+	CommitLimit  pgtype.Int8        `json:"commit_limit"`
+	CommitUsed   pgtype.Int8        `json:"commit_used"`
+	HasPaging    bool               `json:"has_paging"`
+	HasCommit    bool               `json:"has_commit"`
+}
+
+func (q *Queries) GetMemoryRange(ctx context.Context, arg GetMemoryRangeParams) ([]GetMemoryRangeRow, error) {
 	rows, err := q.db.Query(ctx, getMemoryRange, arg.AgentID, arg.StartTime, arg.EndTime)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []MetricsMemory{}
+	items := []GetMemoryRangeRow{}
 	for rows.Next() {
-		var i MetricsMemory
+		var i GetMemoryRangeRow
 		if err := rows.Scan(
 			&i.Time,
 			&i.AgentID,
@@ -294,6 +333,10 @@ func (q *Queries) GetMemoryRange(ctx context.Context, arg GetMemoryRangeParams) 
 			&i.SwapPercent,
 			&i.SwapInPages,
 			&i.SwapOutPages,
+			&i.CommitLimit,
+			&i.CommitUsed,
+			&i.HasPaging,
+			&i.HasCommit,
 		); err != nil {
 			return nil, err
 		}

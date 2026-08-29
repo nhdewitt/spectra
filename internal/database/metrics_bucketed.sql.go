@@ -372,7 +372,10 @@ SELECT
     AVG(swap_percent)::float8 AS swap_percent,
     COALESCE(AVG(swap_in_pages), 0)::float8 AS swap_in_pages,
     COALESCE(AVG(swap_out_pages), 0)::float8 AS swap_out_pages,
-    COUNT(swap_in_pages) > 0 AS has_paging
+    COUNT(swap_in_pages) > 0 AS has_paging,
+    COALESCE(AVG(commit_limit), 0)::float8 AS commit_limit,
+    COALESCE(AVG(commit_used), 0)::float8 AS commit_used,
+    COUNT(commit_used) > 0 AS has_commit
 FROM metrics_memory
 WHERE agent_id = $2 AND time >= $3 AND time <= $4
 GROUP BY 1, 2
@@ -399,6 +402,9 @@ type GetMemoryBucketedRow struct {
 	SwapInPages  float64            `json:"swap_in_pages"`
 	SwapOutPages float64            `json:"swap_out_pages"`
 	HasPaging    bool               `json:"has_paging"`
+	CommitLimit  float64            `json:"commit_limit"`
+	CommitUsed   float64            `json:"commit_used"`
+	HasCommit    bool               `json:"has_commit"`
 }
 
 func (q *Queries) GetMemoryBucketed(ctx context.Context, arg GetMemoryBucketedParams) ([]GetMemoryBucketedRow, error) {
@@ -428,6 +434,9 @@ func (q *Queries) GetMemoryBucketed(ctx context.Context, arg GetMemoryBucketedPa
 			&i.SwapInPages,
 			&i.SwapOutPages,
 			&i.HasPaging,
+			&i.CommitLimit,
+			&i.CommitUsed,
+			&i.HasCommit,
 		); err != nil {
 			return nil, err
 		}

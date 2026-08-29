@@ -24,7 +24,7 @@ type swapRaw struct {
 //
 // Returns nil on the first sample of a process. Nil propagates to a SQL
 // NULL, and every anomaly detector skips nulls, so an unsupported platform
-// or a first sample simple reports nothing rather than zero.
+// or a first sample simply reports nothing rather than zero.
 func swapRates(curr swapRaw, now time.Time) (*float64, *float64) {
 	swapMu.Lock()
 	defer swapMu.Unlock()

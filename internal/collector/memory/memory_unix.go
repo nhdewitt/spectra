@@ -14,6 +14,11 @@ type memRaw struct {
 	Available uint64
 	SwapTotal uint64
 	SwapFree  uint64
+
+	// Commit accounting. Nil on platforms or kernels that do not report it.
+	// Propagates to a SQL NULL rather than a misleading zero.
+	CommitLimit *uint64
+	CommitUsed  *uint64
 }
 
 func Collect(ctx context.Context) ([]protocol.Metric, error) {
@@ -28,14 +33,16 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 	swapIn, swapOut, swapErr := SwapPaging()
 
 	return []protocol.Metric{protocol.MemoryMetric{
-		Total:     raw.Total,
-		Available: raw.Available,
-		Used:      used,
-		UsedPct:   util.Percent(used, raw.Total),
-		SwapTotal: raw.SwapTotal,
-		SwapUsed:  swapUsed,
-		SwapPct:   util.Percent(swapUsed, raw.SwapTotal),
-		SwapIn:    swapIn,
-		SwapOut:   swapOut,
+		Total:       raw.Total,
+		Available:   raw.Available,
+		Used:        used,
+		UsedPct:     util.Percent(used, raw.Total),
+		SwapTotal:   raw.SwapTotal,
+		SwapUsed:    swapUsed,
+		SwapPct:     util.Percent(swapUsed, raw.SwapTotal),
+		SwapIn:      swapIn,
+		SwapOut:     swapOut,
+		CommitLimit: raw.CommitLimit,
+		CommitUsed:  raw.CommitUsed,
 	}}, swapErr
 }

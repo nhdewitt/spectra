@@ -1,0 +1,3 @@
+ALTER TABLE metrics_memory
+	ADD COLUMN IF NOT EXISTS commit_limit	BIGINT,
+	ADD COLUMN IF NOT EXISTS commit_used	BIGINT;

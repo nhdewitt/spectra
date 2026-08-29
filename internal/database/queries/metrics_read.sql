@@ -5,7 +5,8 @@ WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 ORDER BY TIME ASC;
 
 -- name: GetMemoryRange :many
-SELECT time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent, swap_in_pages, swap_out_pages
+SELECT time, agent_id, ram_total, ram_used, ram_available, ram_percent, swap_total, swap_used, swap_percent, swap_in_pages, swap_out_pages, commit_limit, commit_used,
+  COUNT(swap_in_pages) OVER () > 0 AS has_paging, COUNT(commit_used) OVER () > 0 AS has_commit
 FROM metrics_memory
 WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 ORDER BY TIME ASC;
@@ -17,7 +18,8 @@ WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 ORDER BY TIME ASC;
 
 -- name: GetDiskIORange :many
-SELECT time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress, read_latency_ms, write_latency_ms, read_busy_pct, write_busy_pct
+SELECT time, agent_id, device, read_bytes, write_bytes, read_ops, write_ops, read_latency, write_latency, io_in_progress, read_latency_ms, write_latency_ms, read_busy_pct, write_busy_pct,
+  COUNT(read_latency_ms) OVER () > 0 AS has_io_detail
 FROM metrics_disk_io
 WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 ORDER BY TIME ASC;

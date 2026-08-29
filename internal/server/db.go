@@ -89,9 +89,9 @@ type DB interface {
 
 	// Read API - time-series metrics (timestamp)
 	GetCPURange(ctx context.Context, arg database.GetCPURangeParams) ([]database.MetricsCpu, error)
-	GetMemoryRange(ctx context.Context, arg database.GetMemoryRangeParams) ([]database.MetricsMemory, error)
+	GetMemoryRange(ctx context.Context, arg database.GetMemoryRangeParams) ([]database.GetMemoryRangeRow, error)
 	GetDiskRange(ctx context.Context, arg database.GetDiskRangeParams) ([]database.MetricsDisk, error)
-	GetDiskIORange(ctx context.Context, arg database.GetDiskIORangeParams) ([]database.MetricsDiskIo, error)
+	GetDiskIORange(ctx context.Context, arg database.GetDiskIORangeParams) ([]database.GetDiskIORangeRow, error)
 	GetNetworkRange(ctx context.Context, arg database.GetNetworkRangeParams) ([]database.MetricsNetwork, error)
 	GetTemperatureRange(ctx context.Context, arg database.GetTemperatureRangeParams) ([]database.MetricsTemperature, error)
 	GetSystemRange(ctx context.Context, arg database.GetSystemRangeParams) ([]database.MetricsSystem, error)

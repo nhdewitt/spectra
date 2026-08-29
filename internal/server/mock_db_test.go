@@ -511,13 +511,13 @@ func (m *MockDB) GetCPURange(_ context.Context, _ database.GetCPURangeParams) ([
 	return []database.MetricsCpu{}, nil
 }
 
-func (m *MockDB) GetMemoryRange(_ context.Context, _ database.GetMemoryRangeParams) ([]database.MetricsMemory, error) {
+func (m *MockDB) GetMemoryRange(_ context.Context, _ database.GetMemoryRangeParams) ([]database.GetMemoryRangeRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.QueryErr != nil {
 		return nil, m.QueryErr
 	}
-	return []database.MetricsMemory{}, nil
+	return []database.GetMemoryRangeRow{}, nil
 }
 
 func (m *MockDB) GetDiskRange(_ context.Context, _ database.GetDiskRangeParams) ([]database.MetricsDisk, error) {
@@ -529,13 +529,13 @@ func (m *MockDB) GetDiskRange(_ context.Context, _ database.GetDiskRangeParams) 
 	return []database.MetricsDisk{}, nil
 }
 
-func (m *MockDB) GetDiskIORange(_ context.Context, _ database.GetDiskIORangeParams) ([]database.MetricsDiskIo, error) {
+func (m *MockDB) GetDiskIORange(_ context.Context, _ database.GetDiskIORangeParams) ([]database.GetDiskIORangeRow, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.QueryErr != nil {
 		return nil, m.QueryErr
 	}
-	return []database.MetricsDiskIo{}, nil
+	return []database.GetDiskIORangeRow{}, nil
 }
 
 func (m *MockDB) GetNetworkRange(_ context.Context, _ database.GetNetworkRangeParams) ([]database.MetricsNetwork, error) {

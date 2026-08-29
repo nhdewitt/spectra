@@ -35,7 +35,10 @@ SELECT
     AVG(swap_percent)::float8 AS swap_percent,
     COALESCE(AVG(swap_in_pages), 0)::float8 AS swap_in_pages,
     COALESCE(AVG(swap_out_pages), 0)::float8 AS swap_out_pages,
-    COUNT(swap_in_pages) > 0 AS has_paging
+    COUNT(swap_in_pages) > 0 AS has_paging,
+    COALESCE(AVG(commit_limit), 0)::float8 AS commit_limit,
+    COALESCE(AVG(commit_used), 0)::float8 AS commit_used,
+    COUNT(commit_used) > 0 AS has_commit
 FROM metrics_memory
 WHERE agent_id = @agent_id AND time >= @start_time AND time <= @end_time
 GROUP BY 1, 2

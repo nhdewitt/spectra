@@ -64,6 +64,8 @@ func (s *Server) persistMetric(ctx context.Context, tx MetricWriter, agentID str
 			SwapPercent:  pgFloat8(m.SwapPct),
 			SwapInPages:  pgFloat8Ptr(m.SwapIn),
 			SwapOutPages: pgFloat8Ptr(m.SwapOut),
+			CommitLimit:  pgInt8Ptr(m.CommitLimit),
+			CommitUsed:   pgInt8Ptr(m.CommitUsed),
 		})
 
 	case *protocol.DiskMetric:
@@ -321,6 +323,13 @@ func pgFloat8Ptr(f *float64) pgtype.Float8 {
 		return pgtype.Float8{}
 	}
 	return pgtype.Float8{Float64: *f, Valid: true}
+}
+
+func pgInt8Ptr(n *uint64) pgtype.Int8 {
+	if n == nil {
+		return pgtype.Int8{}
+	}
+	return pgtype.Int8{Int64: int64(*n), Valid: true}
 }
 
 func pgFloat8(f float64) pgtype.Float8 {

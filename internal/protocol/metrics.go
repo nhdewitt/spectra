@@ -75,6 +75,12 @@ type MemoryMetric struct {
 
 	SwapIn  *float64 `json:"swap_in_pages,omitempty"`
 	SwapOut *float64 `json:"swap_out_pages,omitempty"`
+
+	// Commit accounting: allocation headroom, not pagefile occupancy.
+	// Windows ullTotalPageFile / ullAvailPageFile, Linux CommitLimit /
+	// Committed_AS. Nil on FreeBSD and Darwin.
+	CommitLimit *uint64 `json:"commit_limit,omitempty"`
+	CommitUsed  *uint64 `json:"commit_used,omitempty"`
 }
 
 type DiskMetric struct {

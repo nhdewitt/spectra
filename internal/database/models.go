@@ -203,6 +203,8 @@ type MetricsMemory struct {
 	SwapPercent  pgtype.Float8      `json:"swap_percent"`
 	SwapInPages  pgtype.Float8      `json:"swap_in_pages"`
 	SwapOutPages pgtype.Float8      `json:"swap_out_pages"`
+	CommitLimit  pgtype.Int8        `json:"commit_limit"`
+	CommitUsed   pgtype.Int8        `json:"commit_used"`
 }
 
 type MetricsNetwork struct {

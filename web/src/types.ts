@@ -109,7 +109,10 @@ export interface MemoryMetric {
     swap_percent: number;
     swap_in_pages: number | null;
     swap_out_pages: number | null;
-    has_paging?: boolean;
+    has_paging: boolean;
+    commit_limit: number | null;
+    commit_used: number | null;
+    has_commit: boolean;
 }
 
 export interface DiskMetric {
@@ -152,7 +155,7 @@ export interface DiskIOMetric {
     /** Share of the interval device spent servicing IO (iostat %util). */
     read_busy_pct: number | null;
     write_busy_pct: number | null;
-    has_io_detail?: boolean;
+    has_io_detail: boolean;
     
     io_in_progress: number;
 }
