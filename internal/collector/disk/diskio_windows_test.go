@@ -20,6 +20,22 @@ func mockTime(tb testing.TB) *time.Time {
 	return &fakeTime
 }
 
+// resetDiskState clears the package-level rate state. Both vars must be reset
+// together. A test that mocks the clock leaves lastDiskTime in the future, and
+// the next test using the real clock sees a negative delta and logs a "Invalid
+// time delta / Clock skew?" warning. The Cleanup stops that leaking into tests
+// in other files.
+func resetDiskState(tb testing.TB) {
+	tb.Helper()
+
+	clear := func() {
+		lastDiskPerf = nil
+		lastDiskTime = time.Time{}
+	}
+	clear()
+	tb.Cleanup(clear)
+}
+
 func TestFormatDeviceName(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -83,7 +99,7 @@ func TestFormatDeviceName(t *testing.T) {
 }
 
 func TestCollectDiskIO_EmptyCache(t *testing.T) {
-	lastDiskPerf = nil
+	resetDiskState(t)
 
 	cache := &DriveCache{
 		AllowedDrives:  make(map[uint32]MountInfo),
@@ -100,7 +116,7 @@ func TestCollectDiskIO_EmptyCache(t *testing.T) {
 }
 
 func TestCollectDiskIO_BaselineCollection(t *testing.T) {
-	lastDiskPerf = nil
+	resetDiskState(t)
 
 	// Save original and restore after test
 	origGetter := getDrivePerf
@@ -131,7 +147,7 @@ func TestCollectDiskIO_BaselineCollection(t *testing.T) {
 }
 
 func TestCollectDiskIO_RateCalculation(t *testing.T) {
-	lastDiskPerf = nil
+	resetDiskState(t)
 	fakeTime := mockTime(t)
 
 	origGetter := getDrivePerf
@@ -140,6 +156,9 @@ func TestCollectDiskIO_RateCalculation(t *testing.T) {
 	callCount := 0
 	getDrivePerf = func(idx uint32) (winapi.DiskPerformance, error) {
 		callCount++
+		// DISK_PERFORMANCE reports service time in 100ns ticks, not ms, and
+		// CollectDiskIO converts. The fixtures are stated in ticks so the deltas
+		// work out to 500 ms read and 1000 ms write.
 		if callCount == 1 {
 			// Baseline
 			return winapi.DiskPerformance{
@@ -147,19 +166,19 @@ func TestCollectDiskIO_RateCalculation(t *testing.T) {
 				BytesWritten: 2000,
 				ReadCount:    10,
 				WriteCount:   20,
-				ReadTime:     100,
-				WriteTime:    200,
+				ReadTime:     100 * ticksPerMillisecond,
+				WriteTime:    200 * ticksPerMillisecond,
 				QueueDepth:   0,
 			}, nil
 		}
 		// Second call - simulate activity
 		return winapi.DiskPerformance{
-			BytesRead:    1000 + 5000,  // +5000 bytes
-			BytesWritten: 2000 + 10000, // +10000 bytes
-			ReadCount:    10 + 25,      // +25 ops
-			WriteCount:   20 + 50,      // +50 ops
-			ReadTime:     100 + 500,
-			WriteTime:    200 + 1000,
+			BytesRead:    1000 + 5000,                        // +5000 bytes
+			BytesWritten: 2000 + 10000,                       // +10000 bytes
+			ReadCount:    10 + 25,                            // +25 ops
+			WriteCount:   20 + 50,                            // +50 ops
+			ReadTime:     (100 + 500) * ticksPerMillisecond,  // +500 ms
+			WriteTime:    (200 + 1000) * ticksPerMillisecond, // +1000 ms
 			QueueDepth:   2,
 		}, nil
 	}
@@ -220,10 +239,26 @@ func TestCollectDiskIO_RateCalculation(t *testing.T) {
 	if metric.InProgress != 2 {
 		t.Errorf("InProgress = %d, want %d", metric.InProgress, 2)
 	}
+
+	assertPtr := func(name string, got *float64, want float64) {
+		t.Helper()
+		if got == nil {
+			t.Errorf("%s = nil, want %v", name, want)
+			return
+		}
+		if *got != want {
+			t.Errorf("%s = %v, want %v", name, *got, want)
+		}
+	}
+
+	assertPtr("ReadLatency", metric.ReadLatency, 20)
+	assertPtr("WriteLatency", metric.WriteLatency, 20)
+	assertPtr("ReadBusyPct", metric.ReadBusyPct, 10)
+	assertPtr("WriteBusyPct", metric.WriteBusyPct, 20)
 }
 
 func TestCollectDiskIO_MultipleDrives(t *testing.T) {
-	lastDiskPerf = nil
+	resetDiskState(t)
 	fakeTime := mockTime(t)
 
 	origGetter := getDrivePerf
@@ -284,7 +319,7 @@ func TestCollectDiskIO_MultipleDrives(t *testing.T) {
 }
 
 func TestCollectDiskIO_DriveError(t *testing.T) {
-	lastDiskPerf = nil
+	resetDiskState(t)
 	fakeTime := mockTime(t)
 
 	origGetter := getDrivePerf
@@ -335,7 +370,7 @@ func TestCollectDiskIO_DriveError(t *testing.T) {
 }
 
 func TestCollectDiskIO_NewDriveAppears(t *testing.T) {
-	lastDiskPerf = nil
+	resetDiskState(t)
 	fakeTime := mockTime(t)
 
 	origGetter := getDrivePerf
@@ -386,8 +421,8 @@ func BenchmarkFormatDeviceName(b *testing.B) {
 
 func BenchmarkCollectDiskIO(b *testing.B) {
 	// Reset global state
+	resetDiskState(b)
 	lastDiskPerf = make(map[uint32]winapi.DiskPerformance)
-	lastDiskTime = time.Time{}
 
 	ctx := context.Background()
 	cache := &DriveCache{
