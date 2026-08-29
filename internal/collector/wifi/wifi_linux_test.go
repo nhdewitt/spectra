@@ -4,6 +4,7 @@ package wifi
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -11,6 +12,15 @@ import (
 
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
+
+const associatedLink = `Connected to a4:2b:8c:11:22:33 (on wlan0)
+	SSID: HomeNetwork
+	freq: 5180
+	RX: 981234 bytes (4321 packets)
+	TX: 123456 bytes (987 packets)
+	signal: -47 dBm
+	tx bitrate: 866.7 MBit/s VHT-MCS 9 80MHz short GI VHT-NSS 2
+`
 
 func TestParseNetWirelessFrom(t *testing.T) {
 	// Sample data from /proc/net/wireless
@@ -20,12 +30,12 @@ func TestParseNetWirelessFrom(t *testing.T) {
   wlan0: 0000   60.  -50.  -256        0      0      0      0      0        0`
 
 	// Define a mock fetcher that returns static data (SSID, Freq, BitRate)
-	mockFetcher := func(ctx context.Context, iface string) (string, float64, float64) {
+	mockFetcher := func(ctx context.Context, iface string) (wifiMeta, error) {
 		if iface == "wlan0" {
 			// Return SSID, Frequency (5.2 GHz), Bitrate (866.7 Mbps)
-			return "TestNetwork", 5.2, 866.7
+			return wifiMeta{SSID: "TestNetwork", Freq: 5.2, BitRate: 866.7}, nil
 		}
-		return "", 0.0, 0.0
+		return wifiMeta{}, nil
 	}
 
 	results, err := parseNetWirelessFrom(context.Background(), strings.NewReader(input), mockFetcher)
@@ -70,14 +80,14 @@ func TestParseNetWirelessFrom_MultipleInterfaces(t *testing.T) {
   wlan0: 0000   70.  -40.  -256        0      0      0      0      0        0
   wlan1: 0000   50.  -60.  -256        0      0      0      0      0        0`
 
-	mockFetcher := func(ctx context.Context, iface string) (string, float64, float64) {
+	mockFetcher := func(ctx context.Context, iface string) (wifiMeta, error) {
 		switch iface {
 		case "wlan0":
-			return "Network1", 2.4, 150.0
+			return wifiMeta{SSID: "Network1", Freq: 2.4, BitRate: 150.0}, nil
 		case "wlan1":
-			return "Network2", 5.8, 433.0
+			return wifiMeta{SSID: "Network2", Freq: 5.8, BitRate: 433.0}, nil
 		}
-		return "", 0.0, 0.0
+		return wifiMeta{}, nil
 	}
 
 	results, err := parseNetWirelessFrom(context.Background(), strings.NewReader(input), mockFetcher)
@@ -104,8 +114,8 @@ func TestParseNetWirelessFrom_Empty(t *testing.T) {
 	input := `Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE
  face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22`
 
-	mockFetcher := func(ctx context.Context, iface string) (string, float64, float64) {
-		return "Test", 5.0, 100.0
+	mockFetcher := func(ctx context.Context, iface string) (wifiMeta, error) {
+		return wifiMeta{SSID: "Test", Freq: 5.0, BitRate: 100.0}, nil
 	}
 
 	results, err := parseNetWirelessFrom(context.Background(), strings.NewReader(input), mockFetcher)
@@ -124,8 +134,8 @@ func TestParseNetWirelessFrom_NoSSID(t *testing.T) {
   wlan0: 0000   60.  -50.  -256        0      0      0      0      0        0`
 
 	// Mock returns empty SSID (not connected)
-	mockFetcher := func(ctx context.Context, iface string) (string, float64, float64) {
-		return "", 0.0, 0.0
+	mockFetcher := func(ctx context.Context, iface string) (wifiMeta, error) {
+		return wifiMeta{}, nil
 	}
 
 	results, err := parseNetWirelessFrom(context.Background(), strings.NewReader(input), mockFetcher)
@@ -144,8 +154,8 @@ func TestParseNetWirelessFrom_MalformedLine(t *testing.T) {
  face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
   wlan0: 0000   60.`
 
-	mockFetcher := func(ctx context.Context, iface string) (string, float64, float64) {
-		return "Test", 5.0, 100.0
+	mockFetcher := func(ctx context.Context, iface string) (wifiMeta, error) {
+		return wifiMeta{SSID: "Test", Freq: 5.0, BitRate: 100.0}, nil
 	}
 
 	results, err := parseNetWirelessFrom(context.Background(), strings.NewReader(input), mockFetcher)
@@ -165,8 +175,8 @@ func TestParseNetWirelessFrom_PositiveSignal(t *testing.T) {
  face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
   wlan0: 0000   70.  50.  -256        0      0      0      0      0        0`
 
-	mockFetcher := func(ctx context.Context, iface string) (string, float64, float64) {
-		return "TestNetwork", 5.2, 866.7
+	mockFetcher := func(ctx context.Context, iface string) (wifiMeta, error) {
+		return wifiMeta{SSID: "TestNetwork", Freq: 5.2, BitRate: 866.7}, nil
 	}
 
 	results, err := parseNetWirelessFrom(context.Background(), strings.NewReader(input), mockFetcher)
@@ -190,8 +200,8 @@ func TestParseNetWirelessFrom_WhitespaceVariations(t *testing.T) {
  face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
 wlan0:    0000    60.    -50.    -256        0      0      0      0      0        0`
 
-	mockFetcher := func(ctx context.Context, iface string) (string, float64, float64) {
-		return "TestNetwork", 5.2, 866.7
+	mockFetcher := func(ctx context.Context, iface string) (wifiMeta, error) {
+		return wifiMeta{SSID: "TestNetwork", Freq: 5.2, BitRate: 866.7}, nil
 	}
 
 	results, err := parseNetWirelessFrom(context.Background(), strings.NewReader(input), mockFetcher)
@@ -387,6 +397,157 @@ func TestCollect_ContextCancel(t *testing.T) {
 	}
 }
 
+func TestParseIWLink_Associated(t *testing.T) {
+	meta := parseIWLink(associatedLink)
+
+	if !meta.Associated() {
+		t.Fatal("expected Associated() to be true")
+	}
+	if meta.SSID != "HomeNetwork" {
+		t.Errorf("SSID = %q, want %q", meta.SSID, "HomeNetwork")
+	}
+	if meta.Freq != 5.18 {
+		t.Errorf("Freq = %v, want 5.18 (GHz, converted from MHz)", meta.Freq)
+	}
+	if meta.BitRate != 866.7 {
+		t.Errorf("BitRate = %v, want 866.7", meta.BitRate)
+	}
+}
+
+// An idle interface is not a failure. iw exits zero and prints this, so the
+// zero wifiMeta with no error is the correct result.
+func TestParseIWLink_NotAssociated(t *testing.T) {
+	meta := parseIWLink("Not connected.\n")
+
+	if meta.Associated() {
+		t.Error("expected Associated() to be false")
+	}
+	if meta != (wifiMeta{}) {
+		t.Errorf("expected the zero value, got %+v", meta)
+	}
+}
+
+// iw omits tx bitrate briefly after association. Losing the SSID and
+// frequency over a missing rate would drop the interface entirely.
+func TestParseIWLink_MissingBitRate(t *testing.T) {
+	out := "Connected to a4:2b:8c:11:22:33 (on wlan0)\n\tSSID: HomeNetwork\n\tfreq: 2412\n"
+
+	meta := parseIWLink(out)
+
+	if meta.SSID != "HomeNetwork" {
+		t.Errorf("SSID = %q, want %q", meta.SSID, "HomeNetwork")
+	}
+	if meta.Freq != 2.412 {
+		t.Errorf("Freq = %v, want 2.412", meta.Freq)
+	}
+	if meta.BitRate != 0 {
+		t.Errorf("BitRate = %v, want 0", meta.BitRate)
+	}
+}
+
+// reBitRate is ([\d.]+), which matches "1.2.3". A malformed rate must not
+// discard the fields that parsed cleanly.
+func TestParseIWLink_MalformedBitRateKeepsOtherFields(t *testing.T) {
+	out := "\tSSID: HomeNetwork\n\tfreq: 2412\n\ttx bitrate: 1.2.3 MBit/s\n"
+
+	meta := parseIWLink(out)
+
+	if meta.SSID != "HomeNetwork" {
+		t.Errorf("SSID = %q, want %q", meta.SSID, "HomeNetwork")
+	}
+	if meta.Freq != 2.412 {
+		t.Errorf("Freq = %v, want 2.412", meta.Freq)
+	}
+	if meta.BitRate != 0 {
+		t.Errorf("BitRate = %v, want 0", meta.BitRate)
+	}
+}
+
+func TestParseIWLink_SSIDWithSpaces(t *testing.T) {
+	meta := parseIWLink("\tSSID: My Home Network\n\tfreq: 2412\n")
+
+	if meta.SSID != "My Home Network" {
+		t.Errorf("SSID = %q, want %q", meta.SSID, "My Home Network")
+	}
+}
+
+func TestParseIWLink_Empty(t *testing.T) {
+	if meta := parseIWLink(""); meta != (wifiMeta{}) {
+		t.Errorf("expected the zero value, got %+v", meta)
+	}
+}
+
+// The point of the signature change: a fetch failure is reported instead of
+// looking identical to an idle interface.
+func TestParseNetWirelessFrom_FetchErrorIsReported(t *testing.T) {
+	input := `Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE
+ face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
+ wlan0: 0000   70.  -40.  -256        0      0      0      0      0        0
+`
+	failing := func(ctx context.Context, iface string) (wifiMeta, error) {
+		return wifiMeta{}, exec.ErrNotFound
+	}
+
+	results, err := parseNetWirelessFrom(context.Background(), strings.NewReader(input), failing)
+
+	if err == nil {
+		t.Fatal("expected an error when the fetcher fails, got nil")
+	}
+	if !errors.Is(err, exec.ErrNotFound) {
+		t.Errorf("expected exec.ErrNotFound in the chain, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "wlan0") {
+		t.Errorf("error does not name the interface: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected no metrics, got %v", results)
+	}
+}
+
+// An idle interface is silently skipped, with no error. This is the half of
+// the split that must stay quiet.
+func TestParseNetWirelessFrom_IdleInterfaceIsSilent(t *testing.T) {
+	input := `Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE
+ face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
+ wlan0: 0000   70.  -40.  -256        0      0      0      0      0        0
+`
+	idle := func(ctx context.Context, iface string) (wifiMeta, error) {
+		return wifiMeta{}, nil
+	}
+
+	results, err := parseNetWirelessFrom(context.Background(), strings.NewReader(input), idle)
+	if err != nil {
+		t.Errorf("an idle interface must not produce an error, got %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected no metrics, got %v", results)
+	}
+}
+
+// One interface failing must not cost the others.
+func TestParseNetWirelessFrom_PartialFailureStillReports(t *testing.T) {
+	input := `Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE
+ face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
+ wlan0: 0000   70.  -40.  -256        0      0      0      0      0        0
+ wlan1: 0000   65.  -55.  -256        0      0      0      0      0        0
+`
+	mixed := func(ctx context.Context, iface string) (wifiMeta, error) {
+		if iface == "wlan0" {
+			return wifiMeta{}, errors.New("iw exploded")
+		}
+		return wifiMeta{SSID: "Second", Freq: 2.412, BitRate: 100}, nil
+	}
+
+	results, err := parseNetWirelessFrom(context.Background(), strings.NewReader(input), mixed)
+
+	if err == nil {
+		t.Error("expected the wlan0 failure to be reported")
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected wlan1 to still report, got %d metrics", len(results))
+	}
+}
+
 func BenchmarkParseFloat(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
@@ -430,8 +591,8 @@ func BenchmarkParseNetWirelessFrom(b *testing.B) {
  face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
   wlan0: 0000   60.  -50.  -256        0      0      0      0      0        0`
 
-	mockFetcher := func(ctx context.Context, iface string) (string, float64, float64) {
-		return "TestNetwork", 5.2, 866.7
+	mockFetcher := func(ctx context.Context, iface string) (wifiMeta, error) {
+		return wifiMeta{SSID: "TestNetwork", Freq: 5.2, BitRate: 866.7}, nil
 	}
 
 	ctx := context.Background()
@@ -449,8 +610,8 @@ func BenchmarkParseNetWirelessFrom_MultipleInterfaces(b *testing.B) {
   wlan1: 0000   50.  -60.  -256        0      0      0      0      0        0
   wlan2: 0000   60.  -50.  -256        0      0      0      0      0        0`
 
-	mockFetcher := func(ctx context.Context, iface string) (string, float64, float64) {
-		return "Network", 5.0, 100.0
+	mockFetcher := func(ctx context.Context, iface string) (wifiMeta, error) {
+		return wifiMeta{SSID: "Network", Freq: 5.0, BitRate: 100.0}, nil
 	}
 
 	ctx := context.Background()

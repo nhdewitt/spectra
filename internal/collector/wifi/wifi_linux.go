@@ -5,6 +5,7 @@ package wifi
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,7 +17,19 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-type metadataFetcher func(ctx context.Context, iface string) (string, float64, float64)
+// wifiMeta is the association state of one interface, as reported by `iw`.
+// The zero value means the interface exists but is not associated to any
+// network, distinct from a fetch failure.
+type wifiMeta struct {
+	SSID    string
+	Freq    float64
+	BitRate float64
+}
+
+// Associated reports whether the interface is joined to a network.
+func (m wifiMeta) Associated() bool { return m.SSID != "" }
+
+type metadataFetcher func(ctx context.Context, iface string) (wifiMeta, error)
 
 var (
 	reSSID    = regexp.MustCompile(`SSID: (.+)`)
@@ -32,7 +45,7 @@ func parseNetWireless(ctx context.Context, fetcher metadataFetcher) ([]protocol.
 	f, err := os.Open("/proc/net/wireless")
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil // No Wi-Fi
+			return nil, nil // No Wi-Fi and kernel built without CONFIG_WIRELESS
 		}
 		return nil, fmt.Errorf("parsing /proc/net/wireless: %w", err)
 	}
@@ -43,11 +56,15 @@ func parseNetWireless(ctx context.Context, fetcher metadataFetcher) ([]protocol.
 
 func parseNetWirelessFrom(ctx context.Context, r io.Reader, fetcher metadataFetcher) ([]protocol.Metric, error) {
 	var results []protocol.Metric
+	var fetchErrs []error
 	scanner := bufio.NewScanner(r)
 
 	for range 2 {
 		if !scanner.Scan() {
-			return results, scanner.Err()
+			if err := scanner.Err(); err != nil {
+				return nil, fmt.Errorf("reading /proc/net/wireless header: %w", err)
+			}
+			return nil, errors.New("/proc/net/wireless ended before its two header lines")
 		}
 	}
 
@@ -72,9 +89,14 @@ func parseNetWirelessFrom(ctx context.Context, r io.Reader, fetcher metadataFetc
 			return nil, err
 		}
 
-		ssid, freq, bitrate := fetcher(ctx, iface)
+		meta, err := fetcher(ctx, iface)
+		if err != nil {
+			// iw failed for this interface. Different from an idle interface.
+			fetchErrs = append(fetchErrs, fmt.Errorf("interface %s: %w", iface, err))
+			continue
+		}
 
-		if ssid == "" {
+		if !meta.Associated() {
 			continue
 		}
 
@@ -82,54 +104,57 @@ func parseNetWirelessFrom(ctx context.Context, r io.Reader, fetcher metadataFetc
 			Interface:   iface,
 			SignalLevel: int(sigLevel),
 			LinkQuality: int(linkQual),
-			SSID:        ssid,
-			Frequency:   freq,
-			BitRate:     bitrate,
+			SSID:        meta.SSID,
+			Frequency:   meta.Freq,
+			BitRate:     meta.BitRate,
 		}
 
 		results = append(results, metric)
 	}
 
-	return results, scanner.Err()
+	return results, errors.Join(append(fetchErrs, scanner.Err())...)
 }
 
-// parseFloat strips trailing dots before parsing
+// parseFloat strips trailing dots before parsing.
 func parseFloat(s string) (float64, error) {
 	return strconv.ParseFloat(strings.TrimSuffix(s, "."), 64)
 }
 
 // getWiFiMetadata calls `iwgetid` to fetch SSID and Frequency
-func getWiFiMetadata(ctx context.Context, iface string) (ssid string, freq, bitrate float64) {
+func getWiFiMetadata(ctx context.Context, iface string) (wifiMeta, error) {
 	// iw dev <interface> link
 	out, err := exec.CommandContext(ctx, "iw", "dev", iface, "link").Output()
 	if err != nil {
-		return "", 0.0, 0.0
+		return wifiMeta{}, fmt.Errorf("running iw dev %s link: %w", iface, err)
 	}
 
-	output := string(out)
+	return parseIWLink(string(out)), nil
+}
+
+// parseIWLink extracts association state from `iw dev <iface> link` output.
+// Absent fields are left at zero rather than treated as errors (iw omits
+// bitrate on a freshly associated interface and omits everything when the
+// interface is idle).
+func parseIWLink(output string) wifiMeta {
+	var meta wifiMeta
 
 	// Parse SSID
 	if match := reSSID.FindStringSubmatch(output); len(match) > 1 {
-		ssid = match[1]
+		meta.SSID = strings.TrimSpace(match[1])
 	}
 
-	// Parse frequency
+	// Parse Frequency
 	if match := reFreq.FindStringSubmatch(output); len(match) > 1 {
-		val, err := strconv.ParseFloat(match[1], 64)
-		if err != nil {
-			return ssid, 0.0, 0.0
-		}
-		freq = val / 1000.0
+		val, _ := strconv.ParseFloat(match[1], 64)
+		meta.Freq = val / 1000.0
 	}
 
 	// Parse Bitrate
 	if match := reBitRate.FindStringSubmatch(output); len(match) > 1 {
-		val, err := strconv.ParseFloat(match[1], 64)
-		if err != nil {
-			return ssid, freq, 0.0
+		if val, err := strconv.ParseFloat(match[1], 64); err == nil {
+			meta.BitRate = val
 		}
-		bitrate = val
 	}
 
-	return ssid, freq, bitrate
+	return meta
 }
