@@ -7,8 +7,23 @@ package cpu
 #include <mach/processor_info.h>
 #include <mach/mach_host.h>
 
-static mach_port_t get_mach_host_self() {
-	return mach_host_self();
+static kern_return_t spectra_processor_info(
+	natural_t *numCPU,
+	processor_info_array_t *cpuInfo,
+	mach_msg_type_number_t *numCPUInfo
+) {
+	mach_port_t host = mach_host_self();
+
+	kern_return_t ret = host_processor_info(
+		host,
+		PROCESSOR_CPU_LOAD_INFO,
+		numCPU,
+		cpuInfo,
+		numCPUInfo
+	);
+
+	mach_port_deallocate(mach_task_self(), host);
+	return ret;
 }
 */
 import "C"
@@ -68,13 +83,7 @@ func readRaw() (map[string]Raw, error) {
 	var cpuInfo C.processor_info_array_t
 	var numCPUInfo C.mach_msg_type_number_t
 
-	ret := C.host_processor_info(
-		C.get_mach_host_self(),
-		C.PROCESSOR_CPU_LOAD_INFO,
-		&numCPU,
-		&cpuInfo,
-		&numCPUInfo,
-	)
+	ret := C.spectra_processorinfo(&numCPU, &cpuInfo, &numCPUInfo)
 	if ret != C.KERN_SUCCESS {
 		return nil, fmt.Errorf("host_processor_info failed: %d", ret)
 	}
