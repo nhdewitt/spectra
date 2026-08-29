@@ -21,7 +21,10 @@ func newTestServer() (*Server, string, string, *MockDB) {
 	agentID := "550e8400-e29b-41d4-a716-446655440000"
 	secret := "test-secret"
 
-	hash, _ := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	// MinCost, not DefaultCost. This helper runs 288 times across the package
+	// and DefaultCost is deliberately expensive. Nothing here tests bcrypt's
+	// cost factor; auth.go still uses DefaultCost in production.
+	hash, _ := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.MinCost)
 	mock.Agents[agentID] = string(hash)
 
 	sum := sha256.Sum256([]byte(secret))
