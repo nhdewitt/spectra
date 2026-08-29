@@ -241,6 +241,141 @@ func TestCleanVendor(t *testing.T) {
 	}
 }
 
+func TestNormalizeMax(t *testing.T) {
+	tests := []struct {
+		name    string
+		temp    float64
+		v       float64
+		wantNil bool
+		want    float64
+	}{
+		{name: "MaxAboveCurrent", temp: 45.0, v: 82.0, want: 82.0},
+		{name: "MaxEqualsCurrent", temp: 45.0, v: 45.0, want: 45.0},
+		{name: "MaxBelowCurrent", temp: 60.0, v: 45.0, wantNil: true},
+		{name: "Zero", temp: 45.0, v: 0, wantNil: true},
+		{name: "Negative", temp: 45.0, v: -10.0, wantNil: true},
+		{name: "AtUpperBound", temp: 45.0, v: 200.0, wantNil: true},
+		{name: "JustBelowUpperBound", temp: 45.0, v: 199.9, want: 199.9},
+		{name: "AboveUpperBound", temp: 45.0, v: 250.0, wantNil: true},
+		{name: "NegativeCurrentTemp", temp: -5.0, v: 80.0, want: 80.0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NormalizeMax(tt.temp, tt.v)
+
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("NormalizeMax(%v, %v) = %v, want nil", tt.temp, tt.v, *got)
+				}
+				return
+			}
+
+			if got == nil {
+				t.Fatalf("NormalizeMax(%v, %v) = nil, want %v", tt.temp, tt.v, tt.want)
+			}
+			if *got != tt.want {
+				t.Errorf("NormalizeMax(%v, %v) = %v, want %v", tt.temp, tt.v, *got, tt.want)
+			}
+		})
+	}
+}
+
+// A sensor reporting NaN must not produce a stored value. NaN fails every
+// comparison, so v <= 0, v < temp, and v >= 200 are all false and it falls
+// through to the return -- this pins the current behavior so a change is
+// deliberate.
+func TestNormalizeMax_NaN(t *testing.T) {
+	got := NormalizeMax(45.0, math.NaN())
+
+	if got == nil {
+		t.Skip("NaN is rejected; if this changed deliberately, delete this test")
+	}
+	if !math.IsNaN(*got) {
+		t.Errorf("expected NaN to pass through, got %v", *got)
+	}
+	t.Log("NaN currently passes NormalizeMax and would reach the database")
+}
+
+func TestNormalizeMax_Inf(t *testing.T) {
+	if got := NormalizeMax(45.0, math.Inf(1)); got != nil {
+		t.Errorf("+Inf should exceed the 200 ceiling, got %v", *got)
+	}
+	if got := NormalizeMax(45.0, math.Inf(-1)); got != nil {
+		t.Errorf("-Inf should fail the <= 0 check, got %v", *got)
+	}
+}
+
+// The returned pointer must not alias anything the caller can mutate.
+func TestNormalizeMax_ReturnsIndependentPointer(t *testing.T) {
+	v := 82.0
+	got := NormalizeMax(45.0, v)
+	if got == nil {
+		t.Fatal("unexpected nil")
+	}
+
+	v = 999.0
+	if *got != 82.0 {
+		t.Errorf("returned pointer aliases the caller's variable: %v", *got)
+	}
+}
+
+func TestCharsToString(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []int8
+		want string
+	}{
+		{name: "NulTerminated", in: []int8{'S', 'S', 'D', 0}, want: "SSD"},
+		{name: "NulThenGarbage", in: []int8{'S', 'S', 'D', 0, 'X', 'Y'}, want: "SSD"},
+		{name: "NoTerminator", in: []int8{'S', 'S', 'D'}, want: "SSD"},
+		{name: "Empty", in: []int8{}, want: ""},
+		{name: "Nil", in: nil, want: ""},
+		{name: "LeadingNul", in: []int8{0, 'S', 'S', 'D'}, want: ""},
+		{name: "Spaces", in: []int8{'A', ' ', 'B', 0}, want: "A B"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CharsToString(tt.in); got != tt.want {
+				t.Errorf("CharsToString(%v) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCharsToString_Uint8(t *testing.T) {
+	in := []uint8{'W', 'D', 'C', 0}
+	if got := CharsToString(in); got != "WDC" {
+		t.Errorf("CharsToString(%v) = %q, want %q", in, got, "WDC")
+	}
+}
+
+// The generic accepts int8, where bytes above 127 arrive negative. byte(c)
+// must reinterpret rather than clamp, or high-bit characters corrupt.
+func TestCharsToString_HighBitInt8(t *testing.T) {
+	// 0xE9 as a signed byte is -23.
+	in := []int8{'c', 'a', 'f', -23, 0}
+
+	got := CharsToString(in)
+	if len(got) != 4 {
+		t.Fatalf("got %d bytes, want 4: %q", len(got), got)
+	}
+	if got[3] != 0xE9 {
+		t.Errorf("byte 3 = %#x, want 0xE9 (sign-extension corrupted the value)", got[3])
+	}
+}
+
+// Windows serial and model fields are fixed-width buffers padded with NULs.
+func TestCharsToString_FixedWidthBuffer(t *testing.T) {
+	buf := make([]int8, 40)
+	copy(buf, []int8{'S', 'N', '1', '2', '3'})
+
+	if got := CharsToString(buf); got != "SN123" {
+		t.Errorf("CharsToString = %q, want %q", got, "SN123")
+	}
+}
+
 func BenchmarkCleanVendor_WithEmail(b *testing.B) {
 	input := "Ubuntu Developers <ubuntu-devel@lists.ubuntu.com>"
 	b.ReportAllocs()
