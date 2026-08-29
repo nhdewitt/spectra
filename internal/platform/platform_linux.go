@@ -10,6 +10,9 @@ import (
 	"strings"
 )
 
+// piModelPath is the device-tree node the Pi firmware populates.
+var piModelPath = "/proc/device-tree/model"
+
 func Detect() Info {
 	info := Info{
 		NumCPU: runtime.NumCPU(),
@@ -73,10 +76,17 @@ func detectCgroupVersion() int {
 }
 
 func detectPi() (bool, string) {
-	data, err := os.ReadFile("/proc/device-tree/model")
+	data, err := os.ReadFile(piModelPath)
 	if err != nil {
 		return false, ""
 	}
+	return parsePiModel(data)
+}
+
+// parsePiModel reports whether a /proc/device-tree/model payload identifies a
+// Raspberry Pi, and returns the trimmed model string when it does. The file is
+// NUL-terminated by the device tree and may carry a trailing newline.
+func parsePiModel(data []byte) (bool, string) {
 	model := strings.TrimRight(string(data), "\x00\n")
 	if strings.Contains(model, "Raspberry Pi") {
 		return true, model

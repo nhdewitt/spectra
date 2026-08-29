@@ -8,13 +8,29 @@ import (
 	"strings"
 )
 
-func isRaspberryPi() bool {
-	b, err := os.ReadFile("/proc/device-tree/model")
-	if err != nil {
-		return false
-	}
+var hypervisors = []string{
+	"vmware",
+	"virtualbox",
+	"kvm",
+	"qemu",
+	"xen",
+	"microsoft corporation",
+	"innotek gmbh",
+	"bochs",
+	"parallels",
+	"amazon ec2",
+	"google",
+	"openstack",
+	"ovirt",
+	"nutanix",
+}
 
-	return strings.Contains(string(bytes.TrimRight(b, "\x00")), "Raspberry Pi")
+// initCgroupPath is PID 1's cgroup membership.
+var initCgroupPath = "/proc/1/cgroup"
+
+func isRaspberryPi() bool {
+	pi, _ := detectPi()
+	return pi
 }
 
 func isContainer() bool {
@@ -26,9 +42,19 @@ func isContainer() bool {
 		return true
 	}
 
-	if b, err := os.ReadFile("/proc/1/cgroup"); err == nil {
-		s := string(b)
-		if strings.Contains(s, "/docker/") || strings.Contains(s, "/lxc/") || strings.Contains(s, "/containerd/") {
+	if b, err := os.ReadFile(initCgroupPath); err == nil {
+		if cgroupIsContainer(string(b)) {
+			return true
+		}
+	}
+	return false
+}
+
+// cgroupIsContainer reports whether PID 1's cgroup membership names a known
+// container runtime.
+func cgroupIsContainer(s string) bool {
+	for _, marker := range []string{"/docker/", "/lxc/", "/containerd/"} {
+		if strings.Contains(s, marker) {
 			return true
 		}
 	}
@@ -41,20 +67,26 @@ func isVirtualMachine() bool {
 		"/sys/class/dmi/id/sys_vendor",
 		"/sys/class/dmi/id/bios_vendor",
 	}
-	hypervisors := []string{
-		"vmware", "virtualbox", "kvm", "qemu", "xen", "microsoft corporation", "innotek gmbh", "bochs",
-		"parallels", "amazon ec2", "google", "openstack", "ovirt", "nutanix",
-	}
+
 	for _, path := range candidates {
 		b, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
-		s := strings.ToLower(string(bytes.TrimSpace(b)))
-		for _, h := range hypervisors {
-			if strings.Contains(s, h) {
-				return true
-			}
+		if matchHypervisor(string(b), hypervisors) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchHypervisor reports whether a DMI field names a known hypervisor. The
+// comparison is case-insensitive because vendors are inconsistent.
+func matchHypervisor(field string, hypervisors []string) bool {
+	s := strings.ToLower(string(bytes.TrimSpace([]byte(field))))
+	for _, h := range hypervisors {
+		if strings.Contains(s, h) {
+			return true
 		}
 	}
 	return false
