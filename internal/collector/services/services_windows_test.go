@@ -177,6 +177,135 @@ func TestCollect_NoEmptyNames(t *testing.T) {
 	}
 }
 
+func TestSummarizeSkips_NoSkips(t *testing.T) {
+	if err := summarizeSkips(0, 612, map[string]*skipReason{}); err != nil {
+		t.Errorf("expected nil when nothing was skipped, got %v", err)
+	}
+}
+
+func TestSummarizeSkips_SingleCause(t *testing.T) {
+	reasons := map[string]*skipReason{
+		"Access is denied.": {count: 3, example: `opening service "WdNisSvc"`},
+	}
+
+	err := summarizeSkips(3, 612, reasons)
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+
+	msg := err.Error()
+	for _, want := range []string{"3 of 612", "3x Access is denied.", `WdNisSvc`} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message missing %q: %s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "other cause") {
+		t.Errorf("unexpected truncation suffix on a single cause: %s", msg)
+	}
+}
+
+// The whole point of grouping: a host that has lost privileges produces the
+// same one-line message as a host with three protected services.
+func TestSummarizeSkips_LargeCountStaysOneLine(t *testing.T) {
+	reasons := map[string]*skipReason{
+		"Access is denied.": {count: 598, example: `opening service "AJRouter"`},
+	}
+
+	err := summarizeSkips(598, 612, reasons)
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+
+	msg := err.Error()
+	if strings.Contains(msg, "\n") {
+		t.Errorf("message spans multiple lines: %q", msg)
+	}
+	if !strings.Contains(msg, "598 of 612") {
+		t.Errorf("message missing the count: %s", msg)
+	}
+}
+
+func TestSummarizeSkips_TruncatesPastMaxCauses(t *testing.T) {
+	tests := []struct {
+		name       string
+		causes     int
+		wantSuffix string
+	}{
+		{name: "ExactlyMax", causes: 3, wantSuffix: ""},
+		{name: "OneOver", causes: 4, wantSuffix: "; and 1 other cause"},
+		{name: "TwoOver", causes: 5, wantSuffix: "; and 2 other causes"},
+		{name: "ManyOver", causes: 9, wantSuffix: "; and 6 other causes"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reasons := make(map[string]*skipReason, tt.causes)
+			total := 0
+			for i := 0; i < tt.causes; i++ {
+				reasons[causeName(i)] = &skipReason{count: 1, example: "opening service"}
+				total++
+			}
+
+			err := summarizeSkips(total, 612, reasons)
+			if err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+
+			msg := err.Error()
+			if tt.wantSuffix == "" {
+				if strings.Contains(msg, "other cause") {
+					t.Errorf("unexpected truncation suffix: %s", msg)
+				}
+				return
+			}
+			if !strings.HasSuffix(msg, tt.wantSuffix) {
+				t.Errorf("got suffix in %q, want it to end with %q", msg, tt.wantSuffix)
+			}
+		})
+	}
+}
+
+// Unsorted, map iteration order would make every sample's message differ and
+// defeat any downstream dedup.
+func TestSummarizeSkips_MessageIsDeterministic(t *testing.T) {
+	build := func() map[string]*skipReason {
+		return map[string]*skipReason{
+			"Access is denied.":              {count: 4, example: `opening service "A"`},
+			"The service does not exist.":    {count: 2, example: `querying service "B"`},
+			"The handle is invalid.":         {count: 1, example: `reading config for service "C"`},
+			"The system cannot find a path.": {count: 7, example: `opening service "D"`},
+		}
+	}
+
+	first := summarizeSkips(14, 612, build()).Error()
+	for i := 0; i < 25; i++ {
+		if got := summarizeSkips(14, 612, build()).Error(); got != first {
+			t.Fatalf("message varied between calls:\n  %s\n  %s", first, got)
+		}
+	}
+}
+
+// A rare cause is not swallowed by a common one -- it stays a distinct entry,
+// which is what makes grouping preferable to sampling N arbitrary failures.
+func TestSummarizeSkips_RareCauseSurvives(t *testing.T) {
+	reasons := map[string]*skipReason{
+		"Access is denied.":      {count: 500, example: `opening service "A"`},
+		"The handle is invalid.": {count: 1, example: `querying service "Rare"`},
+	}
+
+	err := summarizeSkips(501, 612, reasons)
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	if !strings.Contains(err.Error(), "The handle is invalid.") {
+		t.Errorf("the single-instance cause was dropped: %s", err.Error())
+	}
+}
+
+func causeName(i int) string {
+	return string(rune('a'+i)) + " failure"
+}
+
 func BenchmarkCollect(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()

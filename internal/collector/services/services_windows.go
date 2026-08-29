@@ -5,6 +5,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"unsafe"
 
 	"github.com/nhdewitt/spectra/internal/collector"
@@ -14,6 +16,13 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 )
+
+// skipReason accumulates how many services failed for one distinct cause,
+// plus one example of which service and which operation.
+type skipReason struct {
+	count   int
+	example string
+}
 
 func MakeCollector(_ string) collector.CollectFunc {
 	return Collect
@@ -33,21 +42,42 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 
 	services := make([]protocol.ServiceMetric, 0, len(names))
 
+	// A handful of protected services reject OpenService even for an admin,
+	// so a skip is expected here, not a failure. Collection continues and the
+	// skips are returned as one grouped error alongside a complete-as-possible
+	// list -- Run logs the error and still forwards the data.
+	var skipped int
+	reasons := make(map[string]*skipReason)
+
+	skip := func(name, op string, err error) {
+		skipped++
+		cause := err.Error()
+		r, ok := reasons[cause]
+		if !ok {
+			r = &skipReason{example: fmt.Sprintf("%s %q", op, name)}
+			reasons[cause] = r
+		}
+		r.count++
+	}
+
 	for _, name := range names {
 		s, err := m.OpenService(name)
 		if err != nil {
+			skip(name, "opening service", err)
 			continue
 		}
 
 		status, err := s.Query()
 		if err != nil {
 			s.Close()
+			skip(name, "querying service", err)
 			continue
 		}
 
 		cfg, err := s.Config()
 		if err != nil {
 			s.Close()
+			skip(name, "reading config for service", err)
 			continue
 		}
 
@@ -74,9 +104,44 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 		})
 	}
 
+	skippedErr := summarizeSkips(skipped, len(names), reasons)
+
 	return []protocol.Metric{
 		protocol.ServiceListMetric{Services: services},
-	}, nil
+	}, skippedErr
+}
+
+// summarizeSkips renders grouped skip counts into a single error, or nil when
+// nothing was sklipped. Causes are sorted so repeated samples produce a byte-identical
+// message, and truncated past maxCauses so a host where every service is unreadable
+// still logs one line.
+func summarizeSkips(skipped, total int, reasons map[string]*skipReason) error {
+	if skipped == 0 {
+		return nil
+	}
+
+	const maxCauses = 3
+
+	causes := make([]string, 0, len(reasons))
+	for cause, r := range reasons {
+		causes = append(causes, fmt.Sprintf("%dx %s (e.g. %s)", r.count, cause, r.example))
+	}
+	sort.Strings(causes)
+
+	shown := causes
+	suffix := ""
+	if len(shown) > maxCauses {
+		remaining := len(causes) - maxCauses
+		shown = shown[:maxCauses]
+		if remaining == 1 {
+			suffix = "; and 1 other cause"
+		} else {
+			suffix = fmt.Sprintf("; and %d other causes", remaining)
+		}
+	}
+
+	return fmt.Errorf("%d of %d services unreadable: %s%s",
+		skipped, total, strings.Join(shown, "; "), suffix)
 }
 
 // getServiceDescription wraps QueryServiceConfig2W

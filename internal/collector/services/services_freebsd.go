@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -33,8 +34,15 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 		return nil, err
 	}
 
-	enabledSet := parseEnabled(bytes.NewReader(enabledOut))
-	allServices := parseAll(bytes.NewReader(allOut))
+	enabledSet, err := parseEnabled(bytes.NewReader(enabledOut))
+	if err != nil {
+		return nil, fmt.Errorf("parsing \"service -e\" output: %w", err)
+	}
+
+	allServices, err := parseAll(bytes.NewReader(allOut))
+	if err != nil {
+		return nil, fmt.Errorf("parsing \"service -l\" output: %w", err)
+	}
 
 	services := make([]protocol.ServiceMetric, 0, len(allServices))
 	for _, name := range allServices {
@@ -52,7 +60,7 @@ func Collect(ctx context.Context) ([]protocol.Metric, error) {
 	}, nil
 }
 
-func parseEnabled(r io.Reader) map[string]bool {
+func parseEnabled(r io.Reader) (map[string]bool, error) {
 	set := make(map[string]bool)
 	scanner := bufio.NewScanner(r)
 
@@ -63,10 +71,14 @@ func parseEnabled(r io.Reader) map[string]bool {
 		}
 	}
 
-	return set
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scanning enabled services: %w", err)
+	}
+
+	return set, nil
 }
 
-func parseAll(r io.Reader) []string {
+func parseAll(r io.Reader) ([]string, error) {
 	var names []string
 	scanner := bufio.NewScanner(r)
 
@@ -77,7 +89,11 @@ func parseAll(r io.Reader) []string {
 		}
 	}
 
-	return names
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scanning service list: %w", err)
+	}
+
+	return names, nil
 }
 
 func isEnabled(service string, serviceSet map[string]bool) (string, string) {
