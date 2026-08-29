@@ -4,6 +4,7 @@ package pi
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"testing"
@@ -211,10 +212,18 @@ func TestCollectClocks_NoVcgencmd(t *testing.T) {
 
 	ctx := context.Background()
 	result, err := CollectClocks(ctx)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+
+	if err == nil {
+		t.Error("expected an error when vcgencmd is absent, got nil")
+	}
+	// errors.Is traverses errors.Join, so this holds for the two joined
+	// parseFreq failures.
+	if !errors.Is(err, exec.ErrNotFound) {
+		t.Errorf("expected exec.ErrNotFound in the chain, got %v", err)
 	}
 
+	// getCPUScalingFreq reads sysfs rather than vcgencmd, so on a host with
+	// cpufreq the ARM frequency is still populated and metrics are returned.
 	t.Logf("Result without vcgencmd: %v", result)
 }
 
@@ -225,12 +234,19 @@ func TestCollectVoltage_NoVcgencmd(t *testing.T) {
 
 	ctx := context.Background()
 	result, err := CollectVoltage(ctx)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+
+	// The Pi jobs are registered only when Platform.IsRaspberryPi, so a
+	// missing vcgencmd is a real fault rather than "not a Pi" and must be
+	// reported, not swallowed.
+	if err == nil {
+		t.Error("expected an error when vcgencmd is absent, got nil")
+	}
+	if !errors.Is(err, exec.ErrNotFound) {
+		t.Errorf("expected exec.ErrNotFound in the chain, got %v", err)
 	}
 
 	if result != nil {
-		t.Errorf("expected nil without vcgencmd, got %v", result)
+		t.Errorf("expected nil metrics without vcgencmd, got %v", result)
 	}
 }
 
@@ -282,6 +298,82 @@ func TestCollectClocks_Integration(t *testing.T) {
 		if g.MemoryTotal == 0 {
 			t.Error("GPU Memory reported as 0")
 		}
+	}
+}
+
+func TestVcgencmdValue(t *testing.T) {
+	tests := []struct {
+		name string
+		out  string
+		want string
+	}{
+		{
+			name: "MeasureClock",
+			out:  "frequency(0)=500000000",
+			want: "500000000",
+		},
+		{
+			name: "MeasureVolts",
+			out:  "volt=0.8563V",
+			want: "0.8563V",
+		},
+		{
+			name: "GetThrottled",
+			out:  "throttled=0x0",
+			want: "0x0",
+		},
+		{
+			name: "GetMem",
+			out:  "gpu=76M",
+			want: "76M",
+		},
+		{
+			name: "TrailingNewline",
+			out:  "frequency(0)=500000000\n",
+			want: "500000000",
+		},
+		{
+			name: "SurroundingWhitespace",
+			out:  "  volt=0.8563V  \n",
+			want: "0.8563V",
+		},
+		{
+			name: "NoEqualsReturnedWhole",
+			out:  "500000000",
+			want: "500000000",
+		},
+		{
+			name: "Empty",
+			out:  "",
+			want: "",
+		},
+		{
+			name: "EmptyValue",
+			out:  "throttled=",
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := vcgencmdValue(tt.out); got != tt.want {
+				t.Errorf("vcgencmdValue(%q) = %q, want %q", tt.out, got, tt.want)
+			}
+		})
+	}
+}
+
+// Cut splits on the first "=", which matters because the key side contains
+// parentheses and digits but the value side is what every caller parses.
+// Returning the key instead would make every Pi metric fail to parse.
+func TestVcgencmdValue_ReturnsValueNotKey(t *testing.T) {
+	got := vcgencmdValue("frequency(0)=500000000")
+
+	if got == "frequency(0)" {
+		t.Fatal("returned the key instead of the value")
+	}
+	if got != "500000000" {
+		t.Errorf("got %q, want %q", got, "500000000")
 	}
 }
 

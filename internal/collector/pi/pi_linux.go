@@ -4,6 +4,8 @@ package pi
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -13,17 +15,23 @@ import (
 )
 
 // CollectClocks gathers Raspberry Pi specific frequency protocol.
-// It requires the `vcgencmd` tool (usually pre-installed)
+// It requires the `vcgencmd` tool (usually pre-installed).
+//
+// The Pi collectors are registered only when Platform.IsRaspberryPi, so a
+// vcgencmd failure here means the agent lost access to the VideoCore mailbox,
+// and is worth a log line.
 func CollectClocks(ctx context.Context) ([]protocol.Metric, error) {
-	// ARM CPU Frequency
+	// ARM CPU Frequency. sysfs, not vcgencmd. scaling_cur_freq is genuinely
+	// absent on some Pi configurations, so a zero here is not an error.
 	armFreq := getCPUScalingFreq()
 
 	// VideoCore Frequencies (Core & 3D)
-	coreFreq, _ := parseFreq(ctx, "core")
-	gpuFreq, _ := parseFreq(ctx, "v3d")
+	coreFreq, coreErr := parseFreq(ctx, "core")
+	gpuFreq, gpuErr := parseFreq(ctx, "v3d")
+	err := errors.Join(coreErr, gpuErr)
 
 	if armFreq == 0 && coreFreq == 0 && gpuFreq == 0 {
-		return nil, nil
+		return nil, err
 	}
 
 	return []protocol.Metric{
@@ -32,17 +40,18 @@ func CollectClocks(ctx context.Context) ([]protocol.Metric, error) {
 			CoreFreq: coreFreq,
 			GPUFreq:  gpuFreq,
 		},
-	}, nil
+	}, err
 }
 
 func CollectVoltage(ctx context.Context) ([]protocol.Metric, error) {
-	core, _ := parseVolts(ctx, "core")
-	sdramC, _ := parseVolts(ctx, "sdram_c")
-	sdramI, _ := parseVolts(ctx, "sdram_i")
-	sdramP, _ := parseVolts(ctx, "sdram_p")
+	core, coreErr := parseVolts(ctx, "core")
+	sdramC, sdramCErr := parseVolts(ctx, "sdram_c")
+	sdramI, sdramIErr := parseVolts(ctx, "sdram_i")
+	sdramP, sdramPErr := parseVolts(ctx, "sdram_p")
+	err := errors.Join(coreErr, sdramCErr, sdramIErr, sdramPErr)
 
 	if core == 0 && sdramC == 0 {
-		return nil, nil
+		return nil, err
 	}
 
 	return []protocol.Metric{
@@ -52,13 +61,13 @@ func CollectVoltage(ctx context.Context) ([]protocol.Metric, error) {
 			SDRamI: sdramI,
 			SDRamP: sdramP,
 		},
-	}, nil
+	}, err
 }
 
 func CollectThrottle(ctx context.Context) ([]protocol.Metric, error) {
 	valStr, err := execVcgencmd(ctx, "get_throttled")
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 
 	valStr = strings.TrimPrefix(valStr, "0x")
@@ -67,7 +76,7 @@ func CollectThrottle(ctx context.Context) ([]protocol.Metric, error) {
 	if err != nil {
 		val, err = strconv.ParseUint(valStr, 10, 32)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parsing get_throttled value %q: %w", valStr, err)
 		}
 	}
 
@@ -102,7 +111,7 @@ func decodeThrottle(val uint64) []protocol.Metric {
 func CollectGPU(ctx context.Context) ([]protocol.Metric, error) {
 	totalBytes, err := parseMem(ctx, "gpu")
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 
 	return []protocol.Metric{
@@ -132,26 +141,41 @@ func getCPUScalingFreq() uint64 {
 func parseFreq(ctx context.Context, block string) (uint64, error) {
 	valStr, err := execVcgencmd(ctx, "measure_clock", block)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("measure_clock %s: %w", block, err)
 	}
-	return strconv.ParseUint(valStr, 10, 64)
+
+	freq, err := strconv.ParseUint(valStr, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parsing measure_clock %s value %q: %w", block, valStr, err)
+	}
+	return freq, nil
 }
 
 func parseVolts(ctx context.Context, block string) (float64, error) {
 	valStr, err := execVcgencmd(ctx, "measure_volts", block)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("measure_volts %s: %w", block, err)
 	}
+
 	valStr = strings.TrimSuffix(valStr, "V")
-	return strconv.ParseFloat(valStr, 64)
+	volts, err := strconv.ParseFloat(valStr, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parsing measure_volts %s value %q: %w", block, valStr, err)
+	}
+	return volts, nil
 }
 
 func parseMem(ctx context.Context, memType string) (uint64, error) {
 	valStr, err := execVcgencmd(ctx, "get_mem", memType)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("get_mem %s: %w", memType, err)
 	}
-	return parseMemString(valStr)
+
+	total, err := parseMemString(valStr)
+	if err != nil {
+		return 0, fmt.Errorf("parsing get_mem %s value %q: %w", memType, valStr, err)
+	}
+	return total, nil
 }
 
 func parseMemString(valStr string) (uint64, error) {
@@ -186,12 +210,20 @@ func parseMemString(valStr string) (uint64, error) {
 func execVcgencmd(ctx context.Context, args ...string) (string, error) {
 	out, err := exec.CommandContext(ctx, "vcgencmd", args...).Output()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("running vcgencmd %s: %w", strings.Join(args, " "), err)
 	}
 
-	s := strings.TrimSpace(string(out))
-	if idx := strings.Index(s, "="); idx != -1 {
-		return s[idx+1:], nil
+	return vcgencmdValue(string(out)), nil
+}
+
+// vcgencmdValue extracts the value from vcgencmd's "key=value" output
+// (e.g. "frequency(0)=500000000" yields "500000000"). Output with no "="
+// is returned whole. Values never contain "=", so splitting on the first
+// is sufficient.
+func vcgencmdValue(out string) string {
+	s := strings.TrimSpace(out)
+	if _, after, found := strings.Cut(s, "="); found {
+		return after
 	}
-	return s, nil
+	return s
 }
