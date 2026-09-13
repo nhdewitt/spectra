@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strings"
 	"time"
 	"unsafe"
 
@@ -29,6 +28,15 @@ const (
 
 	DEVSTAT_N_TRANS_FLAGS = 4
 	DEVSTAT_NAME_LEN      = 16
+)
+
+// devstat_type_flags, from sys/sys/devicestat.h. The low four bits are
+// the device class. 0x100 marks a passthrough device, whose lower bits
+// then describe the physical device underneath it.
+const (
+	DEVSTAT_TYPE_MASK   = 0x00f
+	DEVSTAT_TYPE_DIRECT = 0x000
+	DEVSTAT_TYPE_PASS   = 0x100
 )
 
 var (
@@ -70,7 +78,7 @@ type BinTime struct {
 //	    u_int           start_count;
 //	    u_int           end_count;
 //	    struct bintime  busy_from;
-//	    STAILQ_ENTRY(devstat) dev_links;   // pointer pair = 16 bytes on amd64
+//	    STAILQ_ENTRY(devstat) dev_links;   // single pointer (8 bytes on amd64)
 //	    u_int32_t       device_number;
 //	    char            device_name[DEVSTAT_NAME_LEN];
 //	    int             unit_number;
@@ -93,7 +101,7 @@ type Devstat struct {
 	StartCount   uint32
 	EndCount     uint32
 	BusyFrom     BinTime
-	_            [16]byte // STAILQ_ENTRY - two pointers
+	_            [8]byte // STAILQ_ENTRY - single pointer
 	DeviceNumber uint32
 	DeviceName   [DEVSTAT_NAME_LEN]byte
 	UnitNumber   int32
@@ -114,18 +122,17 @@ type Devstat struct {
 	_            [4]byte // padding
 }
 
+// MakeDiskIOCollector keeps the DriveCache parameter for signature parity with
+// the other platforms, but freebsd no longer consults it. devstat identifies
+// storage devices by class, so disk I/O does not depend on the mount manager.
 func MakeDiskIOCollector(cache *DriveCache) collector.CollectFunc {
-	return func(ctx context.Context) ([]protocol.Metric, error) {
-		return CollectDiskIO(ctx, cache)
-	}
+	return CollectDiskIO
 }
 
-func CollectDiskIO(ctx context.Context, cache *DriveCache) ([]protocol.Metric, error) {
-	// Get list of devices
-	mountMap := loadMountMap(cache)
-
-	// Parse kernel stats
-	currentIORaw, err := getDevstats(mountMap)
+func CollectDiskIO(ctx context.Context) ([]protocol.Metric, error) {
+	// Parse kernel stats. No mount lookup. devstat identifies storage devices
+	// by class, and tying this to the mount table broke ZFS hosts.
+	currentIORaw, err := getDevstats()
 	if err != nil {
 		return nil, err
 	}
@@ -192,15 +199,28 @@ func buildDiskIOMetric(device string, curr, prev IORaw, elapsed float64) protoco
 }
 
 // getDevstats retrieves the IORaw devstat data from kern.devstat.all.
-func getDevstats(mountMap map[string]MountInfo) (map[string]IORaw, error) {
+func getDevstats() (map[string]IORaw, error) {
 	data, err := unix.SysctlRaw("kern.devstat.all")
 	if err != nil {
 		return nil, fmt.Errorf("sysctl kern.devstat.all: %w", err)
 	}
-	return parseDevStats(data, mountMap)
+	return parseDevStats(data)
 }
 
-func parseDevStats(data []byte, mountMap map[string]MountInfo) (map[string]IORaw, error) {
+// isStorageDevice reports whether a devstat entry is a real disk worth reporting
+// as opposed to a CAM passthrough node or a CDROM.
+//
+// This replaces matching device names against mounted filesystems, which only worked
+// when a mount's device string was also a devstat device name. That holds for UFS on
+// a plain partition but fails completely for ZFS.
+func isStorageDevice(deviceType uint32) bool {
+	if deviceType&DEVSTAT_TYPE_PASS != 0 {
+		return false
+	}
+	return deviceType&DEVSTAT_TYPE_MASK == DEVSTAT_TYPE_DIRECT
+}
+
+func parseDevStats(data []byte) (map[string]IORaw, error) {
 	// kern.devstat.all is prefixed with a uint64 generation number
 	// skip it before parsing the struct
 	if len(data) < longSize {
@@ -216,14 +236,8 @@ func parseDevStats(data []byte, mountMap map[string]MountInfo) (map[string]IORaw
 		)
 	}
 
-	monitored := make(map[string]struct{}, len(mountMap)*2)
-	for _, m := range mountMap {
-		monitored[m.Device] = struct{}{}
-		monitored[strings.TrimPrefix(m.Device, "/dev/")] = struct{}{}
-	}
-
 	reader := bytes.NewReader(data)
-	result := make(map[string]IORaw, len(mountMap))
+	result := make(map[string]IORaw)
 
 	for reader.Len() > 0 {
 		var stat Devstat
@@ -234,12 +248,12 @@ func parseDevStats(data []byte, mountMap map[string]MountInfo) (map[string]IORaw
 			return nil, fmt.Errorf("devstat parsing failed: %w", err)
 		}
 
-		name := unix.ByteSliceToString(stat.DeviceName[:])
-		deviceKey := fmt.Sprintf("%s%d", name, stat.UnitNumber)
-
-		if _, ok := monitored[deviceKey]; !ok {
+		if !isStorageDevice(stat.DeviceType) {
 			continue
 		}
+
+		name := unix.ByteSliceToString(stat.DeviceName[:])
+		deviceKey := fmt.Sprintf("%s%d", name, stat.UnitNumber)
 
 		// Busy count = start_count - end_count
 		var inProgress uint64

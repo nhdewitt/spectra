@@ -5,6 +5,7 @@ package processes
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -73,6 +74,13 @@ const kinfoSize = 600
 
 var clkTck = 1_000_000.0 // ki_runtime is in microseconds
 
+// procSnapshotAttempts bounds retries of the kern.proc.proc sysctl.
+const procSnapshotAttempts = 4
+
+// sysctlRaw is indirected so tests can drive the retry path. The kernel race
+// it exists for cannot be provoked on demand.
+var sysctlRaw = unix.SysctlRaw
+
 func collectRaw() ([]processRaw, int64, error) {
 	// Get total memory for RSS percentage calc
 	physmem, err := unix.SysctlUint64("hw.physmem")
@@ -86,7 +94,7 @@ func collectRaw() ([]processRaw, int64, error) {
 		pageSize = 4096
 	}
 
-	buf, err := unix.SysctlRaw("kern.proc.proc", 0)
+	buf, err := procSnapshot()
 	if err != nil {
 		return nil, 0, fmt.Errorf("kern.proc.proc: %w", err)
 	}
@@ -130,7 +138,7 @@ func statToString(stat int8) string {
 	switch stat {
 	case 2: // SRUN
 		return "R"
-	case 1, 3, 6, 7: //SIDL, SSLEEP, SWAIT, SLOCK
+	case 1, 3, 6, 7: // SIDL, SSLEEP, SWAIT, SLOCK
 		return "S"
 	case 4: // SSTOP
 		return "T"
@@ -139,4 +147,29 @@ func statToString(stat int8) string {
 	default:
 		return "?"
 	}
+}
+
+// procSnapshot reads the process table, retrying on ENOMEM.
+//
+// kern.proc.proc is a two-call sysctl: ask for the size, allocate,
+// ask for the data. Processes forking between the two calls make
+// the table outgrow the buffer, and the kernel returns ENOMEM rather
+// than truncating. SysctlRaw does both calls with no slack and no
+// retry, so the race surfaced as a failed collection roughly every
+// ten minutes on a busy host, almost exclusively on minute boundaries,
+// where cron and other aligned work churn the table the hardest.
+//
+// Each retry re-reads the size, so every attempt starts from a fresh
+// estimate. There is no backoff.
+func procSnapshot() (buf []byte, err error) {
+	for range procSnapshotAttempts {
+		if buf, err = sysctlRaw("kern.proc.proc", 0); err == nil {
+			return buf, nil
+		}
+		if !errors.Is(err, unix.ENOMEM) {
+			return nil, err
+		}
+	}
+
+	return nil, fmt.Errorf("%w (process table grew during %d attempts)", err, procSnapshotAttempts)
 }

@@ -6,11 +6,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"strings"
 	"testing"
 	"unsafe"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
+	"golang.org/x/sys/unix"
 )
 
 // TestKinfoProcSize verifies the struct's total binary.Read footprint
@@ -416,4 +418,67 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max-1] + "…"
+}
+
+func TestProcSnapshot_RetriesTransientENOMEM(t *testing.T) {
+	orig := sysctlRaw
+	t.Cleanup(func() { sysctlRaw = orig })
+
+	calls := 0
+	sysctlRaw = func(name string, args ...int) ([]byte, error) {
+		calls++
+		if calls < 3 {
+			return nil, unix.ENOMEM
+		}
+		return []byte("ok"), nil
+	}
+
+	got, err := procSnapshot()
+	if err != nil {
+		t.Fatalf("procSnapshot: %v", err)
+	}
+	if string(got) != "ok" {
+		t.Errorf("payload: got %q, want ok", got)
+	}
+	if calls != 3 {
+		t.Errorf("sysctl calls: got %d, want 3", calls)
+	}
+}
+
+func TestProcSnapshot_GivesUpOnPersistentENOMEM(t *testing.T) {
+	orig := sysctlRaw
+	t.Cleanup(func() { sysctlRaw = orig })
+
+	calls := 0
+	sysctlRaw = func(name string, args ...int) ([]byte, error) {
+		calls++
+		return nil, unix.ENOMEM
+	}
+
+	if _, err := procSnapshot(); !errors.Is(err, unix.ENOMEM) {
+		t.Errorf("error: got %v, want ENOMEM", err)
+	}
+	if calls != procSnapshotAttempts {
+		t.Errorf("sysctl calls: got %d, want %d", calls, procSnapshotAttempts)
+	}
+}
+
+func TestProcSnapshot_DoesNotRetryOtherErrors(t *testing.T) {
+	orig := sysctlRaw
+	t.Cleanup(func() { sysctlRaw = orig })
+
+	calls := 0
+	sysctlRaw = func(name string, args ...int) ([]byte, error) {
+		calls++
+		return nil, unix.EPERM
+	}
+
+	// Only ENOMEM is the growth race. Retrying EPERM would turn a permanent
+	// failure into four syscalls per collection cycle.
+	if _, err := procSnapshot(); !errors.Is(err, unix.EPERM) {
+		t.Errorf("error: got %v, want EPERM", err)
+	}
+	if calls != 1 {
+		t.Errorf("sysctl calls: got %d, want 1", calls)
+	}
 }
