@@ -159,9 +159,9 @@ func TestWebhookAddrAllowed(t *testing.T) {
 	}{
 		{"203.0.113.10", true},
 		{"198.51.100.20", true},
-		{"10.10.107.1", true}, // RFC1918 is deliberately permitted
-		{"fd00::1", true},     // ULA, same rationale
-		{"100.64.0.5", true},  // CGNAT/tailnet
+		{"10.0.0.10", true},  // RFC1918 is deliberately permitted
+		{"fd00::1", true},    // ULA, same rationale
+		{"100.64.0.5", true}, // CGNAT/tailnet
 		{"127.0.0.1", false},
 		{"127.0.0.53", false},
 		{"::1", false},

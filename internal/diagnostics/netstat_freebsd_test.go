@@ -8,14 +8,14 @@ import (
 )
 
 const sockstatOutput = `USER     COMMAND     PID FD PROTO LOCAL ADDRESS         FOREIGN ADDRESS       STATE
-nhdewitt ThreadPool 7173 35 tcp4  172.22.41.228:39650   20.42.73.30:443       ESTABLISHED
-nhdewitt firefox    7118 37 tcp4  172.22.41.228:35158   34.107.243.93:443     ESTABLISHED
+nhdewitt ThreadPool 7173 35 tcp4  192.0.2.15:39650      198.51.100.42:443     ESTABLISHED
+nhdewitt firefox    7118 37 tcp4  192.0.2.15:35158      198.51.100.77:443     ESTABLISHED
 root     sshd       4297  6 tcp6  *:22                  *:*                   LISTEN
 root     sshd       4297  7 tcp4  *:22                  *:*                   LISTEN
 ntpd     ntpd       4179 20 udp6  *:123                 *:*                   ??
-ntpd     ntpd       4179 23 udp4  172.22.41.228:123     *:*                   ??
-ntpd     ntpd       4179 22 udp6  fe80::3213:8bff:fe85:1234 *:*              ??
-??       ??           ?? ?? tcp4  172.22.41.228:37820   160.79.104.10:443     ESTABLISHED
+ntpd     ntpd       4179 23 udp4  192.0.2.15:123        *:*                   ??
+ntpd     ntpd       4179 22 udp6  fe80::200:5eff:fe00:5301 *:*                ??
+??       ??           ?? ?? tcp4  192.0.2.15:37820      203.0.113.9:443       ESTABLISHED
 `
 
 func TestGetNetstatFrom(t *testing.T) {
@@ -42,14 +42,14 @@ func TestGetNetstatFromTCP(t *testing.T) {
 	if e.Proto != "tcp4" {
 		t.Errorf("proto = %q, want tcp4", e.Proto)
 	}
-	if e.LocalAddr != "172.22.41.228" {
-		t.Errorf("local addr = %q, want 172.22.41.228", e.LocalAddr)
+	if e.LocalAddr != "192.0.2.15" {
+		t.Errorf("local addr = %q, want 192.0.2.15", e.LocalAddr)
 	}
 	if e.LocalPort != 39650 {
 		t.Errorf("local port = %d, want 39650", e.LocalPort)
 	}
-	if e.RemoteAddr != "20.42.73.30" {
-		t.Errorf("remote addr = %q, want 20.42.73.30", e.RemoteAddr)
+	if e.RemoteAddr != "198.51.100.42" {
+		t.Errorf("remote addr = %q, want 198.51.100.42", e.RemoteAddr)
 	}
 	if e.RemotePort != 443 {
 		t.Errorf("remote port = %d, want 443", e.RemotePort)
@@ -147,12 +147,12 @@ func TestParseAddr(t *testing.T) {
 		wantPort uint16
 		wantErr  bool
 	}{
-		{"ipv4", "172.22.41.228:39650", "172.22.41.228", 39650, false},
+		{"ipv4", "192.0.2.15:39650", "192.0.2.15", 39650, false},
 		{"wildcard both", "*:*", "*", 0, false},
 		{"wildcard port", "*:22", "*", 22, false},
 		{"wildcard addr", "*:*", "*", 0, false},
 		{"ipv6 simple", "::1:123", "::1", 123, false},
-		{"ipv6 link local", "fe80::3213:8bff:fe85:1234", "fe80::3213:8bff:fe85", 1234, false},
+		{"ipv6 link local", "fe80::200:5eff:fe00:5301", "fe80::200:5eff:fe00", 5301, false},
 		{"ipv6 scope", "fe80::1%lo0:123", "fe80::1%lo0", 123, false},
 		{"no colon", "garbage", "", 0, true},
 		{"bad port", "127.0.0.1:notaport", "", 0, true},
