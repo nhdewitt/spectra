@@ -29,6 +29,14 @@ var PriorityToLevel = map[int]LogLevel{
 	7: LevelDebug,
 }
 
+// LogEntry is one line of host log output.
+//
+// Count and FirstSeen are set only where identical entries were
+// collapsed into one. The entry then carries the timestamp of the
+// most recent occurrence. Count is how many there were, and
+// FirstSeen is when the run started. Both are omitted for an entry
+// that occurred once, so the common case is byte-identical to what
+// agents sent before collapsing existed.
 type LogEntry struct {
 	Timestamp   int64    `json:"timestamp"`
 	Source      string   `json:"source"`
@@ -36,6 +44,8 @@ type LogEntry struct {
 	Message     string   `json:"message"`
 	ProcessID   int      `json:"pid,omitempty"`
 	ProcessName string   `json:"process_name,omitempty"`
+	Count       int      `json:"count,omitempty"`
+	FirstSeen   int64    `json:"first_seen,omitempty"`
 }
 
 type CommandType string
@@ -63,8 +73,19 @@ type CommandResult struct {
 	Error   string          `json:"error,omitempty"`
 }
 
+// LogRequest narros a FETCH_LOGS command.
+//
+// Every field but MinLevel is optional and a zero value means unbounded.
+//
+// Since and Until are Unix seconds, matching LogEntry.Timestamp rather
+// than the RFC3339 metrics the API accepts. The agent already speaks this
+// representation everywhere else in the log path, and journalctl takes it
+// directly as @<seconds>.
 type LogRequest struct {
 	MinLevel LogLevel `json:"min_level"`
+	Limit    int      `json:"limit,omitempty"`
+	Since    int64    `json:"since,omitempty"`
+	Until    int64    `json:"until,omitempty"`
 }
 
 type ServiceMetric struct {
