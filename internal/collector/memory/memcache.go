@@ -1,5 +1,3 @@
-//go:build linux || darwin
-
 package memory
 
 import "sync/atomic"
@@ -14,16 +12,21 @@ func MemTotal() uint64 {
 	return cachedMemTotal.Load()
 }
 
+// Total returns total physical memory in bytes, reading it from the platform
+// on first call and caching it thereafter.
+//
+// Returns 0 when the platform read fails. Callers must treat 0 as "unknown"
+// and fall back to a fixed default rather than deriving a limit from it.
 func Total() uint64 {
 	if v := cachedMemTotal.Load(); v > 0 {
 		return v
 	}
 
-	raw, err := parseMemInfo()
-	if err != nil {
+	total, err := totalPhysical()
+	if err != nil || total == 0 {
 		return 0
 	}
 
-	cachedMemTotal.Store(raw.Total)
-	return raw.Total
+	cachedMemTotal.Store(total)
+	return total
 }
