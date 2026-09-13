@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -24,6 +25,10 @@ func (s *Server) handleAdminTriggerLogs(w http.ResponseWriter, r *http.Request) 
 	}
 
 	req := protocol.LogRequest{MinLevel: level}
+	if err := parseLogWindow(r, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		s.Logger.Error("json marshaling failed", "error", err, "handler", "handleAdminTriggerLogs")
@@ -41,6 +46,44 @@ func isValidLogLevel(l protocol.LogLevel) bool {
 		return true
 	}
 	return false
+}
+
+// parseLogWindow reads the optional limit/start/end query params for a FETCH_LOGS command.
+//
+// start and end are RFC3339 to match parseTimeRange. LogRequest carries Unix seconds since
+// that is what LogEntry.Timestamp uses and what journalctl takes directly as @<seconds>.
+//
+// A malformed value here is rejected rather than defaulted.
+func parseLogWindow(r *http.Request, req *protocol.LogRequest) error {
+	q := r.URL.Query()
+
+	if val := q.Get("limit"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil && n > 0 {
+			req.Limit = n
+		}
+	}
+
+	if val := q.Get("start"); val != "" {
+		t, err := time.Parse(time.RFC3339, val)
+		if err != nil {
+			return errors.New("invalid start time, use RFC3339 format")
+		}
+		req.Since = t.Unix()
+	}
+
+	if val := q.Get("end"); val != "" {
+		t, err := time.Parse(time.RFC3339, val)
+		if err != nil {
+			return errors.New("invalid end time, use RFC3339 format")
+		}
+		req.Until = t.Unix()
+	}
+
+	if req.Since > 0 && req.Until > 0 && req.Since > req.Until {
+		return errors.New("start time is after end time")
+	}
+
+	return nil
 }
 
 func (s *Server) handleAdminTriggerDisk(w http.ResponseWriter, r *http.Request) {
