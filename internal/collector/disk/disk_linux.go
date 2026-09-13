@@ -55,6 +55,7 @@ var ignoredFilesystems = map[string]struct{}{
 	"fuse":            {}, // Generic FUSE
 	"fuse.gvfsd-fuse": {}, // GNOME virtual filesystem
 	"fuse.sshfs":      {}, // SSH filesystem
+	"fuse.lxcfs":      {}, // FUSE LXCFS
 	"autofs":          {}, // Automounter
 
 	// Container/overlay
