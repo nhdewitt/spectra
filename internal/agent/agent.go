@@ -10,20 +10,31 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/collector/disk"
+	"github.com/nhdewitt/spectra/internal/collector/memory"
 	"github.com/nhdewitt/spectra/internal/logging"
 	"github.com/nhdewitt/spectra/internal/platform"
 	"github.com/nhdewitt/spectra/internal/protocol"
 	"github.com/nhdewitt/spectra/internal/version"
 )
 
-// Config holds the runtime configuration
+// memLimitDivisor is the fraction of total physical memory the agent process is
+// allowed to reach, clamped by minMemLimit/maxMemLimit.
+const (
+	memLimitDivisor       = 4
+	minMemLimit     int64 = 48 << 20
+	maxMemLimit     int64 = 2 << 30
+)
+
+// Config holds the runtime configuration.
 type Config struct {
 	BaseURL           string
 	Hostname          string
@@ -41,7 +52,7 @@ type Config struct {
 	TLSSkipVerify     bool
 }
 
-// Agent is the main application controller
+// Agent is the main application controller.
 type Agent struct {
 	Config     Config
 	Logger     *logging.Logger
@@ -70,6 +81,8 @@ type Agent struct {
 	Identity Identity
 
 	BinaryHash string
+
+	calibrateHeap bool
 }
 
 type RetryConfig struct {
@@ -86,6 +99,30 @@ func DefaultRetryConfig() RetryConfig {
 		MaxDelay:     30 * time.Second,
 		Multiplier:   2.0,
 	}
+}
+
+// applyMemoryLimit sets a soft heap ceiling derived from host RAM. It is a
+// no-nop when GOMEMLIMIT is already set in the environment, so an operator
+// override wins, and when total memory cannot be read.
+func (a *Agent) applyMemoryLimit() {
+	if _, ok := os.LookupEnv("GOMEMLIMIT"); ok {
+		return
+	}
+
+	total := memory.Total()
+	if total == 0 {
+		a.Logger.Debug("skipping memory limit: total physical memory unavailable")
+		return
+	}
+
+	limit := int64(total / memLimitDivisor)
+	limit = min(max(limit, minMemLimit), maxMemLimit)
+
+	debug.SetMemoryLimit(limit)
+	a.Logger.Info("memory limit set",
+		"mem_total", total,
+		"soft_limit", limit,
+		"cache_limit", cacheBytesFor(total))
 }
 
 // Delay returns how long to wait before retry number attempt, capped at
@@ -115,7 +152,7 @@ func (rc RetryConfig) Delay(attempt int) time.Duration {
 	return time.Duration(delay)
 }
 
-// New creates a configured Agent instance
+// New creates a configured Agent instance.
 func New(cfg Config) *Agent {
 	if cfg.IdentityPath == "" {
 		cfg.IdentityPath = identityPath()
@@ -130,6 +167,13 @@ func New(cfg Config) *Agent {
 	}
 
 	logger := logging.New(logCfg)
+
+	// Route the standard log package through the configured handler. Several
+	// collectors and internal/util log from package-level helpers that have
+	// no logger to thread one into. Without this, their output goes to stdout,
+	// never reaching LogFile.
+	slog.SetDefault(logger.Logger)
+
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsConfigFromAgentConfig(cfg, logger)
 
@@ -146,16 +190,17 @@ func New(cfg Config) *Agent {
 	}
 
 	return &Agent{
-		Config:     cfg,
-		Logger:     logger,
-		Client:     client,
-		DriveCache: disk.NewDriveCache(),
-		metricsCh:  make(chan protocol.Envelope, 500),
-		batch:      make([]protocol.Envelope, 0, 50),
-		cancel:     nil,
-		done:       make(chan struct{}),
-		cache:      newMetricsCache(defaultMaxCacheSize),
-		gzipW:      gzip.NewWriter(io.Discard),
+		Config:        cfg,
+		Logger:        logger,
+		Client:        client,
+		DriveCache:    disk.NewDriveCache(),
+		metricsCh:     make(chan protocol.Envelope, 500),
+		batch:         make([]protocol.Envelope, 0, 50),
+		cancel:        nil,
+		done:          make(chan struct{}),
+		cache:         newMetricsCache(defaultMaxCacheSize),
+		calibrateHeap: os.Getenv(heapCalibrateEnv) != "",
+		gzipW:         gzip.NewWriter(io.Discard),
 		commonHeaders: map[string]string{
 			"Content-Type":     "application/json",
 			"Content-Encoding": "gzip",
@@ -169,7 +214,7 @@ func New(cfg Config) *Agent {
 	}
 }
 
-// Start initializes all subsystems and blocks until Shutdown is called
+// Start initializes all subsystems and blocks until Shutdown is called.
 func (a *Agent) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
@@ -179,6 +224,13 @@ func (a *Agent) Start() error {
 		"server", a.Config.BaseURL,
 		"version", version.Full(),
 	)
+
+	a.applyMemoryLimit()
+	if a.calibrateHeap {
+		a.Logger.Info("heap calibration enabled",
+			"env", heapCalibrateEnv,
+			"note", "heap_bytes forces a collection before each reading")
+	}
 
 	if err := a.computeBinaryHash(); err != nil {
 		a.Logger.Warn("failed to compute binary hash", "error", err)
@@ -194,44 +246,25 @@ func (a *Agent) Start() error {
 		a.Logger.Info("agent registered", "agent_id", a.Identity.ID)
 	}
 
-	// Mount Manager (Windows disk mapping)
-	go disk.RunMountManager(ctx, a.DriveCache, 30*time.Second)
+	a.wg.Go(func() { disk.RunMountManager(ctx, a.DriveCache, 30*time.Second) })
 
-	// Metric Sender
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		a.runMetricSender(ctx)
-	}()
+	a.wg.Go(func() { a.runMetricSender(ctx) })
 
-	// Start Command Loop
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		a.runCommandLoop(ctx)
-	}()
+	a.wg.Go(func() { a.runCommandLoop(ctx) })
 
-	// Start Config Poller
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		a.runConfigPoller(ctx)
-	}()
+	a.wg.Go(func() { a.runConfigPoller(ctx) })
 
-	// Align to minute boundary
 	if err := waitForNextMinute(ctx); err != nil {
 		return fmt.Errorf("clock alignment cancelled: %w", err)
 	}
 
-	// Start Collectors
 	a.startCollectors(ctx)
 
-	// Block until shutdown called
 	<-ctx.Done()
 	return nil
 }
 
-// Shutdown gracefully stops all background tasks
+// Shutdown gracefully stops all background tasks.
 func (a *Agent) Shutdown() {
 	a.Logger.Info("agent shutting down")
 	a.cancel()
@@ -240,7 +273,7 @@ func (a *Agent) Shutdown() {
 	a.Logger.Close()
 }
 
-// setHeaders sets common headers for an http.Request
+// setHeaders sets common headers for an http.Request.
 func (a *Agent) setHeaders(req *http.Request) {
 	for k, v := range a.commonHeaders {
 		req.Header.Set(k, v)
