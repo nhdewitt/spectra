@@ -19,14 +19,57 @@ import (
 // provided thermal zone paths, avoiding a filepath.Glob on every cycle.
 func MakeCollector(zones []string) collector.CollectFunc {
 	return func(ctx context.Context) ([]protocol.Metric, error) {
-		var results []protocol.Metric
-		for _, zone := range zones {
-			if m, err := readThermalZone(zone); err == nil {
-				results = append(results, *m)
-			}
+		type reading struct {
+			metric protocol.TemperatureMetric
+			zone   string
 		}
+
+		readings := make([]reading, 0, len(zones))
+		counts := make(map[string]int, len(zones))
+
+		for _, zone := range zones {
+			m, err := readThermalZone(zone)
+			if err != nil || m == nil {
+				continue
+			}
+
+			readings = append(readings, reading{metric: *m, zone: zone})
+			counts[m.Sensor]++
+		}
+
+		// thermal_zoneN/type is not unique. Every ACPI zone on a machine
+		// reports "acpitz", so a host with two of them emitted two series
+		// under one name, interleaved by whichever happened to be written
+		// last. Suffix with the kernel's zone number, but only where the
+		// name actually collides, so hosts with unambiguous sensors keep
+		// their existing series names and their history stays continuous.
+		results := make([]protocol.Metric, 0, len(readings))
+		for _, r := range readings {
+			if counts[r.metric.Sensor] > 1 {
+				r.metric.Sensor += zoneNumber(r.zone)
+			}
+			results = append(results, r.metric)
+		}
+
 		return results, nil
 	}
+}
+
+// zoneNumber returns the trailing digis of a thermal zone directory, so
+// /sys/class/thermal/thermal_zone1 yields "1". Falls back to the whole
+// base name if there are no trailing digits, which keeps colliding sensors
+// distinct even on a layout that does not number its zones.
+func zoneNumber(dir string) string {
+	base := filepath.Base(dir)
+
+	i := len(base)
+	for i > 0 && base[i-1] >= '0' && base[i-1] <= '9' {
+		i--
+	}
+	if i == len(base) {
+		return base
+	}
+	return base[i:]
 }
 
 func readThermalZone(dir string) (*protocol.TemperatureMetric, error) {

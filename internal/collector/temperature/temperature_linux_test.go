@@ -5,6 +5,7 @@ package temperature
 import (
 	"context"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -484,5 +485,106 @@ func BenchmarkMakeCollector(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		_, _ = col(ctx)
+	}
+}
+
+// writeZone builds a fake thermal zone directory.
+func writeZone(t *testing.T, root, name, zoneType, temp string) string {
+	t.Helper()
+
+	dir := filepath.Join(root, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	for file, content := range map[string]string{"type": zoneType, "temp": temp} {
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s/%s: %v", dir, file, err)
+		}
+	}
+	return dir
+}
+
+func TestMakeCollector_SurvivesOutOfRangeReading(t *testing.T) {
+	root := t.TempDir()
+	// 200C fails the sanity check, so parseThermalZoneFrom returns (nil, nil).
+	// Dereferencing that on a nil-error check panicked and killed the agent.
+	zones := []string{
+		writeZone(t, root, "thermal_zone0", "acpitz", "200000"),
+		writeZone(t, root, "thermal_zone1", "cpu_thermal", "41000"),
+	}
+
+	got, err := MakeCollector(zones)(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("metrics: got %d, want 1 (the out-of-range zone is skipped)", len(got))
+	}
+	if s := got[0].(protocol.TemperatureMetric).Sensor; s != "cpu_thermal" {
+		t.Errorf("sensor: got %q, want cpu_thermal", s)
+	}
+}
+
+func TestMakeCollector_DisambiguatesCollidingSensorNames(t *testing.T) {
+	root := t.TempDir()
+	zones := []string{
+		writeZone(t, root, "thermal_zone0", "acpitz", "27800"),
+		writeZone(t, root, "thermal_zone1", "acpitz", "29800"),
+	}
+
+	got, err := MakeCollector(zones)(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("metrics: got %d, want 2", len(got))
+	}
+
+	names := map[string]float64{}
+	for _, m := range got {
+		tm := m.(protocol.TemperatureMetric)
+		names[tm.Sensor] = tm.Temp
+	}
+	if len(names) != 2 {
+		t.Fatalf("distinct sensor names: got %d, want 2: %v", len(names), names)
+	}
+	if names["acpitz0"] != 27.8 || names["acpitz1"] != 29.8 {
+		t.Errorf("readings landed on the wrong names: %v", names)
+	}
+}
+
+func TestMakeCollector_LeavesUniqueSensorNamesAlone(t *testing.T) {
+	root := t.TempDir()
+	zones := []string{
+		writeZone(t, root, "thermal_zone0", "cpu_thermal", "41000"),
+		writeZone(t, root, "thermal_zone1", "acpitz", "27800"),
+	}
+
+	got, err := MakeCollector(zones)(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+
+	// Suffixing unconditionally would rename every existing series and break
+	// continuity on hosts that were never ambiguous.
+	for _, m := range got {
+		switch s := m.(protocol.TemperatureMetric).Sensor; s {
+		case "cpu_thermal", "acpitz":
+		default:
+			t.Errorf("unique sensor name was rewritten: %q", s)
+		}
+	}
+}
+
+func TestZoneNumber(t *testing.T) {
+	tests := []struct{ dir, want string }{
+		{"/sys/class/thermal/thermal_zone0", "0"},
+		{"/sys/class/thermal/thermal_zone11", "11"},
+		{"/sys/class/thermal/zone", "zone"},
+	}
+	for _, tt := range tests {
+		if got := zoneNumber(tt.dir); got != tt.want {
+			t.Errorf("zoneNumber(%q) = %q, want %q", tt.dir, got, tt.want)
+		}
 	}
 }
