@@ -124,8 +124,7 @@ func runUpdateCheck(ctx context.Context, checker updateChecker) ([]protocol.Pend
 	out, err := cmd.Output()
 	// yum check-update returns exit code 100 when updates are available
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			if checker.name == "yum" && exitErr.ExitCode() == 100 {
 				// pass
 			} else {
@@ -205,8 +204,7 @@ func buildYumUpdateMetric(ctx context.Context, updates map[string]bool) ([]proto
 	cmd := exec.CommandContext(ctx, "yum", "check-update", "--quiet")
 	out, err := cmd.Output()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 100 {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok && exitErr.ExitCode() == 100 {
 			// normal: updates available
 		} else {
 			return nil, err
@@ -306,8 +304,7 @@ func checkRebootRequired() bool {
 	if path, err := exec.LookPath("needs-restarting"); err == nil {
 		cmd := exec.Command(path, "-r")
 		if err := cmd.Run(); err != nil {
-			var exitErr *exec.ExitError
-			if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			if exitErr, ok := errors.AsType[*exec.ExitError](err); ok && exitErr.ExitCode() == 1 {
 				return true
 			}
 		}

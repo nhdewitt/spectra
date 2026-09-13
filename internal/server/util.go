@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 
@@ -30,17 +30,9 @@ const (
 	// the tightest ceiling.
 	maxAuthBody = 4 << 10
 	// maxStandardBody covers ordinary admin and config payloads.
-	maxStandardBody = 64 << 10
-	// maxCommandResultBody covers diagnostic output. A verbose FETCH_LOGS
-	// result from a chatty host runs to hundreds of KB, and squeezing it
-	// into the standard limit would break diagnostics exactly when they
-	// are needed.
-	maxCommandResultBody = 4 << 20
-	// maxMetricsBody covers a metric batch. A full maxUploadChunk drain is
-	// roughly 2MB decompressed, so thise leaves 8x headroom. It must stay
-	// above what an agent can produce in one request: the agent retries
-	// any rejected batch, so a limit below that wedges it permanently.
-	maxMetricsBody = 16 << 20
+	maxStandardBody      = 64 << 10
+	maxCommandResultBody = protocol.MaxCommandResultBytes
+	maxMetricsBody       = protocol.MaxMetricsBytes
 )
 
 // errBodyTooLarge is returned when a request body exceeds its size class.
@@ -96,8 +88,7 @@ func decodeJSONBody(r *http.Request, target any, maxBytes int64) error {
 		if errors.Is(err, errBodyTooLarge) {
 			return errBodyTooLarge
 		}
-		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			return errBodyTooLarge
 		}
 		return fmt.Errorf("invalid json: %w", err)
@@ -125,7 +116,7 @@ func respondJSON(w http.ResponseWriter, status int, data any) {
 	w.WriteHeader(status)
 	if data != nil {
 		if err := json.NewEncoder(w).Encode(data); err != nil {
-			log.Printf("Failed to write JSON response: %v", err)
+			slog.Warn("failed to write JSON response", "error", err)
 		}
 	}
 }
@@ -227,8 +218,8 @@ func (s *Server) dbError(w http.ResponseWriter, err error, handler string) {
 }
 
 func isPgUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+	pgErr, ok := errors.AsType[*pgconn.PgError](err)
+	return ok && pgErr.Code == "23505"
 }
 
 func mustMarshal(v any) []byte {
