@@ -296,7 +296,7 @@ describe('severityOrder', () => {
     it('ranks levels by severity, not alphabetically', () => {
         const levels = ['EMERGENCY', 'ALERT', 'CRITICAL', 'ERROR', 'WARNING', 'NOTICE', 'INFO', 'DEBUG']
         for (let i = 1; i < levels.length; i++) {
-            expect(severityOrder(levels?[i - 1])).toBeLessThan(severityOrder(levels?[i]))
+            expect(severityOrder(levels[i - 1]!)).toBeLessThan(severityOrder(levels[i]!))
         }
         expect(severityOrder('ERROR')).toBeLessThan(severityOrder('NOTICE'))
         expect(severityOrder('ERROR')).toBeLessThan(severityOrder('WARNING'))
