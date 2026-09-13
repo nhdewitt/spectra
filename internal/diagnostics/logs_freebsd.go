@@ -4,11 +4,11 @@ package diagnostics
 
 import (
 	"bufio"
-	"cmp"
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -39,36 +39,40 @@ var reSyslog = regexp.MustCompile(
 func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEntry, error) {
 	var results []protocol.LogEntry
 
-	// Kernel boot messages
-	if opts.MinLevel <= protocol.LevelNotice {
-		if dmesg, err := getDmesg(); err == nil {
-			results = append(results, dmesg...)
-		}
+	minPriority := levelToPriority(opts.MinLevel)
+
+	dmesg, err := getDmesg()
+	results = append(results, dmesg...)
+	if err != nil && !os.IsNotExist(err) {
+		slog.Warn("dmesg.boot read incomplete", "error", err, "entries", len(dmesg))
 	}
 
-	// Read all matching syslog files
 	for _, src := range logSources {
-		if src.level < opts.MinLevel {
-			continue
-		}
-
 		entries, err := parseSyslogFile(src.path, src.level)
 		if err != nil {
-			continue
+			if !os.IsNotExist(err) {
+				slog.Warn("syslog read incomplete", "path", src.path, "error", err, "entries", len(entries))
+			}
+			if len(entries) == 0 {
+				continue
+			}
 		}
 		results = append(results, entries...)
 	}
 
-	// Sort entries chronologically
-	slices.SortFunc(results, func(a, b protocol.LogEntry) int {
-		return cmp.Compare(a.Timestamp, b.Timestamp)
-	})
-
-	if len(results) > MaxLogs {
-		results = results[len(results)-MaxLogs:]
+	// Filter on each entry's own level. This is the only severity filter on this platform.
+	// The other three push the level down into journalctl, Get-WinEvent, or the log predicate
+	// and arrive pre-filtered, which is why finalize stays level-agnostic rather than doing
+	// this for everyone.
+	kept := results[:0]
+	for _, e := range results {
+		if levelToPriority(e.Level) <= minPriority {
+			kept = append(kept, e)
+		}
 	}
+	results = kept
 
-	return results, nil
+	return finalize(results, opts, MaxLogs), nil
 }
 
 func getDmesg() ([]protocol.LogEntry, error) {
@@ -84,7 +88,7 @@ func getDmesg() ([]protocol.LogEntry, error) {
 	}
 
 	var entries []protocol.LogEntry
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -100,7 +104,7 @@ func getDmesg() ([]protocol.LogEntry, error) {
 		})
 	}
 
-	return entries, nil
+	return entries, scanner.Err()
 }
 
 func parseSyslogFile(path string, defaultLevel protocol.LogLevel) ([]protocol.LogEntry, error) {
@@ -110,8 +114,10 @@ func parseSyslogFile(path string, defaultLevel protocol.LogLevel) ([]protocol.Lo
 	}
 	defer f.Close()
 
+	// readLines returns whatever it scanned alongside the error, so a long line late
+	// in the file costs that line rather than the whole file.
 	lines, err := readLines(f)
-	if err != nil {
+	if err != nil && len(lines) == 0 {
 		return nil, err
 	}
 
@@ -121,6 +127,7 @@ func parseSyslogFile(path string, defaultLevel protocol.LogLevel) ([]protocol.Lo
 func readLines(f *os.File) ([]string, error) {
 	var lines []string
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
 		if line := scanner.Text(); line != "" {

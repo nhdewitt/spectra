@@ -15,14 +15,14 @@ import (
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
-const syslogSample = `Feb 13 14:00:00 hp-elite-mini-bsd newsyslog[44528]: logfile turned over due to size>1000K
-Feb 13 14:00:00 hp-elite-mini-bsd kernel: linux: jid 0 pid 4247 (ThreadPoolForeg): unsupported TCP socket option TCP_INFO (11)
-Feb 13 14:00:00 hp-elite-mini-bsd syslogd: last message repeated 5 times
-Feb 13 14:00:37 hp-elite-mini-bsd kernel: linux: jid 0 pid 4251 (DedicatedWorker): unsupported prctl option 1398164801
-Feb 19 12:24:47 hp-elite-mini-bsd sshd[1234]: Accepted publickey for nhdewitt from 192.168.1.10 port 52345 ssh2
-Feb 19 12:25:17 hp-elite-mini-bsd sshd[5678]: Failed password for invalid user admin from 10.0.0.1 port 22
-Feb 19 12:26:00 hp-elite-mini-bsd kernel: error: something went wrong
-Feb 19 12:26:30 hp-elite-mini-bsd kernel: WARNING: disk is getting full
+const syslogSample = `Feb 13 14:00:00 testhost newsyslog[44528]: logfile turned over due to size>1000K
+Feb 13 14:00:00 testhost kernel: linux: jid 0 pid 4247 (ThreadPoolForeg): unsupported TCP socket option TCP_INFO (11)
+Feb 13 14:00:00 testhost syslogd: last message repeated 5 times
+Feb 13 14:00:37 testhost kernel: linux: jid 0 pid 4251 (DedicatedWorker): unsupported prctl option 1398164801
+Feb 19 12:24:47 testhost sshd[1234]: Accepted publickey for testuser from 192.0.2.10 port 52345 ssh2
+Feb 19 12:25:17 testhost sshd[5678]: Failed password for invalid user admin from 198.51.100.23 port 40122
+Feb 19 12:26:00 testhost kernel: error: something went wrong
+Feb 19 12:26:30 testhost kernel: WARNING: disk is getting full
 `
 
 func sampleLines() []string {
@@ -195,7 +195,7 @@ func TestInferLevel(t *testing.T) {
 		{"kernel warn", "kernel", "WARNING: disk is getting full", protocol.LevelNotice, protocol.LevelWarning},
 		{"kernel normal", "kernel", "linux: jid 0 pid 4247: unsupported option", protocol.LevelNotice, protocol.LevelNotice},
 		{"sshd failure", "sshd", "Failed password for invalid user admin", protocol.LevelNotice, protocol.LevelWarning},
-		{"sshd success", "sshd", "Accepted publickey for nhdewitt", protocol.LevelNotice, protocol.LevelNotice},
+		{"sshd success", "sshd", "Accepted publickey for testuser", protocol.LevelNotice, protocol.LevelNotice},
 		{"generic source", "newsyslog", "logfile turned over", protocol.LevelNotice, protocol.LevelNotice},
 		{"login invalid", "login", "invalid user attempt", protocol.LevelInfo, protocol.LevelWarning},
 	}
@@ -221,9 +221,9 @@ func TestRegexParsing(t *testing.T) {
 	}{
 		{
 			"with pid",
-			"Feb 13 14:00:00 myhost sshd[1234]: connection from 10.0.0.1",
+			"Feb 13 14:00:00 myhost sshd[1234]: connection from 192.0.2.10",
 			true,
-			[]string{"Feb 13 14:00:00", "sshd", "1234", "connection from 10.0.0.1"},
+			[]string{"Feb 13 14:00:00", "sshd", "1234", "connection from 192.0.2.10"},
 		},
 		{
 			"without pid",
@@ -591,6 +591,39 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// TestFetchLogsLevelConformance covers the levels where the old string
+// comparison failed. FreeBSD selects nothing by severity at the source - every
+// file is read and every entry is filtered in Go - so this is the only platform
+// where a filtering bug shows up as wrong output rather than a wrong query.
+//
+// Comparing protocol.LogLevel values directly compares them alphabetically, and
+// the direction of the resulting bug flipped with the level name: at ERROR every
+// source was read and nothing was filtered, at WARNING every source was skipped
+// and the result was empty.
+func TestFetchLogsLevelConformance(t *testing.T) {
+	ctx := context.Background()
+
+	for _, level := range []protocol.LogLevel{protocol.LevelWarning, protocol.LevelError} {
+		t.Run(string(level), func(t *testing.T) {
+			entries, err := FetchLogs(ctx, protocol.LogRequest{MinLevel: level})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			want := levelToPriority(level)
+			for i, e := range entries {
+				if got := levelToPriority(e.Level); got > want {
+					t.Errorf("entries[%d]: level %s (%d) is less severe than the requested %s (%d): %s",
+						i, e.Level, got, level, want, truncate(e.Message, 60))
+					break
+				}
+			}
+
+			t.Logf("%s: %d entries", level, len(entries))
+		})
+	}
 }
 
 // --- Helpers ---

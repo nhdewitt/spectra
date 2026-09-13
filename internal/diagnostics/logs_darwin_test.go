@@ -4,7 +4,6 @@ package diagnostics
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +25,8 @@ func TestFetchLogs_Integration(t *testing.T) {
 
 	t.Logf("Successfully fetched %d logs from macOS", len(logs))
 
-	dedupCount := 0
+	collapsed := 0
+	largest := 0
 
 	for i, entry := range logs {
 		if entry.Timestamp == 0 {
@@ -38,8 +38,28 @@ func TestFetchLogs_Integration(t *testing.T) {
 		if entry.Source == "" {
 			t.Errorf("Log %d: Expected non-empty source", i)
 		}
-		if strings.Contains(entry.Message, "(further duplicates suppressed)") {
-			dedupCount++
+
+		// A collapsed run carries the count and the start of the run; a
+		// one-off carries neither, so the two fields move together.
+		switch {
+		case entry.Count > 1:
+			collapsed++
+			if entry.Count > largest {
+				largest = entry.Count
+			}
+			if entry.FirstSeen == 0 {
+				t.Errorf("Log %d: Count=%d but FirstSeen is unset", i, entry.Count)
+			}
+			if entry.FirstSeen > entry.Timestamp {
+				t.Errorf("Log %d: FirstSeen (%d) is after the kept occurrence (%d)",
+					i, entry.FirstSeen, entry.Timestamp)
+			}
+		case entry.Count == 1:
+			t.Errorf("Log %d: Count=1 should be omitted, not stored", i)
+		default:
+			if entry.FirstSeen != 0 {
+				t.Errorf("Log %d: FirstSeen=%d on an uncollapsed entry", i, entry.FirstSeen)
+			}
 		}
 
 		priority := levelToPriority(entry.Level)
@@ -51,5 +71,5 @@ func TestFetchLogs_Integration(t *testing.T) {
 		}
 	}
 
-	t.Logf("dedupCount: %d", dedupCount)
+	t.Logf("collapsed runs: %d (largest %d occurrences)", collapsed, largest)
 }

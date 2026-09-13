@@ -5,12 +5,11 @@ package diagnostics
 import (
 	"bufio"
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"os/exec"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -43,34 +42,26 @@ type journalEntry struct {
 
 func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEntry, error) {
 	var results []protocol.LogEntry
-	remaining := MaxLogs
+	remaining := gatherLimit(opts, MaxLogs)
 
 	// Kernel Logs
-	if dmesg, err := getDmesg(ctx, opts.MinLevel, remaining); err == nil {
-		results = append(results, dmesg...)
-		remaining -= len(dmesg)
+	dmesg, err := getDmesg(ctx, opts.MinLevel, remaining)
+	results = append(results, dmesg...)
+	remaining -= len(dmesg)
+	if err != nil {
+		slog.Warn("dmesg read incomplete", "error", err, "entries", len(dmesg))
 	}
 
 	// Journal Logs
 	if remaining > 0 {
-		if journal, err := getJournal(ctx, opts.MinLevel, remaining); err == nil {
-			results = append(results, journal...)
+		journal, err := getJournal(ctx, opts, remaining)
+		results = append(results, journal...)
+		if err != nil {
+			slog.Warn("journal read incomplete", "error", err, "entries", len(journal))
 		}
 	}
 
-	if results == nil {
-		results = []protocol.LogEntry{}
-	}
-
-	slices.SortFunc(results, func(a, b protocol.LogEntry) int {
-		return cmp.Compare(a.Timestamp, b.Timestamp)
-	})
-
-	if len(results) > MaxLogs {
-		results = results[len(results)-MaxLogs:]
-	}
-
-	return results, nil
+	return finalize(results, opts, MaxLogs), nil
 }
 
 func getDmesg(ctx context.Context, minLevel protocol.LogLevel, limit int) ([]protocol.LogEntry, error) {
@@ -86,16 +77,26 @@ func getDmesg(ctx context.Context, minLevel protocol.LogLevel, limit int) ([]pro
 	return parseDmesgFrom(bytes.NewReader(out), limit)
 }
 
-func getJournal(ctx context.Context, minLevel protocol.LogLevel, limit int) ([]protocol.LogEntry, error) {
-	priority := mapLogLevelToJournalPriority(minLevel)
-
-	cmd := exec.CommandContext(ctx, "journalctl",
+func getJournal(ctx context.Context, opts protocol.LogRequest, limit int) ([]protocol.LogEntry, error) {
+	args := []string{
 		"-b",
-		"-p", priority,
+		"-p", mapLogLevelToJournalPriority(opts.MinLevel),
 		"-n", strconv.Itoa(limit),
 		"-o", "json",
 		"--no-pager",
-	)
+	}
+
+	// journalctl takes an absolute time as @<unix seconds>, which is the representation LogRequest
+	// already carries. -b still applies, so the window is intersected with the current boot rather
+	// than replacing it.
+	if opts.Since > 0 {
+		args = append(args, "--since", "@"+strconv.FormatInt(opts.Since, 10))
+	}
+	if opts.Until > 0 {
+		args = append(args, "--until", "@"+strconv.FormatInt(opts.Until, 10))
+	}
+
+	cmd := exec.CommandContext(ctx, "journalctl", args...)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -136,6 +137,7 @@ func buildDmesgLevelFlag(min protocol.LogLevel) string {
 func parseDmesgFrom(r io.Reader, limit int) ([]protocol.LogEntry, error) {
 	var entries []protocol.LogEntry
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	var sourceBuilder strings.Builder
 	sourceBuilder.Grow(64)
@@ -185,7 +187,7 @@ func parseDmesgFrom(r io.Reader, limit int) ([]protocol.LogEntry, error) {
 		})
 	}
 
-	return entries, nil
+	return entries, scanner.Err()
 }
 
 func parseDmesgLevel(level string) protocol.LogLevel {
@@ -240,6 +242,8 @@ func parseDmesgTimestampAndMsg(raw string) (int64, string) {
 func parseJournalFrom(r io.Reader, limit int) ([]protocol.LogEntry, error) {
 	var entries []protocol.LogEntry
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
 	var sourceBuilder strings.Builder
 	var lastTimestamp int64 = 0
 
@@ -308,7 +312,7 @@ func parseJournalFrom(r io.Reader, limit int) ([]protocol.LogEntry, error) {
 		})
 	}
 
-	return entries, nil
+	return entries, scanner.Err()
 }
 
 func mapLogLevelToJournalPriority(l protocol.LogLevel) string {

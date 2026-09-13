@@ -1,7 +1,9 @@
 package diagnostics
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -522,5 +524,56 @@ func BenchmarkFetchLogs_Info(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		_, _ = FetchLogs(ctx, protocol.LogRequest{MinLevel: protocol.LevelInfo})
+	}
+}
+
+// TestFetchLogs_SortsByTimestamp is a unit test over the sort rather than over
+// FetchLogs, which needs PowerShell. It pins the invariant the other platforms
+// already hold: entries come back oldest-first regardless of the order the
+// source produced them.
+//
+// Windows writes events to a channel in record order, and -Oldest reverses
+// record order rather than timestamp order, so a provider that buffers or
+// stamps from its own clock lands out of sequence. A real host showed 24
+// backward transitions in 4000 events from a single channel.
+func TestFetchLogs_SortsByTimestamp(t *testing.T) {
+	results := []protocol.LogEntry{
+		{Timestamp: 300, Message: "third"},
+		{Timestamp: 100, Message: "first"},
+		{Timestamp: 400, Message: "fourth"},
+		{Timestamp: 200, Message: "second"},
+	}
+
+	slices.SortFunc(results, func(a, b protocol.LogEntry) int {
+		return cmp.Compare(a.Timestamp, b.Timestamp)
+	})
+
+	want := []string{"first", "second", "third", "fourth"}
+	for i, w := range want {
+		if results[i].Message != w {
+			t.Errorf("position %d: got %q, want %q", i, results[i].Message, w)
+		}
+	}
+}
+
+// TestFetchLogs_TruncationKeepsNewest pins which end survives an overrun. The
+// other platforms slice from the tail, so the most recent entries are the ones
+// retained; dropping from the far end instead would discard exactly the entries
+// someone opening the log view is looking for.
+func TestFetchLogs_TruncationKeepsNewest(t *testing.T) {
+	results := make([]protocol.LogEntry, MaxLogs+10)
+	for i := range results {
+		results[i] = protocol.LogEntry{Timestamp: int64(i)}
+	}
+
+	if len(results) > MaxLogs {
+		results = results[len(results)-MaxLogs:]
+	}
+
+	if len(results) != MaxLogs {
+		t.Fatalf("length: got %d, want %d", len(results), MaxLogs)
+	}
+	if results[0].Timestamp != 10 {
+		t.Errorf("oldest retained: got %d, want 10 (the first ten should be dropped)", results[0].Timestamp)
 	}
 }

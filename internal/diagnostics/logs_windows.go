@@ -42,12 +42,25 @@ var (
 func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEntry, error) {
 	levels := getWindowsLevelFlag(opts.MinLevel)
 
-	bootTime := getBootTime().UTC().Format(time.RFC3339)
+	// Never look further back than boot. The channels hold older records and the previous
+	// boot's entries are not what a diagnostics fetch is asking for.
+	start := getBootTime().UTC()
+	if opts.Since > 0 {
+		if since := time.Unix(opts.Since, 0).UTC(); since.After(start) {
+			start = since
+		}
+	}
+
+	var timeClause strings.Builder
+	fmt.Fprintf(&timeClause, ` and TimeCreated[@SystemTime>='%s']`, start.Format(time.RFC3339))
+	if opts.Until > 0 {
+		fmt.Fprintf(&timeClause, ` and TimeCreated[@SystemTime<='%s']`, time.Unix(opts.Until, 0).UTC().Format(time.RFC3339))
+	}
 
 	xpathQuery := fmt.Sprintf(
-		`*[System[(Level=%s) and TimeCreated[@SystemTime>='%s']]]`,
+		`*[System[(Level=%s)%s]]`,
 		strings.ReplaceAll(levels, ",", " or Level="),
-		bootTime,
+		timeClause.String(),
 	)
 
 	psCmd := fmt.Sprintf(
@@ -58,7 +71,7 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 		Select-Object TimeCreated, LevelDisplayName, Message, ProviderName, ProcessId |
 		ForEach-Object { $_ | ConvertTo-Json -Compress }`,
 		xpathQuery,
-		MaxLogs,
+		gatherLimit(opts, MaxLogs),
 	)
 
 	encoded := encodePowerShell(psCmd)
@@ -129,7 +142,7 @@ func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEnt
 		})
 	}
 
-	return results, nil
+	return finalize(results, opts, MaxLogs), nil
 }
 
 func getWindowsLevelFlag(min protocol.LogLevel) string {

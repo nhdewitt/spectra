@@ -6,9 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -17,10 +17,10 @@ import (
 
 const MaxLogs = 10000
 
-// maxDuplicates caps how many times the same source+message combo
-// can appear. Kernel error spam can produce thousands of identical
-// entries per hour.
-const maxDuplicates = 3
+// macLogTimeLayout is what `log show --start/--end` accepts. It is
+// interpreted in the host's local zone, so the bound is converted from
+// Unix seconds through time.Unix rather than being formatted as UTC.
+const macLogTimeLayout = "2006-01-02 15:04:05"
 
 // macLogEntry matches the JSON schema output by "log show --style json"
 type macLogEntry struct {
@@ -35,39 +35,44 @@ type macLogEntry struct {
 func FetchLogs(ctx context.Context, opts protocol.LogRequest) ([]protocol.LogEntry, error) {
 	var results []protocol.LogEntry
 
+	limit := gatherLimit(opts, MaxLogs)
+
 	// Kernel logs (dmegs equivalent)
 	dmesgPredicate := `processImagePath == "/kernel"`
-	if dmesg, err := getMacLogsFiltered(ctx, opts.MinLevel, MaxLogs, dmesgPredicate); err == nil {
-		results = append(results, dmesg...)
+	dmesg, err := getMacLogsFiltered(ctx, opts, limit, dmesgPredicate)
+	results = append(results, dmesg...)
+	if err != nil {
+		slog.Warn("kernel log read incomplete", "error", err, "entries", len(dmesg))
 	}
 
 	// System logs (journalctl equivalent)
 	// filters out telemetry noise
 	syslogPredicate := `processImagePath != "/kernel" AND (messageType == error OR messageType == fault)`
-	if journal, err := getMacLogsFiltered(ctx, opts.MinLevel, MaxLogs, syslogPredicate); err == nil {
-		results = append(results, journal...)
+	journal, err := getMacLogsFiltered(ctx, opts, limit, syslogPredicate)
+	results = append(results, journal...)
+	if err != nil {
+		slog.Warn("unified log read incomplete", "error", err, "entries", len(journal))
 	}
 
-	// sort chronologically (oldest to newest)
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Timestamp < results[j].Timestamp
-	})
-
-	// keep MaxLength newest
-	if len(results) > MaxLogs {
-		results = results[len(results)-MaxLogs:]
-	}
-
-	return results, nil
+	return finalize(results, opts, MaxLogs), nil
 }
 
-func getMacLogsFiltered(ctx context.Context, minLevel protocol.LogLevel, limit int, predicate string) ([]protocol.LogEntry, error) {
-	args := []string{"show", "--style", "json", "--last", "4h", "--predicate", predicate}
+func getMacLogsFiltered(ctx context.Context, opts protocol.LogRequest, limit int, predicate string) ([]protocol.LogEntry, error) {
+	args := []string{"show", "--style", "json", "--predicate", predicate}
 
-	minSeverity := levelToPriority(minLevel)
+	// Fall back to the previous fixed window when the request carries no lower bound. An unbounded
+	// `log show` on a busy Mac is minutes of output, so the absence of a bound can't mean all of it.
+	if opts.Since > 0 {
+		args = append(args, "--start", time.Unix(opts.Since, 0).Format(macLogTimeLayout))
+	} else {
+		args = append(args, "--last", "4h")
+	}
+	if opts.Until > 0 {
+		args = append(args, "--end", time.Unix(opts.Until, 0).Format(macLogTimeLayout))
+	}
 
 	// cap at info to prevent OOM
-	if minSeverity >= 6 {
+	if levelToPriority(opts.MinLevel) >= 6 {
 		args = append(args, "--info")
 	}
 
@@ -82,9 +87,11 @@ func getMacLogsFiltered(ctx context.Context, minLevel protocol.LogLevel, limit i
 		return nil, err
 	}
 
-	entries, err := parseMacLogsAndTail(stdout, minLevel, limit)
+	entries, err := parseMacLogsAndTail(stdout, opts.MinLevel, limit)
 
-	_ = cmd.Wait() // clean up the process
+	if waitErr := cmd.Wait(); err == nil {
+		err = waitErr
+	}
 
 	return entries, err
 }
@@ -92,7 +99,6 @@ func getMacLogsFiltered(ctx context.Context, minLevel protocol.LogLevel, limit i
 func parseMacLogsAndTail(r io.Reader, minLevel protocol.LogLevel, limit int) ([]protocol.LogEntry, error) {
 	var buf []protocol.LogEntry
 	decoder := json.NewDecoder(r)
-	seen := make(map[string]int)
 
 	minSeverity := levelToPriority(minLevel)
 
@@ -115,16 +121,6 @@ func parseMacLogsAndTail(r io.Reader, minLevel protocol.LogLevel, limit int) ([]
 
 		if levelToPriority(level) > minSeverity {
 			continue
-		}
-
-		// dedup: cap identical source+message combos
-		dedupKey := mEntry.ProcessImagePath + "|" + mEntry.EventMessage
-		if seen[dedupKey] > maxDuplicates {
-			continue
-		}
-		seen[dedupKey]++
-		if seen[dedupKey] == maxDuplicates {
-			mEntry.EventMessage += " (further duplicates suppressed)"
 		}
 
 		var unixTs int64
@@ -176,28 +172,5 @@ func parseMacLogLevel(macType string) protocol.LogLevel {
 		return protocol.LevelNotice
 	default:
 		return protocol.LevelInfo
-	}
-}
-
-func levelToPriority(l protocol.LogLevel) int {
-	switch l {
-	case protocol.LevelEmergency:
-		return 0
-	case protocol.LevelAlert:
-		return 1
-	case protocol.LevelCritical:
-		return 2
-	case protocol.LevelError:
-		return 3
-	case protocol.LevelWarning:
-		return 4
-	case protocol.LevelNotice:
-		return 5
-	case protocol.LevelInfo:
-		return 6
-	case protocol.LevelDebug:
-		return 7
-	default:
-		return 6
 	}
 }
