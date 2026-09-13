@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -79,7 +79,7 @@ func collectDocker(ctx context.Context) ([]protocol.ContainerMetric, error) {
 	containers, err := dockerCli.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
 		if dockerHealthy.Load() {
-			log.Printf("warning: Docker was previously reachable but is now failing: %v", err)
+			slog.Warn("Docker was previously reachable but is now failing", "error", err)
 			dockerHealthy.Store(false)
 		}
 

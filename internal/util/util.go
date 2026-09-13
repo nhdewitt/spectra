@@ -1,7 +1,7 @@
 package util
 
 import (
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -40,7 +40,8 @@ func MakeUintParser(fields []string, source string) func(int) uint64 {
 	return func(index int) uint64 {
 		v, err := strconv.ParseUint(fields[index], 10, 64)
 		if err != nil {
-			log.Printf("error parsing %s field[%d] = %q: %v", source, index, fields[index], err)
+			slog.Warn("field parse failed",
+				"source", source, "index", index, "value", fields[index], "error", err)
 			return 0
 		}
 		return v
@@ -53,7 +54,8 @@ func MakeUintParser(fields []string, source string) func(int) uint64 {
 func ValidateTimeDelta(now, last time.Time, source string) float64 {
 	delta := now.Sub(last).Seconds()
 	if delta <= 0 {
-		log.Printf("Warning [%s]: Invalid time delta (%f sec). Clock skew? Now: %v, Last: %v", source, delta, now, last)
+		slog.Warn("invalid time delta, possible clock skew",
+			"source", source, "delta_sec", delta, "now", now, "last", last)
 		return 0
 	}
 

@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 	"unsafe"
@@ -29,7 +29,7 @@ func RunMountManager(ctx context.Context, cache *DriveCache, interval time.Durat
 		case <-ticker.C:
 			updateDriveCacheNative(cache)
 		case <-ctx.Done():
-			log.Println("Mount Manager stopped.")
+			slog.Debug("mount manager stopped")
 			return
 		}
 	}

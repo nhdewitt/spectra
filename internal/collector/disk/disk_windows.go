@@ -6,7 +6,7 @@ package disk
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/bits"
 	"strings"
 	"unsafe"
@@ -90,7 +90,7 @@ func CollectDisk(ctx context.Context) ([]protocol.Metric, error) {
 			uintptr(unsafe.Pointer(&totalNumberOfFreeBytes)),
 		)
 		if ret == 0 {
-			log.Printf("Warning: Failed to get space for %s", rootPath)
+			slog.Warn("failed to get disk space", "path", rootPath)
 			continue
 		}
 

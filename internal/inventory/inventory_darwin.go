@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
@@ -42,7 +42,7 @@ func GetInstalledApps(ctx context.Context) ([]protocol.Application, error) {
 	out, err := exec.CommandContext(ctx, "system_profiler", "SPApplicationsDataType", "-json").Output()
 	if err != nil {
 		if !returnedWarning {
-			log.Printf("inventory: system_profiler failed: %v", err)
+			slog.Warn("inventory: system_profiler failed", "error", err)
 			returnedWarning = true
 		}
 		return []protocol.Application{}, err
@@ -51,14 +51,14 @@ func GetInstalledApps(ctx context.Context) ([]protocol.Application, error) {
 	apps, err := parseSystemProfiler(out)
 	if err != nil {
 		if !returnedWarning {
-			log.Printf("inventory: failed to parse system_profiler output: %v", err)
+			slog.Warn("inventory: failed to parse system_profiler output", "error", err)
 			returnedWarning = true
 		}
 		return []protocol.Application{}, err
 	}
 	if len(apps) == 0 {
 		if !returnedWarning {
-			log.Print("inventory: system_profiler returned 0 apps (Spotlight possibly disabled).")
+			slog.Warn("inventory: system_profiler returned 0 apps, Spotlight possibly disabled")
 			returnedWarning = true
 		}
 		return apps, nil

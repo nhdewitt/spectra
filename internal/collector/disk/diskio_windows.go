@@ -6,7 +6,7 @@ package disk
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 	"unsafe"
@@ -45,7 +45,7 @@ func CollectDiskIO(ctx context.Context, driveCache *DriveCache) ([]protocol.Metr
 	for idx, driveInfo := range allowedDrives {
 		perf, err := getDrivePerf(idx)
 		if err != nil {
-			log.Printf("Unable to get IO performance for %s: %v", driveInfo.Model, err)
+			slog.Warn("unable to get IO performance", "model", driveInfo.Model, "error", err)
 			continue
 		}
 		currentPerf[idx] = perf

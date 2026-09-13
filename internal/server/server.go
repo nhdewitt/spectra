@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -105,6 +106,10 @@ func New(cfg Config, db DB) *Server {
 	} else {
 		logger = logging.New(logCfg)
 	}
+
+	// Route the standard log package through the configured handler (see internal/agent.go)
+	slog.SetDefault(logger.Logger)
+
 	trusted, invalidProxies := parseTrustedProxies(cfg.TrustedProxies)
 	for _, e := range invalidProxies {
 		logger.Warn("ignoring unparseable trusted_proxies entry", "value", e)

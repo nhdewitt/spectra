@@ -4,7 +4,7 @@ package disk
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -31,7 +31,7 @@ func RunMountManager(ctx context.Context, cache *DriveCache, interval time.Durat
 		case <-ticker.C:
 			updateCache(cache)
 		case <-ctx.Done():
-			fmt.Println("Mount manager stopped.")
+			slog.Debug("mount manager stopped")
 			return
 		}
 	}
@@ -40,7 +40,7 @@ func RunMountManager(ctx context.Context, cache *DriveCache, interval time.Durat
 func updateCache(cache *DriveCache) {
 	currentMounts, err := parseMounts()
 	if err != nil {
-		fmt.Printf("Error updating mount cache: %v\n", err)
+		slog.Warn("mount cache update failed, disk metrics will go stale", "error", err)
 		return
 	}
 
