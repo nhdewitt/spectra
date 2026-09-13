@@ -6,10 +6,13 @@ import {
     severityColor,
     sortAgentsBySeverity,
     sortAgentsByStatus,
-    formatNetworkRate
+    formatNetworkRate,
+    levelColor,
+    severityOrder,
+    logEntrySpan
 } from '../utils';
 import { themeVars } from '../theme';
-import type { OverviewAgent } from '../types';
+import type { LogEntry, OverviewAgent } from '../types';
 import { DEFAULT_THRESHOLDS } from '../types';
 
 describe('formatBytes', () => {
@@ -261,5 +264,85 @@ describe('formatNetworkRate', () => {
 
     it('falls back to bits per second below 1Kbps', () => {
         expect(formatNetworkRate(500)).toBe('500bps')
+    })
+})
+
+describe('levelColor', () => {
+    it('treats every level at or above ERROR as danger', () => {
+        for (const level of ['EMERGENCY', 'ALERT', 'CRITICAL', 'ERROR']) {
+            expect(levelColor(level)).toBe(themeVars.danger)
+        }
+    })
+
+    it('separates warning and notice', () => {
+        expect(levelColor('WARNING')).toBe(themeVars.warn)
+        expect(levelColor('NOTICE')).toBe(themeVars.accent)
+    })
+
+    // An unrecognized level must read as "no opinion" rather than borrowing a
+    // severity colour, so a value the agent adds later is not shown as benign.
+    it('falls back to muted for unknown levels', () => {
+        expect(levelColor('INFO')).toBe(themeVars.textMuted)
+        expect(levelColor('DEBUG')).toBe(themeVars.textMuted)
+        expect(levelColor('')).toBe(themeVars.textMuted)
+        expect(levelColor('TRACE')).toBe(themeVars.textMuted)
+    })
+})
+
+describe('severityOrder', () => {
+    // Mirrors levelToPriority on the agent: lower is more severe. Sorting on a
+    // LogLevel string instead compares alphabetically, which is what broke the
+    // FreeBSD collector.
+    it('ranks levels by severity, not alphabetically', () => {
+        const levels = ['EMERGENCY', 'ALERT', 'CRITICAL', 'ERROR', 'WARNING', 'NOTICE', 'INFO', 'DEBUG']
+        for (let i = 1; i < levels.length; i++) {
+            expect(severityOrder(levels?[i - 1])).toBeLessThan(severityOrder(levels?[i]))
+        }
+        expect(severityOrder('ERROR')).toBeLessThan(severityOrder('NOTICE'))
+        expect(severityOrder('ERROR')).toBeLessThan(severityOrder('WARNING'))
+    })
+
+    it('sorts unknown levels last', () => {
+        expect(severityOrder('TRACE')).toBe(99)
+        expect(severityOrder('')).toBe(99)
+    })
+})
+
+describe('logEntrySpan', () => {
+    const base: LogEntry = {
+        timestamp: 1_700_000_000,
+        source: 'WinEvent:MsiInstaller',
+        level: 'ERROR',
+        message: 'Error 1704. An installation is suspended.',
+    }
+
+    it('renders nothing when the entry occurred once', () => {
+        expect(logEntrySpan(base)).toBe('')
+        expect(logEntrySpan({ ...base, count: 0 })).toBe('')
+    })
+
+    // count === 1 should never reach the UI: the agent zeroes it so a single
+    // entry serializes as it did before folding existed. Treating it as a run
+    // would put "1x" on an ordinary row.
+    it('treats a stored count of 1 as no run', () => {
+        expect(logEntrySpan({ ...base, count: 1, first_seen: 1_600_000_000 })).toBe('')
+    })
+
+    it('reports the count and the start of the run', () => {
+        const span = logEntrySpan({ ...base, count: 9069, first_seen: 1_600_000_000 })
+        expect(span).toMatch(/^9069\u00d7 since /)
+        expect(span).toContain(
+            new Date(1_600_000_000 * 1000).toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+            }),
+        )
+    })
+
+    it('falls back to the bare count when first_seen is missing', () => {
+        expect(logEntrySpan({ ...base, count: 4 })).toBe('4\u00d7')
     })
 })

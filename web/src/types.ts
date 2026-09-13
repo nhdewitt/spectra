@@ -540,3 +540,24 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
 	stale_seconds: 120,
 	offline_seconds: 600,    
 };
+
+/**
+ * One line of host log output, as returned by a FETCH_LOGS command result.
+ * 
+ * count and first_seen are present only when the agent folded identical
+ * source+message entries into one. The entry then carries the timestamp of
+ * the most recent occurrence, count is how many there were, and first_seen
+ * is when the run started. Both are omitted for an entry that occurred once,
+ * so a single entry is byte-identical to what agents sent before folding
+ * existed.
+ */
+export interface LogEntry {
+    timestamp: number;
+    source: string;
+    level: string;
+    message: string;
+    pid?: number;
+    process_name?: string;
+    count?: number;
+    first_seen?: number;
+}

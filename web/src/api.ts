@@ -366,11 +366,26 @@ export const api = {
 
     // Diagnostics (admin+)
 
-    /** POST /admin/logs - queue a log-fetch command on the agent. */
-    triggerLogs: (agentId: string, level: string = "WARNING") =>
-        apiFetch<CommandResponse>(`/admin/logs?agent=${agentId}&level=${level}`, {
+    /**
+     * POST /admin/logs - queue a log-fetch command on the agent.
+     * 
+     * start/end are RFC3339, matching the metrics endpoints so one time range can drive
+     * both. Omitting them asks the agent for everything it has, which is the behavior
+     * this endpoint had before the bounds existed.
+     */
+    triggerLogs: (
+        agentId: string,
+        level: string = "WARNING",
+        opts: { limit?: number; start?: Date; end?: Date } = {},
+    ) => {
+        const params = new URLSearchParams({ agent: agentId, level });
+        if (opts.limit) params.set("limit", String(opts.limit));
+        if (opts.start) params.set("start", opts.start.toISOString());
+        if (opts.end) params.set("end", opts.end.toISOString());
+        return apiFetch<CommandResponse>(`/admin/logs?${params}`, {
             method: "POST",
-        }),
+        });
+    },
 
     /** POST /admin/disk - queue a disk-scan command (top-N largest under path). */
     triggerDisk: (agentId: string, path: string, topN: number) =>

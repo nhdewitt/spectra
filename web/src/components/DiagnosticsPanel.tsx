@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { api } from "../api";
-import { copyToClipboard, formatBytes } from "../utils";
+import { copyToClipboard, formatBytes, levelColor, logEntrySpan, severityOrder } from "../utils";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "./ui";
 import { themeVars } from "../theme";
-import type { CommandResponse, CommandEntry } from "../types";
+import type { CommandResponse, CommandEntry, LogEntry } from "../types";
 
 interface DiagnosticsPanelProps {
     agentId: string;
@@ -42,32 +42,6 @@ function useCommandPoller(cmdId: string | null) {
 
     return { entry, error };
 }
-
-interface LogEntry {
-    timestamp: number;
-    source: string;
-    level: string;
-    message: string;
-    pid?: number;
-    process_name?: string;
-}
-
-function levelColor(level: string): string {
-    switch (level) {
-        case "EMERGENCY":
-        case "ALERT":
-        case "CRITICAL":
-            return themeVars.danger;
-        case "ERROR":
-            return themeVars.danger;
-        case "WARNING":
-            return themeVars.warn;
-        case "NOTICE":
-            return themeVars.accent;
-        default:
-            return themeVars.textMuted;
-    }
-};
 
 function LogResults({
     entries,
@@ -209,7 +183,7 @@ function LogResults({
                         ×
                     </button>
                 </div>
-
+ 
                 {/* Severity filters */}
                 <div
                     style={{
@@ -266,14 +240,16 @@ function LogResults({
                             </button>
                         ))}
                 </div>
-
+ 
                 {/* Log entries */}
                 <div style={{ flex: 1, overflowY: "auto", padding: "0 16px" }}>
                     {filtered.map((e, i) => (
                         <div
                             key={i}
                             onClick={() => {
-                                const text = `${new Date(e.timestamp * 1000).toISOString()} [${e.level}] ${e.source} ${e.message}`;
+                                const repeat =
+                                    (e.count ?? 0) > 1 ? ` (x${e.count})` : "";
+                                const text = `${new Date(e.timestamp * 1000).toISOString()} [${e.level}] ${e.source} ${e.message}${repeat}`;
                                 copyToClipboard(text);
                                 setCopiedIdx(i);
                                 setTimeout(() => setCopiedIdx(null), 1500);
@@ -320,37 +296,42 @@ function LogResults({
                             >
                                 {e.source}
                             </span>
-                            <span
+                            <div
                                 style={{
-                                    color: themeVars.text,
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    minWidth: 0,
                                 }}
-                                title={e.message}
                             >
-                                {e.message}
-                            </span>
+                                <span
+                                    style={{
+                                        color: themeVars.text,
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                    }}
+                                    title={e.message}
+                                >
+                                    {e.message}
+                                </span>
+                                {(e.count ?? 0) > 1 && (
+                                    <span
+                                        style={{
+                                            color: themeVars.warn,
+                                            fontSize: "0.9em",
+                                            whiteSpace: "nowrap",
+                                        }}
+                                    >
+                                        {logEntrySpan(e)}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     ))}
                 </div>
             </div>
         </div>
     );
-}
-
-function severityOrder(level: string): number {
-    const order: Record<string, number> = {
-        EMERGENCY: 0,
-        ALERT: 1,
-        CRITICAL: 2,
-        ERROR: 3,
-        WARNING: 4,
-        NOTICE: 5,
-        INFO: 6,
-        DEBUG: 7,
-    };
-    return order[level] ?? 99;
 }
 
 interface DiskReport {

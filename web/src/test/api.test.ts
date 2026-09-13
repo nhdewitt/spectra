@@ -305,6 +305,38 @@ describe('diagnostics endpoints', () => {
         expect(call.method).toBe('POST')
     })
 
+    it('omits the window params when no bounds are given', async () => {
+        mockFetch.mockResolvedValueOnce(jsonResponse({ command_id: 'cmd-1', message: 'queued' }))
+        await api.triggerLogs(agentId, 'ERROR', {})
+
+        const call = lastFetchCall()
+        expect(call.url).toBe('/api/v1/admin/logs?agent=agent-1&level=ERROR')
+    })
+
+    it('sends limit, start and end when given', async () => {
+        mockFetch.mockResolvedValueOnce(jsonResponse({ command_id: 'cmd-1', message: 'queued' }))
+        await api.triggerLogs(agentId, 'ERROR', {
+            limit: 500,
+            start: new Date('2026-09-01T00:00:00.000Z'),
+            end: new Date('2026-09-02T00:00:00.000Z'),
+        })
+
+        const url = new URL(lastFetchCall().url, 'https://example.test')
+        expect(url.searchParams.get('limit')).toBe('500')
+        // The server parses these with Go's time.RFC3339, which accepts the
+        // fractional seconds toISOString emits even though the layout omits them.
+        expect(url.searchParams.get('start')).toBe('2026-09-01T00:00:00.000Z')
+        expect(url.searchParams.get('end')).toBe('2026-09-02T00:00:00.000Z')
+    })
+
+    // A zero limit means "unset" to the agent, so sending it would be noise.
+    it('drops a zero limit', async () => {
+        mockFetch.mockResolvedValueOnce(jsonResponse({ command_id: 'cmd-1', message: 'queued' }))
+        await api.triggerLogs(agentId, 'ERROR', { limit: 0 })
+
+        expect(lastFetchCall().url).toBe('/api/v1/admin/logs?agent=agent-1&level=ERROR')
+    })
+
     it('triggers disk usage', async () => {
         mockFetch.mockResolvedValueOnce(jsonResponse({ command_id: 'cmd-2', message: 'queued' }))
         await api.triggerDisk(agentId, '/var', 10)

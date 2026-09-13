@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { api } from "../api";
 import { themeVars } from "../theme";
-import { formatBytes, statusColor } from "../utils";
+import { formatBytes, levelColor, logEntrySpan, severityOrder, statusColor } from "../utils";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "../components/ui";
 import type { OverviewAgent, CommandResponse, CommandEntry } from "../types";
 import { Pagination, usePagination } from "../hooks/usePagination";
@@ -73,30 +73,10 @@ interface LogEntry {
 	message: string;
 	pid?: number;
 	process_name?: string;
-}
-
-function levelColor(level: string): string {
-	switch (level) {
-		case "EMERGENCY":
-		case "ALERT":
-		case "CRITICAL":
-		case "ERROR":
-			return themeVars.danger;
-		case "WARNING":
-			return themeVars.warn;
-		case "NOTICE":
-			return themeVars.accent;
-		default:
-			return themeVars.textMuted;
-	}
-}
-
-function severityOrder(level: string): number {
-	const order: Record<string, number> = {
-		EMERGENCY: 0, ALERT: 1, CRITICAL: 2, ERROR: 3,
-		WARNING: 4, NOTICE: 5, INFO: 6, DEBUG: 7,
-	};
-	return order[level] ?? 99;
+	/** Occurrences folded into this entry. Absent when the entry occurred once. */
+	count?: number;
+	/** Unix seconds of the first occurrence in a folded run. Absent when count is absent. */
+	first_seen?: number;
 }
 
 interface DiskReport {
@@ -266,21 +246,40 @@ function LogResultsInline({ entries }: { entries: LogEntry[] }) {
                         >
                             {e.source}
                         </span>
-                        <span
+                        <div
                             style={{
-                                color: themeVars.text,
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
+                                display: "flex",
+                                flexDirection: "column",
+                                minWidth: 0,
                             }}
-                            title={e.message}
                         >
-                            {e.message}
-                        </span>
+                            <span
+                                style={{
+                                    color: themeVars.text,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                }}
+                                title={e.message}
+                            >
+                                {e.message}
+                            </span>
+                            {(e.count ?? 0) > 1 && (
+                                <span
+                                    style={{
+                                        color: themeVars.warn,
+                                        fontSize: "0.9em",
+                                        whiteSpace: "nowrap",
+                                    }}
+                                >
+                                    {logEntrySpan(e)}
+                                </span>
+                            )}
+                        </div>
                     </div>
                 ))}
             </div>
-
+ 
             <Pagination
                 page={page}
                 totalPages={totalPages}

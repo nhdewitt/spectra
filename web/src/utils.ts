@@ -1,5 +1,5 @@
 import { themeVars } from "./theme";
-import type { OverviewAgent, Thresholds } from "./types";
+import type { LogEntry, OverviewAgent, Thresholds } from "./types";
 
 export type AgentStatus = "online" | "warn" | "crit" | "stale" | "offline";
 
@@ -272,4 +272,56 @@ export function formatNetworkRate(bitsPerSecond: number): string | null {
         }
     }
     return `${bitsPerSecond}bps`;
+}
+
+/**
+ * Color for a syslog level name. Unrecognized levels fall back to muted
+ * rather than to a severity, so an unexpected value reads as "no opinion".
+ */
+export function levelColor(level: string): string {
+    switch (level) {
+        case "EMERGENCY":
+        case "ALERT":
+        case "CRITICAL":
+        case "ERROR":
+            return themeVars.danger;
+        case "WARNING":
+            return themeVars.warn;
+        case "NOTICE":
+            return themeVars.accent;
+        default:
+            return themeVars.textMuted;
+    }
+}
+
+/**
+ * Sort rank for a syslog level, where lower is more severe. Mirrors
+ * levelToPriority on the agent side. Unrecognized levels sort last.
+ */
+export function severityOrder(level: string): number {
+    const order: Record<string, number> = {
+        EMERGENCY: 0,
+        ALERT: 1,
+        CRITICAL: 2,
+        ERROR: 3,
+        WARNING: 4,
+        NOTICE: 5,
+        INFO: 6,
+        DEBUG: 7,
+    };
+    return order[level] ?? 99;
+}
+
+/** Recurrence line for a folded log row. Empty when the entry occurred once. */
+export function logEntrySpan(e: LogEntry): string {
+    if ((e.count ?? 0) < 2) return "";
+    if (!e.first_seen) return `${e.count}×`;
+    const first = new Date(e.first_seen * 1000).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+    });
+    return `${e.count}× since ${first}`;
 }
