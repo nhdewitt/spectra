@@ -213,8 +213,8 @@ func TestUploadBatch_CachesOnFailure(t *testing.T) {
 	}
 }
 
-func TestUploadBatch_DrainsCacheFirst(t *testing.T) {
-	var calls []int // track envelope counts per call
+func TestUploadBatch_SendsCacheAndBatchInOneRequest(t *testing.T) {
+	var calls []int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gz, _ := gzip.NewReader(r.Body)
 		var batch []protocol.Envelope
@@ -234,14 +234,16 @@ func TestUploadBatch_DrainsCacheFirst(t *testing.T) {
 	batch := []protocol.Envelope{testEnvelope("memory")}
 	a.uploadBatch(context.Background(), batch)
 
-	if len(calls) != 2 {
-		t.Fatalf("expected 2 POST calls (cached + current), got %d", len(calls))
+	// The current batch goes into the cache and drains with it, so a backlog
+	// under maxUploadChunk is one request, not two.
+	if len(calls) != 1 {
+		t.Fatalf("POST calls: got %d, want 1 (cache and batch travel together): %v", len(calls), calls)
 	}
-	if calls[0] != 3 {
-		t.Errorf("first call should send 3 cached envelopes, got %d", calls[0])
+	if calls[0] != 4 {
+		t.Errorf("envelopes in the request: got %d, want 4", calls[0])
 	}
-	if calls[1] != 1 {
-		t.Errorf("second call should send 1 current envelope, got %d", calls[1])
+	if a.cache.Len() != 0 {
+		t.Errorf("cache after a clean send: got %d, want 0", a.cache.Len())
 	}
 }
 
@@ -317,8 +319,11 @@ func TestRunMetricSender_FlushesOnContextCancel(t *testing.T) {
 
 	a.runMetricSender(ctx)
 
+	// Exactly BatchSize envelopes, so all of them are parked in the cache and
+	// batch is empty by the time the cancel lands. The flush still has to send
+	// them: draining cannot depend on new metrics still arriving.
 	if callCount.Load() == 0 {
-		t.Error("expected at least one flush on context cancel")
+		t.Error("expected a flush on context cancel with an empty batch and a full cache")
 	}
 }
 
@@ -383,9 +388,12 @@ func TestRunMetricSender_BatchSizeFlush(t *testing.T) {
 
 	a.runMetricSender(ctx)
 
-	// Should have at least 1 batch-size flush plus the remainder
-	if callCount.Load() < 1 {
-		t.Errorf("expected at least 1 flush for %d envelopes, got %d calls", BatchSize+1, callCount.Load())
+	// Reaching BatchSize parks the accumulator in the cache without sending, so
+	// the only network call is the one the cancel triggers — the whole point of
+	// pacing is that a burst of buffered envelopes does not become a burst of
+	// requests.
+	if got := callCount.Load(); got != 1 {
+		t.Errorf("POST calls: got %d, want 1 (BatchSize must stash, not send)", got)
 	}
 }
 
@@ -478,7 +486,12 @@ func TestUploadBatch_DropsUnencodableBatch(t *testing.T) {
 	}
 }
 
-func TestUploadBatch_DropsUnencodableCacheThenSendsBatch(t *testing.T) {
+// TestUploadBatch_PoisonedChunkTakesTheCurrentBatchWithIt pins a deliberate
+// regression from merging the cache and the current batch into one request. A
+// single unencodable envelope fails the whole chunk, and the chunk now contains
+// live data. The blast radius is still one chunk and the next cycle is clean,
+// so the gap is one SendInterval.
+func TestUploadBatch_PoisonedChunkTakesTheCurrentBatchWithIt(t *testing.T) {
 	var sent []int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gz, _ := gzip.NewReader(r.Body)
@@ -495,17 +508,22 @@ func TestUploadBatch_DropsUnencodableCacheThenSendsBatch(t *testing.T) {
 	a.Config.MetricsPath = "/api/v1/agent/metrics"
 
 	a.cache.Add([]protocol.Envelope{nanEnvelope()})
-
 	a.uploadBatch(context.Background(), []protocol.Envelope{testEnvelope("cpu")})
 
-	if len(sent) != 1 {
-		t.Fatalf("POST calls: got %d, want 1 (poisoned cache dropped, current batch still sent)", len(sent))
-	}
-	if sent[0] != 1 {
-		t.Errorf("envelopes in the surviving call: got %d, want 1", sent[0])
+	if len(sent) != 0 {
+		t.Fatalf("POST calls: got %d, want 0 (the chunk never encodes)", len(sent))
 	}
 	if a.cache.Len() != 0 {
-		t.Errorf("cached envelopes: got %d, want 0", a.cache.Len())
+		t.Errorf("cached envelopes: got %d, want 0: the chunk must not be requeued", a.cache.Len())
+	}
+	if a.backoffStep != 0 {
+		t.Errorf("backoffStep: got %d, want 0: an encode failure is not a transport failure", a.backoffStep)
+	}
+
+	// The next cycle is clean and gets through.
+	a.uploadBatch(context.Background(), []protocol.Envelope{testEnvelope("memory")})
+	if len(sent) != 1 || sent[0] != 1 {
+		t.Errorf("recovery send: got %v, want one call of 1 envelope", sent)
 	}
 }
 
@@ -596,7 +614,7 @@ func TestUploadBatch_FailureSuppressesTheNextFlush(t *testing.T) {
 // defaultMaxCacheSize envelopes, which as one request is megabytes compressed;
 // if this silently reverts to a single Drain, any server-side body limit
 // becomes a cliff that a backlogged agent can never get past.
-func TestUploadBatch_DrainsCacheInChunks(t *testing.T) {
+func TestUploadBatch_SendsOneChunkPerCycle(t *testing.T) {
 	var sizes []int
 	var mu sync.Mutex
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -617,34 +635,39 @@ func TestUploadBatch_DrainsCacheInChunks(t *testing.T) {
 	a.Config.BaseURL = srv.URL
 	a.Config.MetricsPath = "/api/v1/agent/metrics"
 
-	// Two full chunks plus a remainder, then the current batch.
 	a.cache.Add(makeEnvelopes(maxUploadChunk*2 + 30))
 
 	a.uploadBatch(context.Background(), []protocol.Envelope{testEnvelope("cpu")})
 
 	mu.Lock()
-	defer mu.Unlock()
+	if len(sizes) != 1 || sizes[0] != maxUploadChunk {
+		mu.Unlock()
+		t.Fatalf("first cycle: got %v, want one call of %d", sizes, maxUploadChunk)
+	}
+	mu.Unlock()
 
-	if len(sizes) != 4 {
-		t.Fatalf("POST calls: got %d, want 4 (3 cache chunks + the current batch): %v", len(sizes), sizes)
+	// One chunk out per cycle against whatever came in: 1031 - 500 = 531.
+	if want := maxUploadChunk + 31; a.cache.Len() != want {
+		t.Errorf("cache after one cycle: got %d, want %d", a.cache.Len(), want)
 	}
-	if sizes[0] != maxUploadChunk || sizes[1] != maxUploadChunk {
-		t.Errorf("chunk sizes: got %d and %d, want %d each", sizes[0], sizes[1], maxUploadChunk)
-	}
-	if sizes[2] != 30 {
-		t.Errorf("final cache chunk: got %d, want 30", sizes[2])
-	}
-	if sizes[3] != 1 {
-		t.Errorf("current batch: got %d envelopes, want 1", sizes[3])
+
+	// Three more cycles clear it.
+	for range 3 {
+		a.uploadBatch(context.Background(), nil)
 	}
 	if a.cache.Len() != 0 {
-		t.Errorf("cache after a clean drain: got %d, want 0", a.cache.Len())
+		t.Errorf("cache after four cycles: got %d, want 0", a.cache.Len())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(sizes) != 3 {
+		t.Errorf("POST calls: got %d, want 3 (500, 500, 31): %v", len(sizes), sizes)
 	}
 }
 
-// TestUploadBatch_RequeuesFailedChunk covers a mid-drain outage: chunks already
-// accepted stay accepted, the failed chunk goes back, and the current batch is
-// added behind it.
+// TestUploadBatch_RequeuesFailedChunk covers an outage part way through a
+// catch-up: the chunk already accepted stays accepted, the failed one goes back
+// to the tail it came from.
 func TestUploadBatch_RequeuesFailedChunk(t *testing.T) {
 	var callCount atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -663,25 +686,26 @@ func TestUploadBatch_RequeuesFailedChunk(t *testing.T) {
 
 	a.cache.Add(makeEnvelopes(maxUploadChunk * 2))
 
+	// First cycle succeeds and clears backoff; second fails and requeues.
 	a.uploadBatch(context.Background(), []protocol.Envelope{testEnvelope("cpu")})
+	a.uploadBatch(context.Background(), nil)
 
 	if callCount.Load() != 2 {
-		t.Fatalf("POST calls: got %d, want 2 (one accepted, one failed, then stop)", callCount.Load())
+		t.Fatalf("POST calls: got %d, want 2", callCount.Load())
 	}
-
-	// Second chunk requeued (500) + the current batch (1). The first chunk was
-	// accepted and must not come back.
-	if a.cache.Len() != maxUploadChunk+1 {
-		t.Errorf("cache size: got %d, want %d", a.cache.Len(), maxUploadChunk+1)
+	// 1001 in, 500 accepted, the next 500 drained and put back.
+	if want := maxUploadChunk + 1; a.cache.Len() != want {
+		t.Errorf("cache size: got %d, want %d", a.cache.Len(), want)
 	}
 	if a.backoffStep != 1 {
 		t.Errorf("backoffStep: got %d, want 1", a.backoffStep)
 	}
 }
 
-// TestUploadBatch_UnencodableChunkDoesNotStopTheDrain confirms the blast radius
-// of a NaN is now one chunk rather than the whole backlog.
-func TestUploadBatch_UnencodableChunkDoesNotStopTheDrain(t *testing.T) {
+// TestUploadBatch_UnencodableChunkDoesNotBlockTheBacklog confirms a NaN costs
+// one chunk rather than wedging the cache: the poisoned chunk is dropped, not
+// requeued, so the next cycle reaches the envelopes behind it.
+func TestUploadBatch_UnencodableChunkDoesNotBlockTheBacklog(t *testing.T) {
 	var callCount atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount.Add(1)
@@ -694,20 +718,23 @@ func TestUploadBatch_UnencodableChunkDoesNotStopTheDrain(t *testing.T) {
 	a.Config.BaseURL = srv.URL
 	a.Config.MetricsPath = "/api/v1/agent/metrics"
 
-	// One poisoned envelope in the first chunk, a clean second chunk behind it.
-	first := makeEnvelopes(maxUploadChunk - 1)
-	first = append(first, nanEnvelope())
-	a.cache.Add(first)
+	// A poisoned envelope at the head, where the first drain will find it, with
+	// clean envelopes queued behind it.
+	a.cache.Add([]protocol.Envelope{nanEnvelope()})
 	a.cache.Add(makeEnvelopes(10))
 
-	a.uploadBatch(context.Background(), []protocol.Envelope{testEnvelope("cpu")})
-
-	// The poisoned chunk never reaches the network; the rest does.
-	if callCount.Load() != 2 {
-		t.Errorf("POST calls: got %d, want 2 (clean cache chunk + current batch)", callCount.Load())
+	a.uploadBatch(context.Background(), nil)
+	if callCount.Load() != 0 {
+		t.Fatalf("POST calls: got %d, want 0 (poisoned chunk never encodes)", callCount.Load())
 	}
 	if a.cache.Len() != 0 {
-		t.Errorf("cache: got %d, want 0", a.cache.Len())
+		t.Errorf("cache: got %d, want 0 (the whole chunk is dropped)", a.cache.Len())
+	}
+
+	// The cache is usable afterwards rather than wedged.
+	a.uploadBatch(context.Background(), []protocol.Envelope{testEnvelope("cpu")})
+	if callCount.Load() != 1 {
+		t.Errorf("POST calls after recovery: got %d, want 1", callCount.Load())
 	}
 }
 

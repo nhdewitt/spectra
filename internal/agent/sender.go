@@ -8,29 +8,37 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"runtime"
+	"runtime/metrics"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
 const (
-	BatchSize    = 100             // If we reach this, send immediately
+	BatchSize    = 100             // Park the accumulator in the cache at this size
 	SendInterval = 5 * time.Second // Force sending every 5 seconds
 
-	// maxUploadChunk bounds envelopes per request when draining the cache.
-	// At observed rates, this is roughly 200KB compressed per request.
+	// shutdownFlushTimeout bounds the final flush, which runs on a context of its
+	// own because the one runMetricSender was started with is already cancelled by
+	// then. Keep it inside systemd's TimeoutStopSec.
+	shutdownFlushTimeout = 5 * time.Second
+
+	// maxUploadChunk bounds envelopes per request, and with one chunk per send
+	// cycle it doubles as the catch-up rate: maxUploadChunk out per SendInterval
+	// against whatever came in. Roughly 200KB compressed per request.
 	maxUploadChunk = 500
 )
 
-// runMetricSender consumes the channel and sends batches via HTTP
+// runMetricSender consumes the channel and sends batches via HTTP.
 func (a *Agent) runMetricSender(ctx context.Context) {
 	batch := make([]protocol.Envelope, 0, BatchSize)
 
 	ticker := time.NewTicker(SendInterval)
 	defer ticker.Stop()
 
-	flush := func() {
-		if len(batch) > 0 {
+	flush := func(ctx context.Context) {
+		if len(batch) > 0 || a.cache.Len() > 0 {
 			a.uploadBatch(ctx, batch)
 			batch = batch[:0]
 		}
@@ -40,81 +48,87 @@ func (a *Agent) runMetricSender(ctx context.Context) {
 		select {
 		case envelope, ok := <-a.metricsCh:
 			if !ok {
-				flush()
+				flush(ctx)
 				return
 			}
 			batch = append(batch, envelope)
 			if len(batch) >= BatchSize {
-				flush()
+				// Park in the cache rather than sending. Request size is bounded
+				// by maxUploadChunk at the drain now, so the only job left here
+				// is keeping batch from growing between ticks. Sending would
+				// defeat the pacing. After a send blocks on a timeout, metricsCh
+				// holds everything the collectors buffered and draining that
+				// fires several chunks back to back at exactly the moment the
+				// whole fleet is reconnecting.
+				a.cache.Add(batch)
+				batch = batch[:0]
 			}
 
 		case <-ticker.C:
-			flush()
+			flush(ctx)
 
 		case <-ctx.Done():
-			flush()
+			// ctx is cancelled by definition here, and a send on it fails before
+			// the request leaves the process. The final flush needs a live context
+			// or everything collected since the last tick is lost.
+			flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownFlushTimeout)
+			flush(flushCtx)
+			cancel()
 			return
 		}
 	}
 }
 
 func (a *Agent) uploadBatch(ctx context.Context, batch []protocol.Envelope) {
+	// During a backlog, the current batch queues behind it. Once the backlog
+	// clears, the thing being drained is the current batch. The cost is that
+	// live data is delayed for the length of the catch-up (roughly 75s after
+	// an hour-long outage, 30m for a full cache).
+	a.cache.Add(batch)
+
 	// Honor the backoff window. applyBackoff computes backoffUntil, but until
 	// something actually read it every agent kept retrying on the 5s sender
 	// cadence throughout an outage.
 	if !a.backoffUntil.IsZero() && time.Now().Before(a.backoffUntil) {
-		a.cache.Add(batch)
+		return
+	}
+
+	// One chunk per send cycle rather than draining to empty. At maxUploadChunk
+	// out against roughly ten envelopes in, a backlog still clears quickly, but
+	// recovery costs each agent one extra request per SendInterval instead of
+	// hundreds back to back. Backoff jitter only spreads the start of a recovery,
+	// so without this the whole fleet lands on the server at once.
+	chunk := a.cache.DrainN(maxUploadChunk)
+	if len(chunk) == 0 {
 		return
 	}
 
 	url := fmt.Sprintf("%s%s", a.Config.BaseURL, a.Config.MetricsPath)
 
-	// Send cached metrics first, in bounded chunks. The cache holds up to
-	// defaultMaxCacheSize envelopes, which as a single request is megabytes
-	// compressed (too large for the server to bound, and all-or-nothing, so
-	// a failure at 90% costs the entire backlog).
-	for {
-		cached := a.cache.DrainN(maxUploadChunk)
-		if len(cached) == 0 {
-			break
+	switch err := a.postCompressed(ctx, url, chunk); {
+	case err == nil:
+		a.resetBackoff()
+		if remaining := a.cache.Len(); remaining > 0 {
+			a.Logger.Debug("catching up", "sent", len(chunk), "remaining", remaining)
 		}
 
-		switch err := a.postCompressed(ctx, url, cached); {
-		case err == nil:
-			a.Logger.Debug("sent cached metrics", "count", len(cached), "remaining", a.cache.Len())
+	case errors.Is(err, errPayloadEncode), errors.Is(err, errPayloadRejected):
+		// Unsendable. Fails identically on every retry, so it stays drained.
+		// Not a transport failure, so the backoff is left alone. Costs the whole
+		// chunk it travels in. The next cycle is clean, so the gap is one
+		// SendInterval.
+		a.Logger.Error("dropping metrics that cannot be encoded", "count", len(chunk), "error", err)
 
-		case errors.Is(err, errPayloadEncode), errors.Is(err, errPayloadRejected):
-			// Unsendable, so this chunk stays drained. Keep going, the rest of
-			// the cache is almost certainly fine.
-			a.Logger.Error("dropping cached metrics that cannot be encoded", "count", len(batch), "error", err)
-
-		default:
-			a.cache.Requeue(cached)
-			a.cache.Add(batch)
-			a.applyBackoff()
-			a.Logger.Warn("server unreachable",
-				"cache_size", a.cache.Len(),
-				"retry_in", time.Until(a.backoffUntil).Round(time.Second))
-			return
-		}
-	}
-
-	// Send current batch
-	if err := a.postCompressed(ctx, url, batch); err != nil {
-		if errors.Is(err, errPayloadEncode) || errors.Is(err, errPayloadRejected) {
-			a.Logger.Error("dropping metrics that cannot be encoded", "count", len(batch), "error", err)
-			return
-		}
-		a.cache.Add(batch)
+	default:
+		a.cache.Requeue(chunk)
 		a.applyBackoff()
-		a.Logger.Warn("error sending metrics",
+		a.Logger.Warn("server unreachable",
 			"error", err,
 			"cache_size", a.cache.Len(),
+			"cache_bytes", a.cache.Bytes(),
+			"heap_bytes", a.heapBytes(),
 			"retry_in", time.Until(a.backoffUntil).Round(time.Second))
-		return
 	}
-
-	a.resetBackoff()
 }
 
 func (a *Agent) applyBackoff() {
@@ -212,4 +226,32 @@ func (a *Agent) postCompressed(ctx context.Context, url string, batch []protocol
 	}
 
 	return nil
+}
+
+const heapCalibrateEnv = "SPECTRA_HEAP_CALIBRATE"
+
+// heapBytes reports live heap opbjects.
+// func heapBytes() uint64 {
+// 	sample := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
+// 	metrics.Read(sample)
+
+// 	if sample[0].Value.Kind() != metrics.KindUint64 {
+// 		return 0
+// 	}
+// 	return sample[0].Value.Uint64()
+// }
+
+func (a *Agent) heapBytes() uint64 {
+	if a.calibrateHeap {
+		runtime.GC()
+		runtime.GC()
+	}
+
+	sample := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
+	metrics.Read(sample)
+
+	if sample[0].Value.Kind() != metrics.KindUint64 {
+		return 0
+	}
+	return sample[0].Value.Uint64()
 }
