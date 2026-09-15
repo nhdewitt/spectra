@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "../api";
-import { formatBytes } from "../utils";
+import { formatBytes, pivotByGroup, rankGroupsByLatest } from "../utils";
 import { useMetric } from "../hooks/useMetric";
 import { MetricChart, type SeriesDef } from "./MetricChart";
 import type { Anomaly } from "../anomaly";
@@ -13,7 +13,7 @@ import type {
     TemperatureMetric,
 } from "../types";
 import { themeVars } from "../theme";
-import { MetricSelector } from "./ui";
+import { MetricSelector, MetricSeriesSelector } from "./ui";
 import { PiPanels } from "./PiPanels";
 import { MetricDetail, FAMILY_TITLES, type MetricFamily } from "./MetricDetail";
 import {
@@ -107,8 +107,6 @@ interface CPUPanelProps {
     rangeSel: RangeSelection;
 }
 
-type PivotedRow = { time: string; _ts?: number; [sensor: string]: string | number | null | undefined };
-
 type MetricFetcher<T extends { time: string }> = (
     id: string,
     sel?: RangeSelection,
@@ -129,11 +127,6 @@ function useAgentMetricFetcher<T extends { time: string }>(
 function pollInterval(sel: RangeSelection): number {
     if (sel.type === "custom") return 0;
     return ["5m", "15m", "1h"].includes(sel.range) ? 30_000 : 0;
-}
-
-function roundToInterval(iso: string, intervalMs: number): string {
-    const t = new Date(iso).getTime();
-    return new Date(Math.round(t / intervalMs) * intervalMs).toISOString();
 }
 
 const CPU_SERIES: SeriesDef[] = [
@@ -268,51 +261,62 @@ function DiskPanel({ agentId, rangeSel, report, findings }: PanelProps & PanelRe
     useReportFindings("disk", anomalies, report);
  
     const mounts = useMemo(
-        () => [...new Set(data.map((d: DiskMetric) => d.mountpoint))],
+        () => [...new Set(data.map((d: DiskMetric) => d.mountpoint))].sort(),
         [data]
     );
- 
-    const [selected, setSelected] = useState("");
-    const active = mounts.includes(selected) ? selected : mounts[0] ?? "";
- 
-    const filteredData = useMemo(
-        () => data.filter((d: DiskMetric) => d.mountpoint === active),
-        [data, active]
+
+    const pivoted = useMemo(
+        () => pivotByGroup(data, (d: DiskMetric) => d.mountpoint, (d: DiskMetric) => d.used_percent, mounts),
+        [data, mounts]
     );
+
+    const ranked = useMemo(() => rankGroupsByLatest(pivoted, mounts), [pivoted, mounts]);
  
+    // null means "follow the ranking". Once the user picks, their choice sticks even as the ranking moves under it.
+    const [selected, setSelected] = useState<string[] | null>(null);
+
+    const active = useMemo(() => {
+        const chosen = (selected ?? ranked.slice(0, 4)).filter((m) => mounts.includes(m));
+        const base = chosen.length > 0 ? chosen : ranked.slice(0, 4);
+        // Ordered by rank rather than by selection, so a line keeps its color position when a neighboring mount is
+        // toggled off and back on.
+        return ranked.filter((m) => base.includes(m));
+    }, [selected, ranked, mounts]);
+
     const series = useMemo<SeriesDef[]>(
-        () => [{ key: "used_percent", label: active, area: true }],
+        () => active.map((m) => ({ key: m, label: m, area: active.length === 1 })),
         [active]
     );
  
     const diskFormatter = useCallback(
         (v: number, key: string) => {
-            if (key === active) {
-                const latest = filteredData.find((d) => d.used_percent === v);
-                if (latest) {
-                    return `${v.toFixed(1)}% (${formatBytes(latest.free_bytes)} free of ${formatBytes(latest.total_bytes)})`;
+            for (let i = data.length - 1; i >= 0; i--) {
+                const d = data[i] as DiskMetric;
+                if (d.mountpoint === key && d.used_percent === v) {
+                    return `${v.toFixed(1)}% (${formatBytes(d.free_bytes)} free of ${formatBytes(d.total_bytes)})`;
                 }
             }
-            return `${v.toFixed(1)}`;
+            return `${v.toFixed(1)}%`;
         },
-        [filteredData, active]
+        [data]
     );
  
     return (
         <div>
             <StopPropagation>
-                <MetricSelector
-                    label="Mount"
+                <MetricSeriesSelector
+                    label="Mounts"
                     options={mounts}
                     value={active}
                     onChange={setSelected}
+                    max={4}
                 />
             </StopPropagation>
             <MetricChart
                 badge={<FindingsBadge anomalies={findings} />}
                 action={<DetailsHint />}
                 title="Disk Usage"
-                data={filteredData}
+                data={pivoted}
                 loading={loading}
                 error={error}
                 formatter={diskFormatter}
@@ -419,40 +423,15 @@ function TemperaturePanel({ agentId, rangeSel, findings }: PanelProps & PanelRep
     );
  
     const sensors = useMemo(
-        () => [...new Set(data.map((d: TemperatureMetric) => d.sensor))].filter(Boolean) as string[],
+        () => ([...new Set(data.map((d: TemperatureMetric) => d.sensor))].filter(Boolean) as string[]).sort(),
         [data]
     );
  
-    const pivoted = useMemo(() => {
-        const interval = 5000;
-        const byTime = new Map<string, PivotedRow>();
- 
-        for (const d of data) {
-            if (!d.sensor) continue;
-            const key = roundToInterval(d.time, interval);
-            let row = byTime.get(key);
-            if (!row) {
-                row = { time: key };
-                byTime.set(key, row);
-            }
-            row[d.sensor] = d.temperature;
-        }
- 
-        const rows = [...byTime.values()];
-        const last: Record<string, number> = {};
-        for (const row of rows) {
-            for (const s of sensors) {
-                if (row[s] != null) {
-                    last[s] = row[s] as number;
-                } else if (last[s] != null) {
-                    row[s] = last[s];
-                }
-            }
-            row._ts = Date.parse(row.time);
-        }
-        return rows;
-    }, [data, sensors]);
- 
+    const pivoted = useMemo(
+        () => pivotByGroup(data, (d: TemperatureMetric) => d.sensor, (d: TemperatureMetric) => d.temperature, sensors),
+        [data, sensors]
+    );
+
     const series = useMemo<SeriesDef[]>(
         () => sensors.map((s) => ({ key: s, label: s })),
         [sensors]

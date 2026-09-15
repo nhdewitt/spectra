@@ -137,7 +137,7 @@ describe('MetricsTab', () => {
         ])
     })
 
-    it('DiskPanel: auto-selects the first mount and filters data to it', async () => {
+    it('DiskPanel: pivots every mount into one row per interval', async () => {
         mocks.disk.mockResolvedValue([
             makeDisk({ mountpoint: '/', used_percent: 50 }),
             makeDisk({ mountpoint: '/data', used_percent: 80 }),
@@ -146,27 +146,80 @@ describe('MetricsTab', () => {
         render(<MetricsTab agentId="agent-1" rangeSel={oneHour} cores={4} />)
         await waitFor(() => expect(chartFor('Disk Usage').data.length).toBeGreaterThan(0))
 
-        expect(chartFor('Disk Usage').data).toHaveLength(1)
-        expect((chartFor('Disk Usage').data[0] as DiskMetric).mountpoint).toBe('/')
+        // Both samples share a timestamp, so they collapse into one row holding
+        // a column per mount rather than two rows filtered down to one.
+        const rows = chartFor('Disk Usage').data as unknown as Record<string, unknown>[]
+        expect(rows).toHaveLength(1)
+        const row = rows[0] as Record<string, unknown>
+        expect(row['/']).toBe(50)
+        expect(row['/data']).toBe(80)
     })
 
-    it('DiskPanel: switching mounts via the selector refilters the chart data', async () => {
+    // Ranking on the latest value is what puts a mount that just filled up at
+    // the top of the chart instead of wherever the query happened to order it.
+    it('DiskPanel: draws the fullest mount first', async () => {
         mocks.disk.mockResolvedValue([
             makeDisk({ mountpoint: '/', used_percent: 50 }),
             makeDisk({ mountpoint: '/data', used_percent: 80 }),
         ])
 
         render(<MetricsTab agentId="agent-1" rangeSel={oneHour} cores={4} />)
-        await waitFor(() => expect(screen.getByText('Mount:')).toBeInTheDocument())
+        await waitFor(() => expect(chartFor('Disk Usage').series.length).toBeGreaterThan(0))
 
-        fireEvent.change(screen.getByDisplayValue('/'), { target: { value: '/data' } })
+        expect(chartFor('Disk Usage').series.map((s) => s.key)).toEqual(['/data', '/'])
+    })
+
+    it('DiskPanel: shows at most four mounts by default', async () => {
+        mocks.disk.mockResolvedValue([
+            makeDisk({ mountpoint: '/a', used_percent: 10 }),
+            makeDisk({ mountpoint: '/b', used_percent: 20 }),
+            makeDisk({ mountpoint: '/c', used_percent: 30 }),
+            makeDisk({ mountpoint: '/d', used_percent: 40 }),
+            makeDisk({ mountpoint: '/e', used_percent: 50 }),
+            makeDisk({ mountpoint: '/f', used_percent: 60 }),
+        ])
+
+        render(<MetricsTab agentId="agent-1" rangeSel={oneHour} cores={4} />)
+        await waitFor(() => expect(chartFor('Disk Usage').series.length).toBeGreaterThan(0))
+
+        expect(chartFor('Disk Usage').series.map((s) => s.key)).toEqual(['/f', '/e', '/d', '/c'])
+    })
+
+    it('DiskPanel: toggling a mount off drops its series', async () => {
+        mocks.disk.mockResolvedValue([
+            makeDisk({ mountpoint: '/', used_percent: 50 }),
+            makeDisk({ mountpoint: '/data', used_percent: 80 }),
+        ])
+
+        render(<MetricsTab agentId="agent-1" rangeSel={oneHour} cores={4} />)
+        await waitFor(() => expect(chartFor('Disk Usage').series.length).toBe(2))
+
+        fireEvent.click(screen.getByRole('button', { name: '/' }))
 
         await waitFor(() =>
-            expect((chartFor('Disk Usage').data[0] as DiskMetric).mountpoint).toBe('/data')
+            expect(chartFor('Disk Usage').series.map((s) => s.key)).toEqual(['/data'])
         )
     })
 
-    it('DiskPanel: formatter shows free/total bytes for the active mount, and a bare percentage otherwise', async () => {
+    // An empty chart is indistinguishable from one that failed to load, so the
+    // last remaining series must refuse to switch off.
+    it('DiskPanel: will not let the last mount be switched off', async () => {
+        mocks.disk.mockResolvedValue([
+            makeDisk({ mountpoint: '/', used_percent: 50 }),
+            makeDisk({ mountpoint: '/data', used_percent: 80 }),
+        ])
+
+        render(<MetricsTab agentId="agent-1" rangeSel={oneHour} cores={4} />)
+        await waitFor(() => expect(chartFor('Disk Usage').series.length).toBe(2))
+
+        fireEvent.click(screen.getByRole('button', { name: '/' }))
+        await waitFor(() => expect(chartFor('Disk Usage').series.length).toBe(1))
+
+        fireEvent.click(screen.getByRole('button', { name: '/data' }))
+        expect(chartFor('Disk Usage').series.map((s) => s.key)).toEqual(['/data'])
+    })
+
+    it('DiskPanel: formatter shows free/total bytes for a mount, and a bare percentage otherwise', async () => {
         mocks.disk.mockResolvedValue([makeDisk({ mountpoint: '/', used_percent: 50, free_bytes: 512, total_bytes: 1024 })])
 
         render(<MetricsTab agentId="agent-1" rangeSel={oneHour} cores={4} />)
@@ -174,7 +227,7 @@ describe('MetricsTab', () => {
 
         const formatter = chartFor('Disk Usage').formatter!
         expect(formatter(50, '/')).toBe('50.0% (512.0 B free of 1.0 KB)')
-        expect(formatter(50, 'unrelated-key')).toBe('50.0')
+        expect(formatter(50, 'unrelated-key')).toBe('50.0%')
     })
 
     it('does not show the mount selector when there is only one mount', async () => {
@@ -183,7 +236,7 @@ describe('MetricsTab', () => {
         render(<MetricsTab agentId="agent-1" rangeSel={oneHour} cores={4} />)
         await waitFor(() => expect(chartFor('Disk Usage').data.length).toBeGreaterThan(0))
 
-        expect(screen.queryByText('Mount:')).not.toBeInTheDocument()
+        expect(screen.queryByText(/Mounts/)).not.toBeInTheDocument()
     })
 
     it('NetworkPanel: auto-selects the interface with the most total traffic', async () => {

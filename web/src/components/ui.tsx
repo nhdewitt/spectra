@@ -217,6 +217,90 @@ export function MetricSelector({
     );
 }
 
+/**
+ * Toggles which series a chart draws.
+ * 
+ * Never lets the selection empty out. `max` caps how many can be on at once,
+ * since past roughly half a dozen lines the chart stops being radable and
+ * the colors start repeating.
+ */
+export function MetricSeriesSelector({
+    label,
+    options,
+    value,
+    onChange,
+    max,
+}: {
+    label: string;
+    options: string[];
+    value: string[];
+    onChange: (v: string[]) => void;
+    max?: number;
+}) {
+    if (options.length <= 1) return null;
+
+    const toggle = (o: string) => {
+        if (value.includes(o)) {
+            if (value.length === 1) return;
+            onChange(value.filter((v) => v !== o));
+            return;
+        }
+        if (max !== undefined && value.length >= max) return;
+        onChange([...options].filter((x) => value.includes(x) || x === o));
+    };
+
+    const atLimit = max !== undefined && value.length >= max;
+
+    return (
+        <div
+            style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                flexWrap: "wrap",
+                marginBottom: 8,
+            }}
+        >
+            <span
+                style={{
+                    fontSize: 11,
+                    fontFamily: themeVars.font,
+                    color: themeVars.textDim,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                }}
+            >
+                {label}:
+            </span>
+            {options.map((o) => {
+                const on = value.includes(o);
+                const blocked = !on && atLimit;
+                return (
+                    <button
+                        key={o}
+                        onClick={() => toggle(o)}
+                        disabled={blocked}
+                        title={blocked ? `At most ${max} at once` : undefined}
+                        style={{
+                            fontSize: 11,
+                            fontFamily: themeVars.font,
+                            color: on ? themeVars.text : themeVars.textMuted,
+                            background: on ? themeVars.surfaceHover : "transparent",
+                            border: `1px solid ${on ? themeVars.accent : themeVars.border}`,
+                            borderRadius: 3,
+                            padding: "2px 7px",
+                            cursor: blocked ? "not-allowed" : "pointer",
+                            opacity: blocked ? 0.4 : 1,
+                        }}
+                    >
+                        {o}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 export function InstructionBlock({
     title,
     steps,

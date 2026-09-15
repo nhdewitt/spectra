@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { api } from "../api";
-import { formatBytes, formatNetworkRate } from "../utils";
+import { formatBytes, formatNetworkRate, pivotByGroup, rankGroupsByLatest } from "../utils";
 import { useMetric, withChartMeta } from "../hooks/useMetric";
 import { useThresholds } from "../ThresholdsContext";
 import { MetricChart, type SeriesDef } from "./MetricChart";
-import { MetricSelector, StatBlock, LoadingSpinner } from "./ui";
+import { MetricSelector, StatBlock, LoadingSpinner, MetricSeriesSelector } from "./ui";
 import { AnomalyBanner } from "./AnomalyBanner";
 import { themeVars } from "../theme";
 import type { Anomaly } from "../anomaly";
@@ -340,7 +340,7 @@ function DiskDetail({ agentId, rangeSel }: DetailProps) {
 	const thresholds = useThresholds();
 
 	const mounts = useMemo(
-		() => [...new Set(data.map((d: DiskMetric) => d.mountpoint))],
+		() => [...new Set(data.map((d: DiskMetric) => d.mountpoint))].sort(),
 		[data]
 	);
 	const [selected, setSelected] = useState("");
@@ -353,6 +353,31 @@ function DiskDetail({ agentId, rangeSel }: DetailProps) {
 	const latest = rows.length > 0 ? rows[rows.length - 1] : null;
 
 	const anomalies = useMemo<Anomaly[]>(() => diskAnomalies(rows, thresholds), [rows, thresholds]);
+
+    // The chart compares mounts. The facts, inodes, and anomalies below stay scoped to the one mount
+    // picked above, since every one of them is a property of a single filesystem rather than something
+    // to overlay.
+    const pivoted = useMemo(
+        () => pivotByGroup(data, (d: DiskMetric) => d.mountpoint, (d: DiskMetric) => d.used_percent, mounts),
+        [data, mounts]
+    );
+
+    const ranked = useMemo(() => rankGroupsByLatest(pivoted, mounts), [pivoted, mounts]);
+
+    const [compared, setCompared] = useState<string[] | null>(null);
+
+    const comparedActive = useMemo(() => {
+        const chosen = (compared ?? ranked.slice(0, 6)).filter((m) => mounts.includes(m));
+        const base = chosen.length > 0 ? chosen : ranked.slice(0, 6);
+        // Ordered by rank rather than by selection, so a line keeps its color position when a neighboring
+        // mount is toggled off and back on.
+        return ranked.filter((m) => base.includes(m));
+    }, [compared, ranked, mounts]);
+
+    const spaceSeries = useMemo<SeriesDef[]>(
+        () => comparedActive.map((m) => ({ key: m, label: m, area: comparedActive.length === 1 })),
+        [comparedActive]
+    );
 
     return (
         <div>
@@ -370,15 +395,23 @@ function DiskDetail({ agentId, rangeSel }: DetailProps) {
                     <StatBlock label="Inodes Used" value={`${latest.inodes_used} / ${latest.inodes_total}`} />
                 </FactRow>
             )}
+
+            <MetricSeriesSelector
+                label="Compare"
+                options={mounts}
+                value={comparedActive}
+                onChange={setCompared}
+                max={6}
+            />
  
             <MetricChart
                 title="Space Used"
-                data={rows}
+                data={pivoted}
                 loading={loading}
                 error={error}
                 unit="%"
                 yDomain={[0, 100]}
-                series={[{ key: "used_percent", label: active || "Used", area: true }]}
+                series={spaceSeries}
                 rangeSel={rangeSel}
                 refLines={[
                     { y: thresholds.disk_warn, label: "warn", color: themeVars.warn },
@@ -430,7 +463,7 @@ function DiskIODetail({ agentId, rangeSel }: DetailProps) {
 	const { data, loading, error } = useAgentMetric(agentId, api.agentDiskIO, rangeSel);
 
 	const devices = useMemo(
-		() => [...new Set(data.map((d: DiskIOMetric) => d.device))].filter(Boolean),
+		() => [...new Set(data.map((d: DiskIOMetric) => d.device))].filter(Boolean).sort(),
 		[data]
 	);
 	const [selected, setSelected] = useState("");
@@ -613,7 +646,7 @@ function TemperatureDetail({ agentId, rangeSel }: DetailProps) {
 	const thresholds = useThresholds();
 
 	const sensors = useMemo(
-		() => [...new Set(data.map((d) => d.sensor))].filter(Boolean) as string[],
+		() => ([...new Set(data.map((d) => d.sensor))].filter(Boolean) as string[]).sort(),
 		[data]
 	);
 
