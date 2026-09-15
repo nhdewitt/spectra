@@ -1,7 +1,15 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { api } from "../api";
 import { themeVars } from "../theme";
-import { formatBytes, levelColor, logEntrySpan, severityOrder, statusColor } from "../utils";
+import {
+	formatBytes,
+	levelColor,
+	logEntrySpan,
+	severityOrder,
+	statusColor,
+	LOG_LEVELS,
+	LOG_RANGES,
+} from "../utils";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "../components/ui";
 import type { OverviewAgent, CommandResponse, CommandEntry } from "../types";
 import { Pagination, usePagination } from "../hooks/usePagination";
@@ -131,8 +139,6 @@ const inputStyle: React.CSSProperties = {
 	background: themeVars.surface,
 	border: `1px solid ${themeVars.border}`,
 };
-
-const LOG_LEVELS = ["DEBUG", "INFO", "NOTICE", "WARNING", "ERROR", "CRITICAL", "ALERT", "EMERGENCY"];
 
 function LogResultsInline({ entries }: { entries: LogEntry[] }) {
 	const [activeLevel, setActiveLevel] = useState<string | null>(null);
@@ -597,6 +603,7 @@ export function Diagnostics({ selectedAgent, onSelectAgent }: DiagnosticsProps) 
 	const [diskPath, setDiskPath] = useState("");
 	const [diskTopN, setDiskTopN] = useState(20);
 	const [logLevel, setLogLevel] = useState("WARNING");
+	const [logHours, setLogHours] = useState(0);
 
 	const [results, setResults] = useState<Record<string, CommandEntry>>({});
 
@@ -1025,6 +1032,20 @@ export function Diagnostics({ selectedAgent, onSelectAgent }: DiagnosticsProps) 
                                     ))}
                                 </select>
                             </div>
+							<div>
+								<div style={{ fontSize: 10, fontFamily: themeVars.font, color: themeVars.textDim, marginBottom: 4 }}>
+									Time Range
+								</div>
+								<select
+									value={logHours}
+									onChange={(e) => setLogHours(Number(e.target.value))}
+									style={{ ...inputStyle, width: 160, cursor: "pointer" }}
+								>
+									{LOG_RANGES.map((r) => (
+										<option key={r.hours} value={r.hours}>{r.label}</option>
+									))}
+								</select>
+							</div>
                             <button
                                 onClick={() =>
                                     runCommand("logs", () =>

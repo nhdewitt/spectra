@@ -9,7 +9,9 @@ import {
     formatNetworkRate,
     levelColor,
     severityOrder,
-    logEntrySpan
+    logEntrySpan,
+    logRangeStart,
+    LOG_RANGES
 } from '../utils';
 import { themeVars } from '../theme';
 import type { LogEntry, OverviewAgent } from '../types';
@@ -280,7 +282,7 @@ describe('levelColor', () => {
     })
 
     // An unrecognized level must read as "no opinion" rather than borrowing a
-    // severity colour, so a value the agent adds later is not shown as benign.
+    // severity color, so a value the agent adds later is not shown as benign.
     it('falls back to muted for unknown levels', () => {
         expect(levelColor('INFO')).toBe(themeVars.textMuted)
         expect(levelColor('DEBUG')).toBe(themeVars.textMuted)
@@ -344,5 +346,28 @@ describe('logEntrySpan', () => {
 
     it('falls back to the bare count when first_seen is missing', () => {
         expect(logEntrySpan({ ...base, count: 4 })).toBe('4\u00d7')
+    })
+})
+
+describe('logRangeStart', () => {
+    const now = new Date('2026-09-14T12:00:00.000Z')
+
+    // Zero is the default the panel opens on, and it has to mean "send no
+    // bound at all" - a Date here would silently filter a screen that has
+    // always shown everything the agent had.
+    it('returns undefined for an unbounded range', () => {
+        expect(logRangeStart(0, now)).toBeUndefined()
+        expect(logRangeStart(-1, now)).toBeUndefined()
+    })
+
+    it('subtracts the range from now', () => {
+        expect(logRangeStart(1, now)?.toISOString()).toBe('2026-09-14T11:00:00.000Z')
+        expect(logRangeStart(24, now)?.toISOString()).toBe('2026-09-13T12:00:00.000Z')
+        expect(logRangeStart(168, now)?.toISOString()).toBe('2026-09-07T12:00:00.000Z')
+    })
+
+    it('offers exactly one unbounded option, listed first', () => {
+        expect(LOG_RANGES.filter((r) => r.hours <= 0)).toHaveLength(1)
+        expect(LOG_RANGES[0]!.hours).toBe(0)
     })
 })

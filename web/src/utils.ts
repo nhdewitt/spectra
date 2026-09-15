@@ -325,3 +325,113 @@ export function logEntrySpan(e: LogEntry): string {
     });
     return `${e.count}× since ${first}`;
 }
+
+/** Severity options for a log fetch, most verbose first. */
+export const LOG_LEVELS = [
+    "DEBUG",
+    "INFO",
+    "NOTICE",
+    "WARNING",
+    "ERROR",
+    "CRITICAL",
+    "ALERT",
+    "EMERGENCY",
+];
+
+/**
+ * Time ranges for a log fetch. Zero hours means no lower bound, which is
+ * what the agent did before LogRequest carried one. journalctl runs with
+ * -b and the Windows query floors at boot, so "since boot" is a description
+ * of the default rather than a filter.
+ */
+export const LOG_RANGES: { label: string; hours: number }[] = [
+    { label: "Since boot", hours: 0 },
+    { label: "Last hour", hours: 1 },
+    { label: "Last 24 hours", hours: 24 },
+    { label: "Last 7 days", hours: 168 },
+];
+
+/** Lower bound for a log fetch, or undefined when the range is unbounded. */
+export function logRangeStart(hours: number, now: Date = new Date()): Date | undefined {
+    if (hours <= 0) return undefined;
+    return new Date(now.getTime() - hours * 3600 * 1000);
+}
+
+/** A chart row keyed by time, with one column per group. */
+export type PivotRow = {
+    time: string;
+    _ts?: number;
+    [group: string]: string | number | null | undefined;
+};
+
+/** Snaps a timestamp to a bucket so rows from different groups line up. */
+export function roundToInterval(iso: string, intervalMs: number): string {
+    const t = new Date(iso).getTime();
+    return new Date(Math.round(t / intervalMs) * intervalMs).toISOString();
+}
+
+/**
+ * Turns long-form metric rows into one chart row per interval, with a column per group.
+ * 
+ * Groups are forward-filled. Collectors report independently, so a bucket a group missed
+ * would otherwise break its line rather than continue it.
+ */
+export function pivotByGroup<T extends { time: string }>(
+    rows: T[],
+    groupOf: (row: T) => string | null | undefined,
+    valueOf: (row: T) => number | null | undefined,
+    groups: string[],
+    intervalMs = 5000,
+): PivotRow[] {
+    const byTime = new Map<string, PivotRow>();
+
+    for (const r of rows) {
+        const group = groupOf(r);
+        if (!group) continue;
+
+        const key = roundToInterval(r.time, intervalMs);
+        let row = byTime.get(key);
+        if (!row) {
+            row = { time: key };
+            byTime.set(key, row);
+        }
+        row[group] = valueOf(r);
+    }
+
+    const out = [...byTime.values()];
+    const last: Record<string, number> = {};
+
+    for (const row of out) {
+        for (const g of groups) {
+            const v = row[g];
+            if (v != null) {
+                last[g] = v as number;
+            } else if (last[g] != null) {
+                row[g] = last[g];
+            }
+        }
+        row._ts = Date.parse(row.time);
+    }
+
+    return out;
+}
+
+/**
+ * Orders groups by their most recent value, highest first.
+ * 
+ * Used to pick which series to show by default. Ranking on the latest value
+ * rather than the average means a mount that just filled up is visible immediately
+ * instead of after it has skewed its own average.
+ */
+export function rankGroupsByLatest(pivoted: PivotRow[], groups: string[]): string[] {
+    const latest: Record<string, number> = {};
+
+    for (const row of pivoted) {
+        for (const g of groups) {
+            const v = row[g];
+            if (typeof v === "number") latest[g] = v;
+        }
+    }
+
+    return [...groups].sort((a, b) => (latest[b] ?? -Infinity) - (latest[a] ?? -Infinity));
+}

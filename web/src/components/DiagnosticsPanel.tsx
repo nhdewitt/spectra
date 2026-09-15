@@ -1,6 +1,14 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { api } from "../api";
-import { copyToClipboard, formatBytes, levelColor, logEntrySpan, severityOrder } from "../utils";
+import {
+    copyToClipboard,
+    formatBytes,
+    levelColor,
+    logEntrySpan,
+    severityOrder,
+    LOG_LEVELS,
+    LOG_RANGES,
+} from "../utils";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "./ui";
 import { themeVars } from "../theme";
 import type { CommandResponse, CommandEntry, LogEntry } from "../types";
@@ -909,8 +917,7 @@ export function DiagnosticsPanel({ agentId }: DiagnosticsPanelProps) {
     const [diskPath, setDiskPath] = useState("");
     const [diskTopN, setDiskTopN] = useState(20);
     const [logLevel, setLogLevel] = useState("WARNING");
-
-    const LOG_LEVELS = ["DEBUG", "INFO", "NOTICE", "WARNING", "ERROR", "CRITICAL", "ALERT", "EMERGENCY"];
+    const [logHours, setLogHours] = useState(0);
 
     const { entry, error: pollError } = useCommandPoller(activeCmd);
 
@@ -985,6 +992,20 @@ export function DiagnosticsPanel({ agentId }: DiagnosticsPanelProps) {
                     }}
                 >
                     {LOG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+                <select
+                    value={logHours}
+                    onChange={(e) => setLogHours(Number(e.target.value))}
+                    disabled={isRunning}
+                    style={{
+                        ...inputStyle, width: 150, fontSize: 11, padding: "5px 8px",
+                        letterSpacing: "0.03em",
+                        opacity: isRunning ? 0.5 : 1,
+                    }}
+                >
+                    {LOG_RANGES.map((r) => (
+                        <option key={r.hours} value={r.hours}>{r.label}</option>
+                    ))}
                 </select>
                 <button
                     onClick={() => runCommand(() => api.triggerLogs(agentId, logLevel), "logs")}
