@@ -106,7 +106,7 @@ func buildDiskIOMetric(device string, curr, prev IORaw, elapsed float64) protoco
 	readLatency := AwaitMs(readTimeDelta, readOpsDelta)
 	writeLatency := AwaitMs(writeTimeDelta, writeOpsDelta)
 	readBusy := BusyPct(readTimeDelta, elapsed)
-	writeBusy := BusyPct(readTimeDelta, elapsed)
+	writeBusy := BusyPct(writeTimeDelta, elapsed)
 
 	return protocol.DiskIOMetric{
 		Device:     device,
