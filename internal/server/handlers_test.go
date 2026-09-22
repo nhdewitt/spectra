@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nhdewitt/spectra/internal/database"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
@@ -853,4 +854,48 @@ func (d *failingCacheDB) UpsertCurrentCPU(ctx context.Context, p database.Upsert
 // be called and the batch would succeed.
 func (d *failingWriteDB) WithMetricTx(ctx context.Context, fn func(MetricWriter) error) error {
 	return d.MockDB.RunMetricTx(ctx, d, fn)
+}
+
+// --- Command results ---
+// The endpoints that queue a diagnostic (POST /api/v1/admin/logs, /disk,
+// /network) are all admin-gated, but the endpoint that returns the result was
+// only behind requireUserAuth. A viewer holding a command ID could read host
+// logs, mount paths and network configuration. The IDs are random UUIDs, so
+// this was never enumerable -- the point is that a leaked ID should not
+// promote a read-only account into a reader of admin-only diagnostics.
+
+const testCommandID = "3f8a1c2e-0b44-4d6f-9a17-5e2c8d7b6a30"
+
+func TestGetCommandResult_RejectsViewer(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSessionWithRole(mock, testViewerToken, "test-viewer", RoleViewer, testViewerIP, pgtype.UUID{})
+
+	s.Commands.Track(testCommandID, protocol.CmdFetchLogs, testAgentUUID)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/commands/"+testCommandID, nil)
+	req = authedRequestAs(req, testViewerToken, testViewerIP)
+
+	rec := httptest.NewRecorder()
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("GET command result as viewer: got %d, want 403", rec.Code)
+	}
+}
+
+// The positive control. Without it, blanket-denying the route would look like
+// a fix.
+func TestGetCommandResult_AllowsAdmin(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupTestSession(mock)
+
+	s.Commands.Track(testCommandID, protocol.CmdFetchLogs, testAgentUUID)
+
+	req := authedRequest(httptest.NewRequest(http.MethodGet, "/api/v1/admin/commands/"+testCommandID, nil))
+	rec := httptest.NewRecorder()
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET command result as admin: got %d, want 200", rec.Code)
+	}
 }

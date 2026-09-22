@@ -173,7 +173,6 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/applications", s.requireUserAuth(s.rateLimitAuthed(s.handleGetApplications)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/updates", s.requireUserAuth(s.rateLimitAuthed(s.handleGetUpdates)))
 	s.Router.HandleFunc("GET /api/v1/agents/{id}/system/latest", s.requireUserAuth(s.rateLimitAuthed(s.handleGetLatestSystem)))
-	s.Router.HandleFunc("GET /api/v1/admin/commands/{id}", s.requireUserAuth(s.rateLimitAuthed(s.handleGetCommandResult)))
 	s.Router.HandleFunc("GET /api/v1/overview/heatmap", s.requireUserAuth(s.rateLimitAuthed(s.handleFleetHeatmap)))
 
 	// Provision (user auth, authed rate limit)
@@ -210,6 +209,7 @@ func (s *Server) routes() {
 	s.Router.HandleFunc("POST /api/v1/admin/logs", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleAdminTriggerLogs))))
 	s.Router.HandleFunc("POST /api/v1/admin/disk", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleAdminTriggerDisk))))
 	s.Router.HandleFunc("POST /api/v1/admin/network", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleAdminTriggerNetwork))))
+	s.Router.HandleFunc("GET /api/v1/admin/commands/{id}", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleGetCommandResult))))
 	s.Router.HandleFunc("POST /api/v1/admin/tokens", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleGenerateToken))))
 	s.Router.HandleFunc("POST /api/v1/admin/provision", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handleProvision))))
 	s.Router.HandleFunc("POST /api/v1/admin/agents/purge", s.requireUserAuth(s.rateLimitAuthed(requireRole(RoleAdmin)(s.handlePurgeOfflineAgents))))
