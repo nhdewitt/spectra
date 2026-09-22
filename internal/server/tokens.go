@@ -25,12 +25,29 @@ func NewTokenStore() *TokenStore {
 	}
 }
 
+// pruneLocked drops tokens that can never succeed again. Generation
+// is admin-only and rate limited, so the map is small and a full scan
+// on each write is cheaper than a background sweeper. Without it,
+// nothing but RevokeAll ever releases an entry and the map grows for
+// the life of the process.
+//
+// Callers must hold ts.mu.
+func (ts *TokenStore) pruneLocked(now time.Time) {
+	for k, t := range ts.tokens {
+		if t.Used || now.After(t.ExpiresAt) {
+			delete(ts.tokens, k)
+		}
+	}
+}
+
 func (ts *TokenStore) Generate(ttl time.Duration) string {
 	token := uuid.New().String()
 	now := time.Now()
 
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
+
+	ts.pruneLocked(now)
 
 	ts.tokens[token] = &RegistrationToken{
 		Token:     token,
@@ -45,8 +62,14 @@ func (ts *TokenStore) Validate(token string) bool {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
+	// Pruning first rather than last leaves the token being validated
+	// in the map until the next write, so Peek behavior is unchanged
+	// within a call.
+	now := time.Now()
+	ts.pruneLocked(now)
+
 	t, ok := ts.tokens[token]
-	if !ok || t.Used || time.Now().After(t.ExpiresAt) {
+	if !ok || t.Used || now.After(t.ExpiresAt) {
 		return false
 	}
 
