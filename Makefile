@@ -44,20 +44,48 @@ PLATFORMS = \
 	freebsd/amd64/ \
 	windows/amd64/
 
-.PHONY: release build-server build-setup build-seed setup deploy-server deploy-releases deploy clean
+.PHONY: release build-server build-setup build-seed build-pprof build-agent-prof setup deploy-server deploy-releases deploy clean
 
 build-server:
 	@mkdir -p $(RELEASE_DIR)
 	cd web && npm ci && npm run build
-	go build -ldflags "$(BASE_LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-server ./cmd/server
+	CGO_ENABLED=0 go build -ldflags "$(BASE_LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-server ./cmd/server
 
 build-setup:
 	@mkdir -p $(RELEASE_DIR)
-	go build -ldflags "$(BASE_LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-setup ./cmd/setup
+	CGO_ENABLED=0 go build -ldflags "$(BASE_LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-setup ./cmd/setup
 
 build-seed:
 	@mkdir -p $(RELEASE_DIR)
-	go build -ldflags "$(BASE_LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-seed ./cmd/seed
+	CGO_ENABLED=0 go build -ldflags "$(BASE_LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-seed ./cmd/seed
+
+build-pprof:
+	@mkdir -p $(RELEASE_DIR)
+	CGO_ENABLED=0 go build -ldflags "$(BASE_LDFLAGS)" -trimpath -o $(RELEASE_DIR)/spectra-pprof ./cmd/spectra-pprof
+
+# Profiling agent. Deliberately written outside $(RELEASE_DIR) and under a
+# different name: anything matching spectra-agent-<goos>-<arch> in there is
+# what an update push sends to every host on that platform, and $(RELEASE_DIR)
+# is wiped by `make release` anyway.
+#
+# Defaults to the build host. Cross-compile by overriding:
+#   make build-agent-prof PROF_GOARCH=arm PROF_GOARM=7
+PROF_GOOS   ?= $(shell go env GOOS)
+PROF_GOARCH ?= $(shell go env GOARCH)
+PROF_GOARM  ?=
+PROF_NAME = spectra-agent-prof-$(PROF_GOOS)-$(PROF_GOARCH)$(if $(PROF_GOARM),v$(PROF_GOARM),)
+
+build-agent-prof:
+	@if [ -n "$(PROF_GOARM)" ] && [ "$(PROF_GOARCH)" != "arm" ]; then \
+		echo "GOARM applies only to GOARCH=arm; got PROF_GOARCH=$(PROF_GOARCH)."; \
+		echo "Use PROF_GOARCH=arm PROF_GOARM=$(PROF_GOARM), or drop PROF_GOARM."; \
+		exit 1; \
+	fi
+	@mkdir -p dist
+	GOOS=$(PROF_GOOS) GOARCH=$(PROF_GOARCH) GOARM=$(PROF_GOARM) CGO_ENABLED=0 \
+		go build -tags spectraprof -ldflags "$(AGENT_LDFLAGS)" -trimpath \
+		-o dist/$(PROF_NAME) ./cmd/agent
+	@echo "  Built dist/$(PROF_NAME) - copy to the host by hand."
 
 # setup — first-time stand-up. Builds binaries, installs them + the systemd unit,
 # then runs spectra-setup (which configures DB/admin/key and starts the service).
@@ -125,6 +153,14 @@ deploy-server:
 	fi
 	@echo "  Server deployed and running."
 
+# CGO_ENABLED=0 on every non-darwin build. There is no cgo source outside the
+# two darwin collectors, but with cgo on the standard library uses getaddrinfo
+# and getpwnam, which link the build host's glibc and produce binaries that
+# refuse to start on an older one. A native linux/amd64 build is the case that
+# bites: the other platforms cross-compile, which disables cgo anyway.
+#
+# The darwin legs below are deliberately left alone -- they want cgo when it is
+# available, and already fall back explicitly when it is not.
 release: clean
 	@mkdir -p $(RELEASE_DIR)
 	@rm -f $(RELEASE_DIR)/checksums.sha256
@@ -154,7 +190,7 @@ release: clean
 		name="spectra-agent-$$os-$$arch"; \
 		if [ -n "$$arm" ]; then name="spectra-agent-$$os-armv$$arm"; fi; \
 		echo "  BUILD	$$name$$ext"; \
-		GOOS=$$os GOARCH=$$arch GOARM=$$arm \
+		GOOS=$$os GOARCH=$$arch GOARM=$$arm CGO_ENABLED=0 \
 			go build -ldflags="$(AGENT_LDFLAGS)" -trimpath \
 			-o $(RELEASE_DIR)/$$name$$ext $(AGENT_SRC) || exit 1; \
 		$(SHASUM) $(RELEASE_DIR)/$$name$$ext >> $(RELEASE_DIR)/checksums.sha256; \

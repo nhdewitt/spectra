@@ -74,6 +74,11 @@ jobs:
         if: runner.os == 'Linux'
         run: go test -race ./...
 
+      - name: Build and test profiling agent
+        run: |
+          go build -tags spectraprof ./cmd/agent
+          go test -tags spectraprof ./internal/agent/...
+
   security:
     needs: build-frontend
     runs-on: ubuntu-latest

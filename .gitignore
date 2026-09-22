@@ -34,3 +34,5 @@ server.json
 perf/node_modules/
 perf/*.png
 web/coverage/*
+dist/
+profile*.ps
