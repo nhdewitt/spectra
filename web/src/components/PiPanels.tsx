@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { api } from "../api";
 import { formatBytes } from "../utils";
-import { useMetric } from "../hooks/useMetric";
+import { useMetric } from "../hooks";
 import { MetricChart, type SeriesDef } from "./MetricChart";
 import { themeVars } from "../theme";
 import type { PiMetric, RangeSelection } from "../types";

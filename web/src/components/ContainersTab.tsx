@@ -1,8 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { api } from "../api";
 import { formatBytes } from "../utils";
-import { useMetric } from "../hooks/useMetric";
-import { usePolling } from "../hooks/usePolling";
+import { useMetric, usePolling } from "../hooks";
 import {
     tableHeaderStyle,
     tableCellStyle,

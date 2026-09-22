@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import { usePolling } from "../hooks/usePolling";
-import { usePagination, Pagination } from "../hooks/usePagination";
+import { usePolling, usePagination, Pagination } from "../hooks";
 import { tableHeaderStyle, tableCellStyle, LoadingSpinner } from "./ui";
 import { themeVars } from "../theme";
 import type { Service } from "../types";

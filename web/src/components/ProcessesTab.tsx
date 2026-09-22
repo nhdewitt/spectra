@@ -1,8 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { api } from "../api";
 import { formatBytes } from "../utils";
-import { usePolling } from "../hooks/usePolling";
-import { usePagination, Pagination } from "../hooks/usePagination";
+import { usePolling, usePagination, Pagination } from "../hooks";
 import {
     MetricSelector,
     tableHeaderStyle,

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { api, HttpError } from "../api";
 import { themeVars } from "../theme";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "../components/ui";
-import { usePagination, Pagination } from "../hooks/usePagination";
+import { usePagination, Pagination } from "../hooks";
 import type {
 	User,
 	Agent,

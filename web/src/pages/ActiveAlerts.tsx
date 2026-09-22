@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../api";
 import { themeVars } from "../theme";
-import { usePolling } from "../hooks";
-import { usePagination, Pagination } from "../hooks/usePagination";
+import { usePolling, usePagination, Pagination } from "../hooks";
 import { timeAgo } from "../utils";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "../components/ui";
 import type { AlertEvent, ConditionType, AgentOfflineSnapshot, DiskPredictionSnapshot, ServiceDownSnapshot } from "../types";

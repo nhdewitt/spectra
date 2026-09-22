@@ -10,7 +10,7 @@ import {
     LoadingSpinner,
     InstructionBlock,
 } from "../components/ui";
-import { usePagination, Pagination } from "../hooks/usePagination";
+import { usePagination, Pagination } from "../hooks";
 import { themeVars } from "../theme";
 import type { DiskMetric, NetworkMetric, OverviewAgent, PlatformInfo, ProvisionResponse, User } from "../types";
 

@@ -1,3 +1,12 @@
+export { useAgentSearch } from "./useAgentSearch";
+export { useMetric, withChartMeta, CHART_META_KEYS } from "./useMetric";
+export { useNavigation } from "./useNavigation";
+export type { Navigation } from "./useNavigation";
+export { usePagination, Pagination } from "./usePagination";
 export { usePolling } from "./usePolling";
+export { useSession } from "./useSession";
+export type { Session } from "./useSession";
 export { useSparkHistory } from "./useSparkHistory";
 export type { SparkData } from "./useSparkHistory";
+export { useStarredAgents } from "./useStarredAgents";
+export type { StarredAgents } from "./useStarredAgents";

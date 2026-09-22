@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { themeVars } from "../theme";
 import { OSIcon } from "../icons";
-import { useAgentSearch } from "../hooks/useAgentSearch";
+import { useAgentSearch } from "../hooks";
 import { useThresholds } from "../ThresholdsContext";
 import { agentStatus, agentStatusColor } from "../utils";
 import type { OverviewAgent } from "../types";

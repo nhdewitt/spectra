@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { api } from "../api";
 import { formatBytes, formatNetworkRate, pivotByGroup, rankGroupsByLatest } from "../utils";
-import { useMetric, withChartMeta } from "../hooks/useMetric";
+import { useMetric, withChartMeta } from "../hooks";
 import { useThresholds } from "../ThresholdsContext";
 import { MetricChart, type SeriesDef } from "./MetricChart";
 import { MetricSelector, StatBlock, LoadingSpinner, MetricSeriesSelector } from "./ui";
