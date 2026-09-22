@@ -62,7 +62,7 @@ export function Sidebar({
     const navItems: NavItem[] = [
         { key: "overview", label: "Fleet Overview" },
         { key: "detail", label: "Agent Detail" },
-        { key: "diagnostics", label: "Diagnostics", indent: true },
+        { key: "diagnostics", label: "Diagnostics", indent: true, adminOnly: true },
         { key: "agents", label: "Agent Mgmt" },
         { key: "tags", label: "Tags" },
         { key: "alerts", label: "Alerts" },
