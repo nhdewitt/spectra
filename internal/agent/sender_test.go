@@ -870,3 +870,195 @@ func TestApplyBackoff_ToleratesDegenerateConfig(t *testing.T) {
 		a.applyBackoff()
 	}
 }
+
+// --- Compression level ---
+// The shared writer used to be gzip.NewWriter, which is DefaultCompression.
+// On a single-core Pi compression was ~23% of agent CPU, and the level-6
+// deflate state sat at roughly 900kB resident against a 48MiB ceiling.
+
+// benchBatch builds a batch shaped like a real metric send: repeated envelopes
+// of mixed types, which is what makes the ratio difference small.
+func benchBatch(n int) []protocol.Envelope {
+	batch := make([]protocol.Envelope, 0, n)
+	for i := range n {
+		switch i % 3 {
+		case 0:
+			batch = append(batch, testEnvelope("cpu"))
+		case 1:
+			batch = append(batch, protocol.Envelope{
+				Type:      "memory",
+				Timestamp: time.Now(),
+				Hostname:  "test-host",
+				Data: &protocol.MemoryMetric{
+					Total:     16 << 30,
+					Used:      4 << 30,
+					Available: 12 << 30,
+					UsedPct:   25.0,
+					SwapTotal: 2 << 30,
+					SwapUsed:  128 << 20,
+					SwapPct:   6.25,
+				},
+			})
+		default:
+			batch = append(batch, protocol.Envelope{
+				Type:      "disk",
+				Timestamp: time.Now(),
+				Hostname:  "test-host",
+				Data: &protocol.DiskMetric{
+					Device:     "/dev/sda1",
+					Mountpoint: "/",
+					Filesystem: "ext4",
+					Type:       "ssd",
+					Total:      250 << 30,
+					Used:       130 << 30,
+					Available:  120 << 30,
+					UsedPct:    52.0,
+				},
+			})
+		}
+	}
+	return batch
+}
+
+func benchCompressAtLevel(b *testing.B, level int, n int) {
+	b.Helper()
+
+	a := New(Config{BaseURL: "http://localhost:8080", Hostname: "test-host"})
+	zw, err := gzip.NewWriterLevel(io.Discard, level)
+	if err != nil {
+		b.Fatalf("NewWriterLevel(%d): %v", level, err)
+	}
+	a.gzipW = zw
+
+	batch := benchBatch(n)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for b.Loop() {
+		if _, err := a.compressPayload(batch); err != nil {
+			b.Fatalf("compressPayload: %v", err)
+		}
+	}
+
+	b.StopTimer()
+
+	// Ratio is the other half of the trade: a level that is faster but gives
+	// up a lot of compression costs more in upload time than it saves in CPU.
+	//
+	// Reported after the loop because ResetTimer deletes user metrics, so
+	// anything reported before it never reaches the output.
+	payload, err := a.compressPayload(batch)
+	if err != nil {
+		b.Fatalf("compressPayload: %v", err)
+	}
+	raw, err := json.Marshal(batch)
+	if err != nil {
+		b.Fatalf("marshal: %v", err)
+	}
+	b.ReportMetric(float64(len(raw))/float64(len(payload)), "ratio")
+	b.ReportMetric(float64(len(payload)), "wire-bytes")
+}
+
+func BenchmarkCompressPayload_BestSpeed_50(b *testing.B) {
+	benchCompressAtLevel(b, gzip.BestSpeed, 50)
+}
+
+func BenchmarkCompressPayload_Default_50(b *testing.B) {
+	benchCompressAtLevel(b, gzip.DefaultCompression, 50)
+}
+
+func BenchmarkCompressPayload_BestSpeed_500(b *testing.B) {
+	benchCompressAtLevel(b, gzip.BestSpeed, 500)
+}
+
+func BenchmarkCompressPayload_Default_500(b *testing.B) {
+	benchCompressAtLevel(b, gzip.DefaultCompression, 500)
+}
+
+// The compressor is built once and held for the life of the process, so its
+// resident state is a permanent cost rather than a per-send one.
+func BenchmarkNewGzipWriter_BestSpeed(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		sink = newGzipWriter(io.Discard)
+	}
+}
+
+func BenchmarkNewGzipWriter_Default(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		zw, err := gzip.NewWriterLevel(io.Discard, gzip.DefaultCompression)
+		if err != nil {
+			b.Fatal(err)
+		}
+		sink = zw
+	}
+}
+
+var sink *gzip.Writer
+
+func TestNewGzipWriter_UsesBestSpeed(t *testing.T) {
+	a := New(Config{BaseURL: "http://localhost:8080", Hostname: "test-host"})
+
+	batch := []protocol.Envelope{testEnvelope("cpu")}
+	got, err := a.compressPayload(batch)
+	if err != nil {
+		t.Fatalf("compressPayload: %v", err)
+	}
+
+	var want bytes.Buffer
+	zw, err := gzip.NewWriterLevel(&want, gzip.BestSpeed)
+	if err != nil {
+		t.Fatalf("NewWriterLevel: %v", err)
+	}
+	if err := json.NewEncoder(zw).Encode(batch); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	if !bytes.Equal(got, want.Bytes()) {
+		t.Error("agent compressor does not match a BestSpeed writer")
+	}
+}
+
+// Whatever the level, the gzip stream has to decompress to the batch the
+// server will decode. Envelope.Data is an interface, so the envelopes are
+// left raw here -- dispatching them by type is the server's job.
+func TestCompressPayload_RoundTrips(t *testing.T) {
+	a := New(Config{BaseURL: "http://localhost:8080", Hostname: "test-host"})
+	batch := benchBatch(10)
+
+	payload, err := a.compressPayload(batch)
+	if err != nil {
+		t.Fatalf("compressPayload: %v", err)
+	}
+
+	zr, err := gzip.NewReader(bytes.NewReader(payload))
+	if err != nil {
+		t.Fatalf("NewReader: %v", err)
+	}
+	defer zr.Close()
+
+	var back []struct {
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.NewDecoder(zr).Decode(&back); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(back) != len(batch) {
+		t.Fatalf("round trip gave %d envelopes, want %d", len(back), len(batch))
+	}
+	for i, env := range back {
+		if env.Type != batch[i].Type {
+			t.Errorf("envelope %d type = %q, want %q", i, env.Type, batch[i].Type)
+		}
+		if len(env.Data) == 0 {
+			t.Errorf("envelope %d carries no data", i)
+		}
+	}
+}
