@@ -39,6 +39,9 @@ type TLSFiles struct {
 // GenerateTLS creates a self-signed CA and server certificate.
 // sans should include any IPs or hostnames the server will be reached at.
 // The auto-detected LAN IP, localhost, and 127.0.0.1 are always included.
+// Everything else comes from the caller. Detection used to be applied here
+// as well, which meant a misdetected address could not be kept out of the
+// certificate.
 func GenerateTLS(sans []string) (*TLSFiles, error) {
 	if err := os.MkdirAll(tlsDir, 0700); err != nil {
 		return nil, fmt.Errorf("create TLS dir: %w", err)
@@ -53,11 +56,6 @@ func GenerateTLS(sans []string) (*TLSFiles, error) {
 	// ALways include localhost/127.0.0.1/::1
 	ips = append(ips, net.ParseIP("127.0.0.1"), net.ParseIP("::1"))
 	dnsNames = append(dnsNames, "localhost")
-
-	// Always include detected LAN IP
-	if lanIP := detectLANIP(); lanIP != "127.0.0.1" {
-		ips = append(ips, net.ParseIP(lanIP))
-	}
 
 	// Add caller-provided SANs
 	for _, san := range sans {

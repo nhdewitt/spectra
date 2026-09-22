@@ -2,6 +2,7 @@ package setup
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -241,13 +243,25 @@ func PromptTLS(reader *bufio.Reader) *TLSSetupConfig {
 		return nil
 	}
 
-	// Collect additional SANs
-	detectedIP := detectLANIP()
-	fmt.Printf("  Detected LAN IP: %s\n", detectedIP)
+	// Collect SANs. The primary address is a replaceable default rather than a
+	// forced entry (it lands in a cert whose only regen path also replaces the
+	// CA, so a wrong detection here is expensive to undo).
+	cands := detectLANCandidates()
+	printAddrCandidates(cands)
+
+	detectedIP := "127.0.0.1"
+	if len(cands) > 0 {
+		detectedIP = cands[0].IP.String()
+	}
+	primary := prompt(reader, "Primary address", detectedIP)
+
 	fmt.Println("  Enter additional hostnames or IPs (comma-separated, or blank for none):")
 	extra := prompt(reader, "Additional SANs", "")
 
-	sans := []string{detectedIP}
+	var sans []string
+	if primary != "" {
+		sans = append(sans, primary)
+	}
 	if extra != "" {
 		for s := range strings.SplitSeq(extra, ",") {
 			s = strings.TrimSpace(s)
@@ -292,8 +306,7 @@ func buildDSN(host, port, dbName, user, pass, sslMode string) string {
 	return u.String()
 }
 
-// detectExternalURL finds the first non-loopback IPv4 address and
-// builds a default URL from it.
+// detectExternalURL builds a default URL from the best-ranked local address.
 func detectExternalURL(port int, tlsEnabled bool) string {
 	scheme := "http"
 	if tlsEnabled {
@@ -302,28 +315,143 @@ func detectExternalURL(port int, tlsEnabled bool) string {
 	return fmt.Sprintf("%s://%s:%d", scheme, detectLANIP(), port)
 }
 
-// detectLANIP returns the first non-loopback IPv4 address.
-func detectLANIP() string {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return "127.0.0.1"
+// ifaceAddr is one address paired with the interface it was found on.
+type ifaceAddr struct {
+	Iface string
+	IP    net.IP
+}
+
+// AddrCandidate is a ranked local address. Reason is empty for a normal choice.
+type AddrCandidate struct {
+	Iface  string
+	IP     net.IP
+	Reason string
+	score  int
+}
+
+// cgnat is the 100.64.0.0/10 shared address space. Tailscale assigns out of it,
+// as do some ISPs.
+var cgnat = net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// virtualIfacePrefixes name interfaces belonging to VPNs, container runtimes, and
+// hypervisors. An address on one of these is usually not how the rest of the
+// network reaches this host.
+//
+// "br-" is deliberately hyphenated. That form is Docker's user-defined bridges,
+// whereas a bare "br0" or Proxmox's "vmbr0" is frequently the real uplink and must
+// not be demoted.
+var virtualIfacePrefixes = []string{
+	"br-", "cni", "docker", "flannel", "kube", "lxcbr", "podman",
+	"tailscale", "tap", "tun", "utun", "veth", "virbr", "wg", "zt",
+}
+
+func isVirtualIface(name string) bool {
+	n := strings.ToLower(name)
+	for _, p := range virtualIfacePrefixes {
+		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// rankAddrs orders candidates best-first. Pure so that the ordering rules can be
+// tested directly, detectLANCandidates supplies the real input.
+//
+// Nothing is discarded outright except addresses that cannot serve at all. A host
+// whose only address is in the CGNAT range still gets that rather than a fallback
+// to loopback, it's just ranked last.
+func rankAddrs(addrs []ifaceAddr) []AddrCandidate {
+	out := make([]AddrCandidate, 0, len(addrs))
+
+	for _, a := range addrs {
+		ip4 := a.IP.To4()
+		if ip4 == nil || ip4.IsLoopback() || ip4.IsUnspecified() {
+			continue
+		}
+
+		c := AddrCandidate{Iface: a.Iface, IP: ip4}
+		virtual := isVirtualIface(a.Iface)
+
+		switch {
+		case cgnat.Contains(ip4):
+			c.score, c.Reason = 1, "CGNAT/VPN range"
+		case ip4.IsLinkLocalUnicast():
+			c.score, c.Reason = 1, "link-local"
+		case virtual && ip4.IsPrivate():
+			c.score, c.Reason = 10, "virtual interface"
+		case virtual:
+			c.score, c.Reason = 5, "virtual interface"
+		case ip4.IsPrivate():
+			c.score = 30
+		default:
+			c.score = 20
+		}
+
+		out = append(out, c)
 	}
 
+	slices.SortStableFunc(out, func(a, b AddrCandidate) int {
+		return cmp.Compare(b.score, a.score)
+	})
+	return out
+}
+
+// detectLANCandidates returns every usable local address, best-first.
+func detectLANCandidates() []AddrCandidate {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+
+	var addrs []ifaceAddr
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
-		addrs, err := iface.Addrs()
+		ifAddrs, err := iface.Addrs()
 		if err != nil {
 			continue
 		}
-		for _, addr := range addrs {
-			if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil {
-				return ipnet.IP.String()
+		for _, addr := range ifAddrs {
+			if ipnet, ok := addr.(*net.IPNet); ok {
+				addrs = append(addrs, ifaceAddr{Iface: iface.Name, IP: ipnet.IP})
 			}
 		}
 	}
-	return "127.0.0.1"
+	return rankAddrs(addrs)
+}
+
+// detectLANIP returns the best-ranked local IPv4 address.
+func detectLANIP() string {
+	cands := detectLANCandidates()
+	if len(cands) == 0 {
+		return "127.0.0.1"
+	}
+	return cands[0].IP.String()
+}
+
+// printAddrCandidates shows what was found and why anything was passed
+// over, so a wrong pick is visible at the prompt.
+func printAddrCandidates(cands []AddrCandidate) {
+	if len(cands) == 0 {
+		fmt.Println("  No usable addresses detected. Falling back to 127.0.0.1")
+		return
+	}
+	fmt.Println("  Detected addresses:")
+	for i, c := range cands {
+		note := "[selected]"
+		if i > 0 {
+			note = ""
+		}
+		if c.Reason != "" {
+			note = strings.TrimSpace(note + " skipped: " + c.Reason)
+			if i == 0 {
+				note = "[selected] (" + c.Reason + ")"
+			}
+		}
+		fmt.Printf("    %d) %-15s %-12s %s\n", i+1, c.IP, c.Iface, note)
+	}
 }
 
 func prompt(reader *bufio.Reader, label, defaultVal string) string {

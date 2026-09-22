@@ -137,7 +137,10 @@ func RunNonInteractive(ctx context.Context, sf *SetupFile, configPath string) er
 	}
 
 	if sc.ExternalURL == "" {
+		fmt.Println("No external_url given. Detecting.")
+		printAddrCandidates(detectLANCandidates())
 		sc.ExternalURL = detectExternalURL(sc.Port, sc.TLS != nil)
+		fmt.Printf("Using external URL: %s\n", sc.ExternalURL)
 	}
 
 	return RunSetup(ctx, sc, configPath)

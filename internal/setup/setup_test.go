@@ -2,6 +2,7 @@ package setup
 
 import (
 	"bufio"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -374,5 +375,152 @@ func TestSaveAndLoadConfig_WithTLS(t *testing.T) {
 	}
 	if loaded.TLSCA != cfg.TLSCA {
 		t.Errorf("TLSCA = %s, want %s", loaded.TLSCA, cfg.TLSCA)
+	}
+}
+
+// --- Address ranking ---
+// detectLANIP used to return the first non-loopback IPv4 the kernel reported,
+// in enumeration order. Adding Tailscale to a host puts a 100.x address in
+// that list; Docker and libvirt put RFC1918 ones there. rankAddrs exists so
+// the ordering rules can be checked without depending on the test host.
+
+func ipOf(t *testing.T, s string) net.IP {
+	t.Helper()
+	ip := net.ParseIP(s)
+	if ip == nil {
+		t.Fatalf("bad test IP %q", s)
+	}
+	return ip
+}
+
+func TestRankAddrs_PrefersRealLANOverTailscale(t *testing.T) {
+	// Tailscale first in enumeration order, which is what the old
+	// first-match implementation would have returned.
+	got := rankAddrs([]ifaceAddr{
+		{Iface: "tailscale0", IP: ipOf(t, "100.87.12.40")},
+		{Iface: "eth0", IP: ipOf(t, "10.10.107.5")},
+	})
+
+	if len(got) != 2 {
+		t.Fatalf("got %d candidates, want 2", len(got))
+	}
+	if got[0].IP.String() != "10.10.107.5" {
+		t.Errorf("winner = %s, want 10.10.107.5", got[0].IP)
+	}
+	if got[0].Reason != "" {
+		t.Errorf("winner carries reason %q, want none", got[0].Reason)
+	}
+	if got[1].Reason == "" {
+		t.Error("tailscale candidate should record why it was passed over")
+	}
+}
+
+func TestRankAddrs_PrefersRealLANOverDocker(t *testing.T) {
+	got := rankAddrs([]ifaceAddr{
+		{Iface: "docker0", IP: ipOf(t, "172.17.0.1")},
+		{Iface: "eth0", IP: ipOf(t, "192.168.1.20")},
+	})
+
+	if got[0].IP.String() != "192.168.1.20" {
+		t.Errorf("winner = %s, want 192.168.1.20", got[0].IP)
+	}
+}
+
+// vmbr0 is the uplink on a Proxmox host, not a virtual aside. Demoting
+// everything starting with "br" would have taken the real address out.
+func TestRankAddrs_KeepsProxmoxBridge(t *testing.T) {
+	got := rankAddrs([]ifaceAddr{
+		{Iface: "vmbr0", IP: ipOf(t, "10.10.107.5")},
+		{Iface: "docker0", IP: ipOf(t, "172.17.0.1")},
+	})
+
+	if got[0].Iface != "vmbr0" {
+		t.Errorf("winner iface = %s, want vmbr0", got[0].Iface)
+	}
+	if got[0].Reason != "" {
+		t.Errorf("vmbr0 demoted with reason %q", got[0].Reason)
+	}
+}
+
+// A Docker bridge named br-<id> is a real virtual interface and should be
+// demoted, unlike vmbr0 above.
+func TestRankAddrs_DemotesHyphenatedDockerBridge(t *testing.T) {
+	got := rankAddrs([]ifaceAddr{
+		{Iface: "br-9f2c1a4b7d3e", IP: ipOf(t, "172.18.0.1")},
+		{Iface: "eth0", IP: ipOf(t, "10.10.107.5")},
+	})
+
+	if got[0].Iface != "eth0" {
+		t.Errorf("winner iface = %s, want eth0", got[0].Iface)
+	}
+}
+
+// Falling back to loopback would be worse than a CGNAT address that at least
+// reaches the host.
+func TestRankAddrs_KeepsCGNATWhenItIsAll(t *testing.T) {
+	got := rankAddrs([]ifaceAddr{
+		{Iface: "tailscale0", IP: ipOf(t, "100.87.12.40")},
+	})
+
+	if len(got) != 1 {
+		t.Fatalf("got %d candidates, want 1", len(got))
+	}
+	if got[0].IP.String() != "100.87.12.40" {
+		t.Errorf("winner = %s, want the CGNAT address", got[0].IP)
+	}
+	if got[0].Reason == "" {
+		t.Error("CGNAT winner should still say why it is not ideal")
+	}
+}
+
+func TestRankAddrs_DropsLoopbackAndIPv6(t *testing.T) {
+	got := rankAddrs([]ifaceAddr{
+		{Iface: "lo", IP: ipOf(t, "127.0.0.1")},
+		{Iface: "eth0", IP: ipOf(t, "fe80::1")},
+		{Iface: "eth0", IP: ipOf(t, "10.10.107.5")},
+	})
+
+	if len(got) != 1 {
+		t.Fatalf("got %d candidates, want 1", len(got))
+	}
+	if got[0].IP.String() != "10.10.107.5" {
+		t.Errorf("winner = %s, want 10.10.107.5", got[0].IP)
+	}
+}
+
+func TestRankAddrs_DemotesLinkLocal(t *testing.T) {
+	got := rankAddrs([]ifaceAddr{
+		{Iface: "eth1", IP: ipOf(t, "169.254.7.9")},
+		{Iface: "eth0", IP: ipOf(t, "203.0.113.10")},
+	})
+
+	if got[0].IP.String() != "203.0.113.10" {
+		t.Errorf("winner = %s, want 203.0.113.10", got[0].IP)
+	}
+}
+
+// Two equally-ranked addresses must not reorder between runs, or the cert and
+// the external URL could disagree across a reinstall.
+func TestRankAddrs_StableForEqualScores(t *testing.T) {
+	in := []ifaceAddr{
+		{Iface: "eth0", IP: ipOf(t, "10.10.107.5")},
+		{Iface: "eth1", IP: ipOf(t, "10.10.108.5")},
+	}
+
+	first := rankAddrs(in)
+	for range 5 {
+		again := rankAddrs(in)
+		if again[0].IP.String() != first[0].IP.String() {
+			t.Fatalf("ordering changed: %s then %s", first[0].IP, again[0].IP)
+		}
+	}
+	if first[0].Iface != "eth0" {
+		t.Errorf("winner iface = %s, want eth0 (input order preserved)", first[0].Iface)
+	}
+}
+
+func TestRankAddrs_Empty(t *testing.T) {
+	if got := rankAddrs(nil); len(got) != 0 {
+		t.Errorf("got %d candidates from nil input", len(got))
 	}
 }
