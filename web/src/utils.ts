@@ -177,7 +177,7 @@ export function agentStatus(agent: OverviewAgent, t: Thresholds): AgentStatusRes
     if (!agent.last_seen) return { status: "offline", reasons: ["No heartbeat received"] };
     const ago = (Date.now() - new Date(agent.last_seen).getTime()) / 1000;
     if (ago >= t.offline_seconds) return { status: "offline", reasons: [`Last seen ${Math.floor(ago / 60)}m ago`] };
-    if (ago >= t.stale_seconds) return { status: "offline", reasons: [`Last seen ${Math.floor(ago / 60)}m ago`] };
+    if (ago >= t.stale_seconds) return { status: "stale", reasons: [`Last seen ${Math.floor(ago / 60)}m ago`] };
 
     const cpu = agent.cpu_usage ?? 0;
     const mem = agent.ram_percent ?? 0;
@@ -312,18 +312,31 @@ export function severityOrder(level: string): number {
     return order[level] ?? 99;
 }
 
-/** Recurrence line for a folded log row. Empty when the entry occurred once. */
-export function logEntrySpan(e: LogEntry): string {
-    if ((e.count ?? 0) < 2) return "";
-    if (!e.first_seen) return `${e.count}×`;
-    const first = new Date(e.first_seen * 1000).toLocaleString(undefined, {
+/**
+ * Timestamp for a log row.
+ * 
+ * The year appears only when the entry is not from the cuirrent one. "Since boot"
+ * on a host with more than a year of uptime returns entries from more than one
+ * calendar year, and a bare "Month DD" gives no indication which year. Showing
+ * the year unconditionally would widen every row to fix a minority of them.
+ */
+export function formatLogTime(seconds: number, now: Date = new Date()): string {
+    const d = new Date(seconds * 1000);
+    return d.toLocaleString(undefined, {
+        year: d.getFullYear() === now.getFullYear() ? undefined : "numeric",
         month: "short",
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
-    });
-    return `${e.count}× since ${first}`;
+    })
+}
+
+/** Recurrence line for a folded log row. Empty when the entry occurred once. */
+export function logEntrySpan(e: LogEntry): string {
+    if ((e.count ?? 0) < 2) return "";
+    if (!e.first_seen) return `${e.count}×`;
+    return `${e.count}× since ${formatLogTime(e.first_seen)}`;
 }
 
 /** Severity options for a log fetch, most verbose first. */

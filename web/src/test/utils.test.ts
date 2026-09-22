@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+    agentStatus,
     formatBytes,
+    pivotByGroup,
+    rankGroupsByLatest,
+    roundToInterval,
+    formatLogTime,
     formatUptime,
     statusColor,
     severityColor,
@@ -333,15 +338,7 @@ describe('logEntrySpan', () => {
     it('reports the count and the start of the run', () => {
         const span = logEntrySpan({ ...base, count: 9069, first_seen: 1_600_000_000 })
         expect(span).toMatch(/^9069\u00d7 since /)
-        expect(span).toContain(
-            new Date(1_600_000_000 * 1000).toLocaleString(undefined, {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-            }),
-        )
+        expect(span).toContain(formatLogTime(1_600_000_000))
     })
 
     it('falls back to the bare count when first_seen is missing', () => {
@@ -369,5 +366,335 @@ describe('logRangeStart', () => {
     it('offers exactly one unbounded option, listed first', () => {
         expect(LOG_RANGES.filter((r) => r.hours <= 0)).toHaveLength(1)
         expect(LOG_RANGES[0]!.hours).toBe(0)
+    })
+})
+// "Since boot" on a host with a year of uptime returns entries from several
+// calendar years, and a bare "Aug 3" gives no indication which.
+describe('formatLogTime', () => {
+    const now = new Date('2026-09-18T12:00:00Z')
+
+    it('omits the year for an entry from the current year', () => {
+        const ts = new Date('2026-08-03T19:56:00Z').getTime() / 1000
+        expect(formatLogTime(ts, now)).not.toContain('2026')
+    })
+
+    it('includes the year for an entry from an earlier year', () => {
+        const ts = new Date('2025-08-03T19:56:00Z').getTime() / 1000
+        expect(formatLogTime(ts, now)).toContain('2025')
+    })
+
+    // Clocks skew and agents can be ahead of the server.
+    it('includes the year for an entry from a later year', () => {
+        const ts = new Date('2027-01-02T00:00:00Z').getTime() / 1000
+        expect(formatLogTime(ts, now)).toContain('2027')
+    })
+
+    it('keeps the time of day in every case', () => {
+        const ts = new Date('2025-08-03T19:56:07Z').getTime() / 1000
+        expect(formatLogTime(ts, now)).toMatch(/\d{1,2}:\d{2}:\d{2}/)
+    })
+})
+
+// The stale branch returned "offline", so a host between the two thresholds
+// was reported as fully down and the "stale" status was unreachable.
+describe('agentStatus liveness thresholds', () => {
+    const t = { ...DEFAULT_THRESHOLDS, stale_seconds: 120, offline_seconds: 300 }
+
+    function agentSeen(secondsAgo: number) {
+        return {
+            last_seen: new Date(Date.now() - secondsAgo * 1000).toISOString(),
+            cpu_usage: 0,
+            ram_percent: 0,
+            disk_max_percent: 0,
+            max_temp: 0,
+        } as unknown as OverviewAgent
+    }
+
+    it('is online inside the stale threshold', () => {
+        expect(agentStatus(agentSeen(30), t).status).toBe('online')
+    })
+
+    it('is stale between the thresholds', () => {
+        expect(agentStatus(agentSeen(200), t).status).toBe('stale')
+    })
+
+    it('is offline past the offline threshold', () => {
+        expect(agentStatus(agentSeen(400), t).status).toBe('offline')
+    })
+
+    it('is offline with no heartbeat at all', () => {
+        expect(agentStatus({ last_seen: null } as unknown as OverviewAgent, t).status).toBe('offline')
+    })
+})
+
+// --- Pivot and ranking ---
+// These were only exercised through the MetricsTab DiskPanel tests, and the
+// forward-fill had no assertion of its own. The disk tooltip now looks samples
+// up by the bucket roundToInterval produces, so the rounding is load-bearing.
+
+interface Sample {
+    time: string
+    mount: string
+    pct: number | null
+}
+
+function sample(time: string, mount: string, pct: number | null = 50): Sample {
+    return { time, mount, pct }
+}
+
+const mountOf = (s: Sample) => s.mount
+const pctOf = (s: Sample) => s.pct
+
+describe('roundToInterval', () => {
+    it('rounds to the nearest bucket, not down', () => {
+        expect(roundToInterval('2026-01-01T00:00:07.000Z', 5000))
+            .toBe('2026-01-01T00:00:05.000Z')
+        expect(roundToInterval('2026-01-01T00:00:08.000Z', 5000))
+            .toBe('2026-01-01T00:00:10.000Z')
+    })
+
+    it('leaves a value already on a boundary alone', () => {
+        expect(roundToInterval('2026-01-01T00:00:05.000Z', 5000))
+            .toBe('2026-01-01T00:00:05.000Z')
+    })
+
+    it('collapses samples within one bucket to the same key', () => {
+        const a = roundToInterval('2026-01-01T00:00:04.100Z', 5000)
+        const b = roundToInterval('2026-01-01T00:00:06.900Z', 5000)
+        expect(a).toBe(b)
+    })
+})
+
+describe('pivotByGroup', () => {
+    it('returns nothing for no rows', () => {
+        expect(pivotByGroup([], mountOf, pctOf, ['/'])).toEqual([])
+    })
+
+    it('merges samples in the same bucket into one row', () => {
+        const out = pivotByGroup(
+            [
+                sample('2026-01-01T00:00:00.000Z', '/', 50),
+                sample('2026-01-01T00:00:01.000Z', '/var', 70),
+            ],
+            mountOf, pctOf, ['/', '/var'],
+        )
+
+        expect(out).toHaveLength(1)
+        expect(out[0]!['/']).toBe(50)
+        expect(out[0]!['/var']).toBe(70)
+    })
+
+    it('keeps separate buckets separate', () => {
+        const out = pivotByGroup(
+            [
+                sample('2026-01-01T00:00:00.000Z', '/', 50),
+                sample('2026-01-01T00:00:30.000Z', '/', 60),
+            ],
+            mountOf, pctOf, ['/'],
+        )
+
+        expect(out).toHaveLength(2)
+        expect(out[0]!['/']).toBe(50)
+        expect(out[1]!['/']).toBe(60)
+    })
+
+    it('sets _ts from the bucket time', () => {
+        const out = pivotByGroup(
+            [sample('2026-01-01T00:00:00.000Z', '/', 50)],
+            mountOf, pctOf, ['/'],
+        )
+
+        expect(out[0]!._ts).toBe(Date.parse(out[0]!.time as string))
+    })
+
+    it('honors a custom interval', () => {
+        const out = pivotByGroup(
+            [
+                sample('2026-01-01T00:00:00.000Z', '/', 50),
+                sample('2026-01-01T00:00:20.000Z', '/', 60),
+            ],
+            mountOf, pctOf, ['/'], 60_000,
+        )
+
+        expect(out).toHaveLength(1)
+    })
+
+    it('skips rows with no group', () => {
+        const out = pivotByGroup(
+            [
+                { time: '2026-01-01T00:00:00.000Z', mount: '', pct: 50 },
+                sample('2026-01-01T00:00:00.000Z', '/', 60),
+            ],
+            mountOf, pctOf, ['/'],
+        )
+
+        expect(out).toHaveLength(1)
+        expect(out[0]!['/']).toBe(60)
+    })
+
+    it('a later sample for the same group in one bucket wins', () => {
+        const out = pivotByGroup(
+            [
+                sample('2026-01-01T00:00:00.000Z', '/', 50),
+                sample('2026-01-01T00:00:02.000Z', '/', 99),
+            ],
+            mountOf, pctOf, ['/'],
+        )
+
+        expect(out).toHaveLength(1)
+        expect(out[0]!['/']).toBe(99)
+    })
+
+    describe('forward-fill', () => {
+        it('carries the last value into a bucket the group is missing from', () => {
+            const out = pivotByGroup(
+                [
+                    sample('2026-01-01T00:00:00.000Z', '/', 50),
+                    sample('2026-01-01T00:00:00.000Z', '/var', 70),
+                    sample('2026-01-01T00:00:30.000Z', '/', 55),
+                ],
+                mountOf, pctOf, ['/', '/var'],
+            )
+
+            expect(out).toHaveLength(2)
+            expect(out[1]!['/']).toBe(55)
+            expect(out[1]!['/var']).toBe(70)
+        })
+
+        it('does not back-fill before a group first appears', () => {
+            const out = pivotByGroup(
+                [
+                    sample('2026-01-01T00:00:00.000Z', '/', 50),
+                    sample('2026-01-01T00:00:30.000Z', '/var', 70),
+                ],
+                mountOf, pctOf, ['/', '/var'],
+            )
+
+            expect(out[0]!['/var']).toBeUndefined()
+            expect(out[1]!['/var']).toBe(70)
+        })
+
+        it('carries a value across several gaps', () => {
+            const out = pivotByGroup(
+                [
+                    sample('2026-01-01T00:00:00.000Z', '/', 50),
+                    sample('2026-01-01T00:00:30.000Z', '/var', 70),
+                    sample('2026-01-01T00:01:00.000Z', '/var', 71),
+                ],
+                mountOf, pctOf, ['/', '/var'],
+            )
+
+            expect(out[1]!['/']).toBe(50)
+            expect(out[2]!['/']).toBe(50)
+        })
+
+        // A null reading is filled over rather than left as a gap, so a
+        // failed collection shows the previous value instead of a break.
+        it('fills over an explicit null', () => {
+            const out = pivotByGroup(
+                [
+                    sample('2026-01-01T00:00:00.000Z', '/', 50),
+                    sample('2026-01-01T00:00:30.000Z', '/', null),
+                ],
+                mountOf, pctOf, ['/'],
+            )
+
+            expect(out[1]!['/']).toBe(50)
+        })
+
+        // Only groups named in `groups` are filled. One present in the rows
+        // but absent from that list is recorded where it appears and nowhere
+        // else -- which is what the top-N ranking relies on.
+        it('ignores groups outside the requested list', () => {
+            const out = pivotByGroup(
+                [
+                    sample('2026-01-01T00:00:00.000Z', '/home', 90),
+                    sample('2026-01-01T00:00:30.000Z', '/', 50),
+                ],
+                mountOf, pctOf, ['/'],
+            )
+
+            expect(out[0]!['/home']).toBe(90)
+            expect(out[1]!['/home']).toBeUndefined()
+        })
+    })
+
+    // Rows are keyed by insertion order, not sorted, so out-of-order input
+    // produces out-of-order output.
+    it('preserves input order rather than sorting by time', () => {
+        const out = pivotByGroup(
+            [
+                sample('2026-01-01T00:01:00.000Z', '/', 60),
+                sample('2026-01-01T00:00:00.000Z', '/', 50),
+            ],
+            mountOf, pctOf, ['/'],
+        )
+
+        expect(out[0]!['/']).toBe(60)
+        expect(out[1]!['/']).toBe(50)
+    })
+})
+
+describe('rankGroupsByLatest', () => {
+    it('orders by the most recent value, highest first', () => {
+        const pivoted = pivotByGroup(
+            [
+                sample('2026-01-01T00:00:00.000Z', '/', 10),
+                sample('2026-01-01T00:00:00.000Z', '/var', 80),
+                sample('2026-01-01T00:00:00.000Z', '/home', 45),
+            ],
+            mountOf, pctOf, ['/', '/var', '/home'],
+        )
+
+        expect(rankGroupsByLatest(pivoted, ['/', '/var', '/home']))
+            .toEqual(['/var', '/home', '/'])
+    })
+
+    // The latest value, not the highest ever seen.
+    it('uses the last value rather than the peak', () => {
+        const pivoted = pivotByGroup(
+            [
+                sample('2026-01-01T00:00:00.000Z', '/', 99),
+                sample('2026-01-01T00:00:00.000Z', '/var', 10),
+                sample('2026-01-01T00:00:30.000Z', '/', 5),
+                sample('2026-01-01T00:00:30.000Z', '/var', 20),
+            ],
+            mountOf, pctOf, ['/', '/var'],
+        )
+
+        expect(rankGroupsByLatest(pivoted, ['/', '/var'])).toEqual(['/var', '/'])
+    })
+
+    it('sorts a group with no numeric value last', () => {
+        const pivoted = pivotByGroup(
+            [sample('2026-01-01T00:00:00.000Z', '/', 50)],
+            mountOf, pctOf, ['/'],
+        )
+
+        expect(rankGroupsByLatest(pivoted, ['/', '/never-seen']))
+            .toEqual(['/', '/never-seen'])
+    })
+
+    it('does not mutate the group list it was given', () => {
+        const groups = ['/', '/var']
+        const pivoted = pivotByGroup(
+            [
+                sample('2026-01-01T00:00:00.000Z', '/', 10),
+                sample('2026-01-01T00:00:00.000Z', '/var', 80),
+            ],
+            mountOf, pctOf, groups,
+        )
+
+        rankGroupsByLatest(pivoted, groups)
+
+        expect(groups).toEqual(['/', '/var'])
+    })
+
+    it('returns an empty list for no groups', () => {
+        expect(rankGroupsByLatest([], [])).toEqual([])
+    })
+
+    it('handles an empty pivot', () => {
+        expect(rankGroupsByLatest([], ['/', '/var'])).toEqual(['/', '/var'])
     })
 })

@@ -7,7 +7,7 @@ import { MetricsTab } from "../components/MetricsTab";
 import { OSIcon } from "../icons";
 import type { OverviewAgent, RangeSelection, User } from "../types";
 import { api } from "../api";
-import { usePolling } from "../hooks/usePolling";
+import { usePolling } from "../hooks";
 import { ProcessesTab } from "../components/ProcessesTab";
 import { ServicesTab } from "../components/ServicesTab";
 import { ApplicationsTab } from "../components/ApplicationsTab";
@@ -43,7 +43,13 @@ export function AgentDetail({
     const { data: systemInfo } = usePolling(useCallback(() => api.agentSystemLatest(agent.id), [agent.id]), 30_000);
     const thresholds = useThresholds();
     
-    const { status } = agentStatus(agent, thresholds);
+    // agent is the snapshot captured when it was selected and never changes, so its last_seen ages out
+    // and the badge walks online -> stale -> offline on a healthy host. liveAgent has no metric rollups,
+    // so only the liveness half is taken from it.
+    const { status } = agentStatus(
+        { ...agent, last_seen: liveAgent?.last_seen ?? agent.last_seen },
+        thresholds,
+    );
     const isStarred = starredIds.includes(agent.id);
     const isTimeSeriesTab = activeTab === "metrics" || activeTab === "containers";
     const isAdmin = user.role === "admin" || user.role === "superadmin";
