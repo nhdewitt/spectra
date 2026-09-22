@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "../api";
-import { formatBytes, pivotByGroup, rankGroupsByLatest } from "../utils";
-import { useMetric } from "../hooks/useMetric";
+import { formatBytes, pivotByGroup, rankGroupsByLatest, roundToInterval } from "../utils";
+import { useMetric } from "../hooks";
 import { MetricChart, type SeriesDef } from "./MetricChart";
 import type { Anomaly } from "../anomaly";
 import type {
@@ -249,6 +249,11 @@ function MemoryPanel({ agentId, rangeSel, report, findings }: PanelProps & Panel
     );
 }
 
+/** Shared by the pivot and the tooltip lookup. If these drift, every tooltip misses its
+ * sample and silently falls back to the bare percentage.
+ */
+const DISK_PIVOT_INTERVAL_MS = 5000;
+
 function DiskPanel({ agentId, rangeSel, report, findings }: PanelProps & PanelReporting) {
     const fetchDisk = useAgentMetricFetcher(agentId, api.agentDisk);
     const { data, loading, error } = useMetric(
@@ -266,9 +271,26 @@ function DiskPanel({ agentId, rangeSel, report, findings }: PanelProps & PanelRe
     );
 
     const pivoted = useMemo(
-        () => pivotByGroup(data, (d: DiskMetric) => d.mountpoint, (d: DiskMetric) => d.used_percent, mounts),
+        () => pivotByGroup(
+            data,
+            (d: DiskMetric) => d.mountpoint,
+            (d: DiskMetric) => d.used_percent,
+            mounts,
+            DISK_PIVOT_INTERVAL_MS,
+        ),
         [data, mounts]
     );
+
+    // The pivot keys rows by rounded bucket, so the tooltip can find the exact sample behind a point. Matching on
+    // the percentage instead returned the newest row with that value, which on a mount sitting at a steady percentage
+    // is the wrong sample for every point but the last.
+    const byMountAndBucket = useMemo(() => {
+        const m = new Map<string, DiskMetric>();
+        for (const d of data as DiskMetric[]) {
+            m.set(`${d.mountpoint}@${roundToInterval(d.time, DISK_PIVOT_INTERVAL_MS)}`, d);
+        }
+        return m;
+    }, [data]);
 
     const ranked = useMemo(() => rankGroupsByLatest(pivoted, mounts), [pivoted, mounts]);
  
@@ -289,16 +311,15 @@ function DiskPanel({ agentId, rangeSel, report, findings }: PanelProps & PanelRe
     );
  
     const diskFormatter = useCallback(
-        (v: number, key: string) => {
-            for (let i = data.length - 1; i >= 0; i--) {
-                const d = data[i] as DiskMetric;
-                if (d.mountpoint === key && d.used_percent === v) {
-                    return `${v.toFixed(1)}% (${formatBytes(d.free_bytes)} free of ${formatBytes(d.total_bytes)})`;
-                }
+        (v: number, key: string, row?: Record<string, unknown>) => {
+            const bucket = typeof row?.time === "string" ? row.time : null;
+            const d = bucket ? byMountAndBucket.get(`${key}@${bucket}`) : undefined;
+            if (d) {
+                return `${v.toFixed(1)}% (${formatBytes(d.free_bytes)} free of ${formatBytes(d.total_bytes)})`;
             }
             return `${v.toFixed(1)}%`;
         },
-        [data]
+        [byMountAndBucket]
     );
  
     return (

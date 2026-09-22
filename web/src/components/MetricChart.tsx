@@ -41,7 +41,7 @@ export interface MetricChartProps<T extends { time: string }> {
     unit?: string;
     yDomain?: [number, number];
     height?: number;
-    formatter?: (value: number, key: string) => string;
+    formatter?: (value: number, key: string, row?: Record<string, unknown>) => string;
     secondaryY?: {
         id: string;
         unit?: string;
@@ -137,7 +137,7 @@ function ChartToolTip({
     payload?: Array<{ name: string; value: number; color: string; payload?: Record<string, unknown> }>;
     label?: string;
     unit?: string;
-    formatter?: (value: number, key: string) => string;
+    formatter?: (value: number, key: string, row?: Record<string, unknown>) => string;
 }) {
     if (!active || !payload?.length) return null;
 
@@ -180,7 +180,7 @@ function ChartToolTip({
                         </span>
                         <span style={{ color: themeVars.text, fontWeight: 500 }}>
                             {formatter
-                                ? formatter(entry.value, entry.name)
+                                ? formatter(entry.value, entry.name, entry.payload)
                                 : formatCompactNumber(entry.value)}
                             {unit && !formatter ? ` ${unit}` : ""}
                         </span>

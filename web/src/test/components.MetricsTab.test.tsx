@@ -22,7 +22,7 @@ vi.mock('../components/PiPanels', () => ({
 interface ChartCall {
     title: string
     data: unknown[]
-    formatter?: (v: number, key: string) => string
+    formatter?: (v: number, key: string, row?: Record<string, unknown>) => string
     refLines?: { y: number; label?: string }[]
     series: { key: string; label: string }[]
 }
@@ -225,9 +225,17 @@ describe('MetricsTab', () => {
         render(<MetricsTab agentId="agent-1" rangeSel={oneHour} cores={4} />)
         await waitFor(() => expect(chartFor('Disk Usage').data.length).toBeGreaterThan(0))
 
-        const formatter = chartFor('Disk Usage').formatter!
-        expect(formatter(50, '/')).toBe('50.0% (512.0 B free of 1.0 KB)')
-        expect(formatter(50, 'unrelated-key')).toBe('50.0%')
+        // The formatter looks the sample up by the row's bucket now, rather
+        // than scanning for a matching percentage, so it needs the row.
+        const chart = chartFor('Disk Usage')
+        const formatter = chart.formatter!
+        const row = chart.data[0] as Record<string, unknown>
+
+        expect(formatter(50, '/', row)).toBe('50.0% (512.0 B free of 1.0 KB)')
+        expect(formatter(50, 'unrelated-key', row)).toBe('50.0%')
+
+        // A forward-filled point has no sample of its own.
+        expect(formatter(50, '/', undefined)).toBe('50.0%')
     })
 
     it('does not show the mount selector when there is only one mount', async () => {
