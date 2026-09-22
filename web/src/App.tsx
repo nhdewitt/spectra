@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "./api";
 import type { OverviewStats } from "./api";
 import { initTheme, themeVars } from "./theme";
@@ -13,64 +13,27 @@ import { UserManagement } from "./pages/UserManagement";
 import { Settings } from "./pages/Settings";
 import { ServerSettings } from "./pages/ServerSettings";
 import { Tags } from "./pages/Tags";
-import type { User, Page, OverviewAgent, Thresholds } from "./types";
-import { usePolling } from "./hooks";
+import type { Thresholds } from "./types";
+import { useNavigation, usePolling, useSession, useStarredAgents } from "./hooks";
 import { ThresholdsProvider } from "./ThresholdsContext";
 import { DEFAULT_THRESHOLDS } from "./types";
 import { Alerts } from "./pages/Alerts";
 
 export default function App() {
-	const [user, setUser] = useState<User | null>(null);
-	const [checking, setChecking] = useState(true);
-	const [page, setPage] = useState<Page>("overview");
-	const [selectedAgent, setSelectedAgent] = useState<OverviewAgent | null>(null);
-	const [starredIds, setStarredIds] = useState<string[]>([]);
-	const [starredLoaded, setStarredLoaded] = useState(false);
-	const [logoutReason, setLogoutReason] = useState<string | null>(null);
 	const [version, setVersion] = useState<string>("");
 	const [thresholds, setThresholds] = useState<Thresholds>(DEFAULT_THRESHOLDS);
 
-	const starredRef = useRef(starredIds);
-	starredRef.current = starredIds;
-	const hasUserEdited = useRef(false);
+	const {
+		page,
+		selectedAgent,
+		navigate: handleNavigate,
+		selectAgent: handleSelectAgent,
+		back,
+		reset: resetNavigation,
+	} = useNavigation();
 
-	const toggleStar = useCallback((agentId: string) => {
-		setStarredIds((prev) =>
-			prev.includes(agentId)
-				? prev.filter((id) => id !== agentId)
-				: [...prev, agentId]
-		);
-	}, []);
-
-	useEffect(() => {
-		if (!user) return;
-		setStarredIds([]);
-		setStarredLoaded(false);
-		api.userConfig()
-			.then((cfg) => {
-				const starred = cfg.starred_agents as string[] | undefined;
-				if (starred) setStarredIds(starred);
-			})
-			.catch(() => {})
-			.finally(() => setStarredLoaded(true));
-	}, [user]);
-
-	useEffect(() => {
-		if (!user || !starredLoaded) return;
-		if (!hasUserEdited.current) {
-			hasUserEdited.current = true;
-			return;
-		}
-		const timeout = setTimeout(() => {
-			const ids = starredRef.current;
-			if (ids.length === 0) {
-				api.deleteUserConfig("starred_agents").catch(() => {});
-			} else {
-				api.setUserConfig("starred_agents", ids).catch(() => {});
-			}
-		}, 500);
-		return () => clearTimeout(timeout);
-	}, [starredIds, user, starredLoaded]);
+	const { user, checking, logoutReason, signIn, logout } = useSession(resetNavigation);
+	const { starredIds, toggleStar } = useStarredAgents(user);
 
 	const statsFetcher = useCallback(() => user ? api.overviewStats() : Promise.resolve(null), [user]);
 	const { data: stats } = usePolling<OverviewStats | null>(statsFetcher, 10_000);
@@ -78,37 +41,10 @@ export default function App() {
 	const onlineCount = stats?.online ?? 0;
 	const totalCount = stats?.total ?? 0;
 
-	const handleLogout = useCallback(async (reason?: string) => {
-		try {
-			await api.logout();
-		} catch {}
-		setUser(null);
-		setPage("overview");
-		setSelectedAgent(null);
-		if (reason) setLogoutReason(reason);
-	}, []);
-
-	// Expose logout for 401 interceptor in api.ts
-	useEffect(() => {
-		window.__spectraLogout = () => handleLogout("Your session has expired.");
-		return () => {
-			delete window.__spectraLogout;
-		};
-	}, [handleLogout]);
-
 	useEffect(() => {
 		api.version()
 			.then((v) => setVersion(v.version))
 			.catch(() => {});
-	}, []);
-
-	// Check existing session on mount
-	useEffect(() => {
-		api
-			.me()
-			.then(setUser)
-			.catch(() => {})
-			.finally(() => setChecking(false));
 	}, []);
 
 	useEffect(() => {
@@ -118,18 +54,6 @@ export default function App() {
 
 	useEffect(() => {
 		initTheme();
-	}, []);
-
-	const handleSelectAgent = useCallback((agent: OverviewAgent) => {
-		setSelectedAgent(agent);
-		setPage((prev) => prev === "diagnostics" ? "diagnostics" : "detail");
-	}, []);
-
-	const handleNavigate = useCallback((p: Page) => {
-		setPage(p);
-		if (p !== "detail" && p !== "diagnostics") {
-			setSelectedAgent(null);
-		}
 	}, []);
 
 	// Loading splash
@@ -153,7 +77,7 @@ export default function App() {
 
 	// Not authenticated
 	if (!user) {
-		return <Login onLogin={(u) => { setUser(u); setLogoutReason(null); }} message={logoutReason} />;
+		return <Login onLogin={signIn} message={logoutReason} />;
 	}
 
 	// Authenticated shell
@@ -213,7 +137,7 @@ export default function App() {
 							agent={selectedAgent}
 							user={user}
 							onSelectAgent={handleSelectAgent}
-							onBack={() => { setSelectedAgent(null); setPage("overview"); }}
+							onBack={back}
 							starredIds={starredIds}
 							onToggleStar={toggleStar}
 						/>
@@ -262,9 +186,9 @@ export default function App() {
 					{page === "users" && <UserManagement user={user} />}
  
 					{page === "settings" && (
-						<Settings user={user} onLogout={handleLogout} />
+						<Settings user={user} onLogout={logout} />
 					)}
-
+ 
 					{page === "server" && <ServerSettings user={user} />}
  
 					{page === "alerts" && <Alerts user={user} />}

@@ -104,17 +104,23 @@ export interface OverviewStats {
  * surfaces non-2xx responses as HttpError. A 401 triggers the registered
  * logout handler (if any) before throwing. 204/empty bodies resolve to
  * null cast to T.
+ * 
+ * The handler is left installed after it fires. It used to be cleared here
+ * to stop a logout request from 401ing back into itself. App now suppresses
+ * that case directly, and clearing meant only the first expiration of a tab's
+ * life was ever handled.
  */
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
     const res = await fetch(`${API_BASE}${path}`, {
+        // options is spread before headers so that a caller's headers merge with
+        // the default Content-Type rather than replacing the whole object.
         credentials: "include",
-        headers: { "Content-Type": "application/json", ...options.headers },
         ...options,
+        headers: { "Content-Type": "application/json", ...options.headers },
     });
 
     if (res.status === 401) {
         window.__spectraLogout?.();
-        window.__spectraLogout = undefined;
         throw new HttpError(401, "Unauthorized");
     }
 

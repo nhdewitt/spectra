@@ -59,6 +59,24 @@ describe('apiFetch intervals', () => {
         expect(logout).toHaveBeenCalled()
     })
 
+    // The handler used to be cleared after firing, to stop a logout request
+    // from 401ing back into itself. That capped a tab at one handled expiry:
+    // log in again, expire again, and nothing ran. App suppresses the
+    // self-recursion itself now, so the handler stays installed.
+    it('keeps __spectraLogout installed across repeated 401s', async () => {
+        const logout = vi.fn()
+        window.__spectraLogout = logout
+ 
+        mockFetch.mockResolvedValueOnce(errorResponse(401))
+        await expect(api.me()).rejects.toThrow(HttpError)
+ 
+        mockFetch.mockResolvedValueOnce(errorResponse(401))
+        await expect(api.me()).rejects.toThrow(HttpError)
+ 
+        expect(logout).toHaveBeenCalledTimes(2)
+        expect(window.__spectraLogout).toBe(logout)
+    })
+
     it('throws HttpError with status and message on non-ok response', async () => {
         mockFetch.mockResolvedValueOnce(errorResponse(500, 'database error'))
 
