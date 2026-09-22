@@ -139,7 +139,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	// pipeline behind a batch that can never succeed.
 	decoded := make([]decodedMetric, 0, len(rawEnvelopes))
 	for _, env := range rawEnvelopes {
-		metric, err := s.unmarshalMetric(env.Type, env.Data)
+		metric, err := protocol.UnmarshalMetric(env.Type, env.Data)
 		if err != nil {
 			s.Logger.Warn("dropping undecodable metric",
 				"hostname", env.Hostname, "type", env.Type, "error", err)

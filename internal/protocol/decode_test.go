@@ -1,10 +1,8 @@
-package server
+package protocol
 
 import (
 	"encoding/json"
 	"testing"
-
-	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
 func TestUnmarshalMetric_AllTypes(t *testing.T) {
@@ -34,13 +32,11 @@ func TestUnmarshalMetric_AllTypes(t *testing.T) {
 		{"container_list", `{"containers": [{"id": "abc123", "name": "nginx"}]}`, "container_list"},
 	}
 
-	s := New(Config{Port: 8080}, NewMockDB())
-
 	for _, tt := range tests {
 		t.Run(tt.typ, func(t *testing.T) {
-			metric, err := s.unmarshalMetric(tt.typ, []byte(tt.data))
+			metric, err := UnmarshalMetric(tt.typ, []byte(tt.data))
 			if err != nil {
-				t.Fatalf("unmarshalMetric(%s) error: %v", tt.typ, err)
+				t.Fatalf("UnmarshalMetric(%s) error: %v", tt.typ, err)
 			}
 			if metric.MetricType() != tt.wantType {
 				t.Errorf("MetricType() = %s, want %s", metric.MetricType(), tt.wantType)
@@ -50,35 +46,29 @@ func TestUnmarshalMetric_AllTypes(t *testing.T) {
 }
 
 func TestUnmarshalMetric_UnknownType(t *testing.T) {
-	s := New(Config{Port: 8080}, NewMockDB())
-
-	_, err := s.unmarshalMetric("unknown_type", []byte(`{}`))
+	_, err := UnmarshalMetric("unknown_type", []byte(`{}`))
 	if err == nil {
 		t.Error("expected error for unknown type")
 	}
 }
 
 func TestUnmarshalMetric_InvalidJSON(t *testing.T) {
-	s := New(Config{Port: 8080}, NewMockDB())
-
-	_, err := s.unmarshalMetric("cpu", []byte(`{invalid`))
+	_, err := UnmarshalMetric("cpu", []byte(`{invalid`))
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
 }
 
 func TestUnmarshalMetric_CPUMetric_Values(t *testing.T) {
-	s := New(Config{Port: 8080}, NewMockDB())
-
 	data := `{"usage": 75.5, "cores": [80, 70, 85, 65], "load_1m": 2.5}`
-	metric, err := s.unmarshalMetric("cpu", []byte(data))
+	metric, err := UnmarshalMetric("cpu", []byte(data))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cpu, ok := metric.(*protocol.CPUMetric)
+	cpu, ok := metric.(*CPUMetric)
 	if !ok {
-		t.Fatal("expected *protocol.CPUMetric")
+		t.Fatal("expected *CPUMetric")
 	}
 
 	if cpu.Usage != 75.5 {
@@ -93,21 +83,19 @@ func TestUnmarshalMetric_CPUMetric_Values(t *testing.T) {
 }
 
 func TestUnmarshalMetric_ProcessListMetric_Values(t *testing.T) {
-	s := New(Config{Port: 8080}, NewMockDB())
-
 	data := `{"processes": [
 		{"pid": 1, "name": "init", "cpu_percent": 0.1, "mem_percent": 0.5},
 		{"pid": 100, "name": "nginx", "cpu_percent": 5.0, "mem_percent": 2.0}
 	]}`
 
-	metric, err := s.unmarshalMetric("process_list", []byte(data))
+	metric, err := UnmarshalMetric("process_list", []byte(data))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	pl, ok := metric.(*protocol.ProcessListMetric)
+	pl, ok := metric.(*ProcessListMetric)
 	if !ok {
-		t.Fatal("expected *protocol.ProcessListMetric")
+		t.Fatal("expected *ProcessListMetric")
 	}
 
 	if len(pl.Processes) != 2 {
@@ -122,21 +110,19 @@ func TestUnmarshalMetric_ProcessListMetric_Values(t *testing.T) {
 }
 
 func TestUnmarshalMetric_ContainerListMetric_Values(t *testing.T) {
-	s := New(Config{Port: 8080}, NewMockDB())
-
 	data := `{"containers": [
 		{"id": "abc123", "name": "nginx", "state": "running", "source": "docker", "kind": "container", "cpu_percent": 15.5},
 		{"id": "def456", "name": "redis", "state": "running", "source": "docker", "kind": "container", "memory_bytes": 100000000}
 	]}`
 
-	metric, err := s.unmarshalMetric("container_list", []byte(data))
+	metric, err := UnmarshalMetric("container_list", []byte(data))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cl, ok := metric.(*protocol.ContainerListMetric)
+	cl, ok := metric.(*ContainerListMetric)
 	if !ok {
-		t.Fatal("expected *protocol.ContainerListMetric")
+		t.Fatal("expected *ContainerListMetric")
 	}
 
 	if len(cl.Containers) != 2 {
@@ -151,55 +137,48 @@ func TestUnmarshalMetric_ContainerListMetric_Values(t *testing.T) {
 }
 
 func BenchmarkUnmarshalMetric_CPU(b *testing.B) {
-	s := New(Config{Port: 8080}, NewMockDB())
 	data := []byte(`{"usage": 75.5, "cores": [80, 70, 85, 65, 90, 60, 75, 80], "load_1m": 2.5, "load_5m": 2.0, "load_15m": 1.5}`)
 
 	b.ReportAllocs()
 	for b.Loop() {
-		_, _ = s.unmarshalMetric("cpu", data)
+		_, _ = UnmarshalMetric("cpu", data)
 	}
 }
 
 func BenchmarkUnmarshalMetric_ProcessList_Small(b *testing.B) {
-	s := New(Config{Port: 8080}, NewMockDB())
-
-	procs := make([]protocol.ProcessMetric, 10)
+	procs := make([]ProcessMetric, 10)
 	for i := range procs {
-		procs[i] = protocol.ProcessMetric{Pid: i, Name: "process", CPUPercent: 1.0}
+		procs[i] = ProcessMetric{Pid: i, Name: "process", CPUPercent: 1.0}
 	}
-	data, _ := json.Marshal(protocol.ProcessListMetric{Processes: procs})
+	data, _ := json.Marshal(ProcessListMetric{Processes: procs})
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		_, _ = s.unmarshalMetric("process_list", data)
+		_, _ = UnmarshalMetric("process_list", data)
 	}
 }
 
 func BenchmarkUnmarshalMetric_ProcessList_Large(b *testing.B) {
-	s := New(Config{Port: 8080}, NewMockDB())
-
-	procs := make([]protocol.ProcessMetric, 200)
+	procs := make([]ProcessMetric, 200)
 	for i := range procs {
-		procs[i] = protocol.ProcessMetric{Pid: i, Name: "process", CPUPercent: 1.0, MemPercent: 0.5, MemRSS: 1000000}
+		procs[i] = ProcessMetric{Pid: i, Name: "process", CPUPercent: 1.0, MemPercent: 0.5, MemRSS: 1000000}
 	}
-	data, _ := json.Marshal(protocol.ProcessListMetric{Processes: procs})
+	data, _ := json.Marshal(ProcessListMetric{Processes: procs})
 
 	b.Logf("Payload size: %d bytes", len(data))
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		_, _ = s.unmarshalMetric("process_list", data)
+		_, _ = UnmarshalMetric("process_list", data)
 	}
 }
 
 func BenchmarkUnmarshalMetric_ContainerList(b *testing.B) {
-	s := New(Config{Port: 8080}, NewMockDB())
-
-	containers := make([]protocol.ContainerMetric, 20)
+	containers := make([]ContainerMetric, 20)
 	for i := range containers {
-		containers[i] = protocol.ContainerMetric{
+		containers[i] = ContainerMetric{
 			ID:          "abc123",
 			Name:        "container",
 			State:       "running",
@@ -209,11 +188,11 @@ func BenchmarkUnmarshalMetric_ContainerList(b *testing.B) {
 			MemoryBytes: 100000000,
 		}
 	}
-	data, _ := json.Marshal(protocol.ContainerListMetric{Containers: containers})
+	data, _ := json.Marshal(ContainerListMetric{Containers: containers})
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		_, _ = s.unmarshalMetric("container_list", data)
+		_, _ = UnmarshalMetric("container_list", data)
 	}
 }
