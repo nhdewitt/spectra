@@ -65,7 +65,7 @@ describe('DiagnosticsPanel - triggering commands', () => {
         fireEvent.click(screen.getByText('Fetch Logs'))
         await flush()
 
-        expect(mockTriggerLogs).toHaveBeenCalledWith('agent-1', 'WARNING')
+        expect(mockTriggerLogs).toHaveBeenCalledWith('agent-1', 'WARNING', { start: undefined })
     })
 
     it('sends the changed log level', async () => {
@@ -78,7 +78,36 @@ describe('DiagnosticsPanel - triggering commands', () => {
         fireEvent.click(screen.getByText('Fetch Logs'))
         await flush()
 
-        expect(mockTriggerLogs).toHaveBeenCalledWith('agent-1', 'ERROR')
+        expect(mockTriggerLogs).toHaveBeenCalledWith('agent-1', 'ERROR', { start: undefined })
+    })
+
+    // The range select was wired to state and rendered, but the fetch dropped
+    // it, so every option behaved like "Since boot".
+    it('sends the selected time range', async () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date('2026-09-19T12:00:00Z'))
+        mockTriggerLogs.mockResolvedValue({ command_id: 'cmd-1', message: 'queued' })
+        mockCommandResult.mockResolvedValue(pendingEntry('FETCH_LOGS'))
+
+        render(<DiagnosticsPanel agentId="agent-1" />)
+        fireEvent.change(screen.getByDisplayValue('Since boot'), { target: { value: '1' } })
+        fireEvent.click(screen.getByText('Fetch Logs'))
+        await flush()
+
+        const opts = mockTriggerLogs.mock.calls.at(-1)![2]
+        expect(opts.start).toEqual(new Date('2026-09-19T11:00:00Z'))
+    })
+
+    it('sends no lower bound for "Since boot"', async () => {
+        vi.useFakeTimers()
+        mockTriggerLogs.mockResolvedValue({ command_id: 'cmd-1', message: 'queued' })
+        mockCommandResult.mockResolvedValue(pendingEntry('FETCH_LOGS'))
+
+        render(<DiagnosticsPanel agentId="agent-1" />)
+        fireEvent.click(screen.getByText('Fetch Logs'))
+        await flush()
+
+        expect(mockTriggerLogs.mock.calls.at(-1)![2].start).toBeUndefined()
     })
 
     it('triggers netstat', async () => {

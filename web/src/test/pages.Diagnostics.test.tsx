@@ -244,7 +244,7 @@ describe('Diagnostics - disk/logs options panels', () => {
         fireEvent.click(screen.getByText('Fetch Logs', { selector: 'button' }))
         await flush()
 
-        expect(mockTriggerLogs).toHaveBeenCalledWith('agent-1', 'ERROR')
+        expect(mockTriggerLogs).toHaveBeenCalledWith('agent-1', 'ERROR', { start: undefined })
     })
 })
 

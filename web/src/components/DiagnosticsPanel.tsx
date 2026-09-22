@@ -3,8 +3,10 @@ import { api } from "../api";
 import {
     copyToClipboard,
     formatBytes,
+    formatLogTime,
     levelColor,
     logEntrySpan,
+    logRangeStart,
     severityOrder,
     LOG_LEVELS,
     LOG_RANGES,
@@ -277,13 +279,7 @@ function LogResults({
                             }}
                         >
                             <span style={{ color: themeVars.textDim, whiteSpace: "nowrap" }}>
-                                {new Date(e.timestamp * 1000).toLocaleString(undefined, {
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                    second: "2-digit",
-                                })}
+                                {formatLogTime(e.timestamp)}
                             </span>
                             <span
                                 style={{
@@ -1008,7 +1004,13 @@ export function DiagnosticsPanel({ agentId }: DiagnosticsPanelProps) {
                     ))}
                 </select>
                 <button
-                    onClick={() => runCommand(() => api.triggerLogs(agentId, logLevel), "logs")}
+                    onClick={() => runCommand(
+                        () =>
+                            api.triggerLogs(agentId, logLevel, {
+                                start: logRangeStart(logHours),
+                            }),
+                        "logs",
+                    )}
                     disabled={isRunning}
                     style={isRunning ? btnDisabled : btnStyle}
                 >

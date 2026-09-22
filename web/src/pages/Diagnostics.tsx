@@ -3,8 +3,10 @@ import { api } from "../api";
 import { themeVars } from "../theme";
 import {
 	formatBytes,
+	formatLogTime,
 	levelColor,
 	logEntrySpan,
+	logRangeStart,
 	severityOrder,
 	statusColor,
 	LOG_LEVELS,
@@ -12,7 +14,7 @@ import {
 } from "../utils";
 import { tableHeaderStyle, tableCellStyle, tableMutedCellStyle, LoadingSpinner } from "../components/ui";
 import type { OverviewAgent, CommandResponse, CommandEntry } from "../types";
-import { Pagination, usePagination } from "../hooks/usePagination";
+import { Pagination, usePagination, usePolling } from "../hooks";
 import { useThresholds } from "../ThresholdsContext";
 import { AgentSearchList } from "../components/AgentSearchList";
 
@@ -231,13 +233,7 @@ function LogResultsInline({ entries }: { entries: LogEntry[] }) {
                         }}
                     >
                         <span style={{ color: themeVars.textDim, whiteSpace: "nowrap" }}>
-                            {new Date(e.timestamp * 1000).toLocaleString(undefined, {
-                                month: "short",
-                                day: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                second: "2-digit",
-                            })}
+                            {formatLogTime(e.timestamp)}
                         </span>
                         <span style={{ color: levelColor(e.level), fontWeight: 600, whiteSpace: "nowrap" }}>
                             {e.level}
@@ -613,6 +609,16 @@ export function Diagnostics({ selectedAgent, onSelectAgent }: DiagnosticsProps) 
 	const pendingTool = useRef<DiagTool | null>(null);
 	const thresholds = useThresholds();
 
+	// selectedAgent is a snapshot from the moment of selection, so its last_seen
+	// ages out while the page is open.
+	const { data: liveAgent } = usePolling(
+		useCallback(
+			() => (selectedAgent ? api.agent(selectedAgent.id) : Promise.resolve(null)),
+			[selectedAgent],
+		),
+		30_000,
+	);
+
 	useEffect(() => {
 		if (!entry || !activeTool) return;
 		if (entry.done) {
@@ -834,7 +840,7 @@ export function Diagnostics({ selectedAgent, onSelectAgent }: DiagnosticsProps) 
 							)}
                             {selectedAgent && (
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontFamily: themeVars.font, color: themeVars.text }}>
-                                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: statusColor(selectedAgent, thresholds) }} />
+                                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: statusColor(liveAgent ?? selectedAgent, thresholds) }} />
                                     {selectedAgent.hostname}
                                 </span>
                             )}
@@ -1048,10 +1054,12 @@ export function Diagnostics({ selectedAgent, onSelectAgent }: DiagnosticsProps) 
 							</div>
                             <button
                                 onClick={() =>
-                                    runCommand("logs", () =>
-                                        api.triggerLogs(selectedAgent.id, logLevel)
-                                    )
-                                }
+									runCommand("logs", () =>
+										api.triggerLogs(selectedAgent.id, logLevel, {
+											start: logRangeStart(logHours),
+										})
+									)
+								}
                                 disabled={isRunning}
                                 style={{ ...btnStyle, opacity: isRunning ? 0.5 : 1 }}
                             >
