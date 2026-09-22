@@ -279,3 +279,71 @@ func BenchmarkCollect(b *testing.B) {
 		_, _ = Collect(ctx)
 	}
 }
+
+// The byte path is what collectRaw uses. parsePidStatFrom wraps it for
+// callers holding a reader, and carries io.ReadAll's allocations with it.
+func BenchmarkParsePidStat(b *testing.B) {
+	input := []byte("12345 (chrome) S 1234 12345 12345 0 -1 4194304 12345 0 123 0 500 200 0 0 20 0 50 0 123456 987654321 25000 18446744073709551615 0 0 0 0 0 0 0 0 0 0 0 0 17 3 0 0 0 0 0")
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = parsePidStat(input)
+	}
+}
+
+func TestParsePidStat_MatchesReaderPath(t *testing.T) {
+	input := "12345 (chrome) S 1234 12345 12345 0 -1 4194304 12345 0 123 0 500 200 0 0 20 0 50 0 123456 987654321 25000 18446744073709551615"
+
+	viaReader, err := parsePidStatFrom(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("parsePidStatFrom: %v", err)
+	}
+	viaBytes, err := parsePidStat([]byte(input))
+	if err != nil {
+		t.Fatalf("parsePidStat: %v", err)
+	}
+
+	if *viaReader != *viaBytes {
+		t.Errorf("paths disagree:\n reader: %+v\n bytes:  %+v", *viaReader, *viaBytes)
+	}
+}
+
+// collectRaw reuses one buffer for every process, so a Name that aliased it
+// would be overwritten by the next PID.
+func TestParsePidStat_CopiesName(t *testing.T) {
+	buf := []byte("12345 (chrome) S 1234 12345 12345 0 -1 4194304 12345 0 123 0 500 200 0 0 20 0 50 0 123456 987654321 25000 1")
+
+	stat, err := parsePidStat(buf)
+	if err != nil {
+		t.Fatalf("parsePidStat: %v", err)
+	}
+
+	for i := range buf {
+		buf[i] = 'x'
+	}
+
+	if stat.Name != "chrome" {
+		t.Errorf("Name = %q after the buffer was reused, want chrome", stat.Name)
+	}
+}
+
+func TestSplitStatFields(t *testing.T) {
+	var out [4][]byte
+
+	if n := splitStatFields([]byte("  a bb   ccc d e f"), out[:]); n != 4 {
+		t.Fatalf("got %d fields, want 4", n)
+	}
+	for i, want := range []string{"a", "bb", "ccc", "d"} {
+		if string(out[i]) != want {
+			t.Errorf("field %d = %q, want %q", i, out[i], want)
+		}
+	}
+}
+
+func TestSplitStatFields_ShortInput(t *testing.T) {
+	var out [4][]byte
+
+	if n := splitStatFields([]byte("a b"), out[:]); n != 2 {
+		t.Errorf("got %d fields, want 2", n)
+	}
+}
