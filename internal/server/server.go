@@ -59,6 +59,7 @@ type Config struct {
 	TLSKey         string
 	TLSCA          string
 	TrustedProxies []string // CIDRs or bare addresses of reverse proxies allowed to set X-Forwarded-For
+	Tracing        bool     // wrap API routes in server spans when an OTLP endpoint is configured
 }
 
 type Server struct {
@@ -260,9 +261,13 @@ func (s *Server) routes() {
 
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.Config.Port)
+	var handler http.Handler = s.Router
+	if s.Config.Tracing {
+		handler = traceRequests(handler, tracer)
+	}
 	s.httpServer = &http.Server{
 		Addr:              addr,
-		Handler:           gzipMiddleware(s.requestLogger(s.Router)),
+		Handler:           gzipMiddleware(s.requestLogger(handler)),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      40 * time.Second,

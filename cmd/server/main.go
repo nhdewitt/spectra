@@ -10,10 +10,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/nhdewitt/spectra/internal/database"
 	"github.com/nhdewitt/spectra/internal/secret"
 	"github.com/nhdewitt/spectra/internal/server"
 	"github.com/nhdewitt/spectra/internal/setup"
+	"github.com/nhdewitt/spectra/internal/telemetry"
+	"github.com/nhdewitt/spectra/internal/version"
 )
 
 func main() {
@@ -30,7 +33,18 @@ func main() {
 	}
 
 	ctx := context.Background()
-	pool, err := database.NewPool(ctx, cfg.DatabaseURL)
+	shutdownTracing, tracing, err := telemetry.Setup(ctx, version.Version)
+	if err != nil {
+		log.Fatalf("Failed to set up tracing: %v", err)
+	}
+
+	// nil when tracing is off
+	var dbTracer pgx.QueryTracer
+	if tracing {
+		dbTracer = telemetry.NewPgxTracer()
+	}
+
+	pool, err := database.NewPool(ctx, cfg.DatabaseURL, dbTracer)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -49,6 +63,7 @@ func main() {
 		TLSKey:         cfg.TLSKey,
 		TLSCA:          cfg.TLSCA,
 		TrustedProxies: cfg.TrustedProxies,
+		Tracing:        tracing,
 	}
 
 	srv := server.New(srvCfg, store)
@@ -92,7 +107,13 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	err = srv.Shutdown(shutdownCtx)
+
+	if tErr := shutdownTracing(shutdownCtx); tErr != nil {
+		srv.Logger.Warn("trace flush failed", "error", tErr)
+	}
+
+	if err != nil {
 		srv.Logger.Error("server exited", "error", err)
 		os.Exit(1)
 	}

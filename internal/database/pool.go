@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+func NewPool(ctx context.Context, databaseURL string, tracer pgx.QueryTracer) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database config: %w", err)
@@ -16,6 +17,7 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config.MaxConns = 20
 	config.MinConns = 2
 	config.ConnConfig.RuntimeParams["statement_timeout"] = "10000"
+	config.ConnConfig.Tracer = tracer
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
