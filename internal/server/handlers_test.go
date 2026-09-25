@@ -557,10 +557,9 @@ func TestHandleVersion(t *testing.T) {
 // failingWriteDB fails metric writes only.
 //
 // MockDB.Err fails every query, which means agent auth (GetAgentSecretSHA256)
-// and TouchLastSeenIfStale fail too -- the request 401s in middleware, or 500s
-// before it reaches the persistence loop, and the test passes for the wrong
-// reason. Overriding just the write methods isolates the failure to the thing
-// under test.
+// fails too -- the request 401s in middleware before it reaches the persistence
+// loop, and the test passes for the wrong reason. Overriding just the write
+// methods isolates the failure to the thing under test.
 type failingWriteDB struct {
 	*MockDB
 	err error
@@ -630,6 +629,29 @@ func TestHandleMetrics_PersistsBeforeResponding(t *testing.T) {
 	}
 	if mock.InsertMemoryCount != 1 {
 		t.Errorf("InsertMemory: got %d, want 1 before the response was written", mock.InsertMemoryCount)
+	}
+}
+
+// The auth middleware already touches last_seen; the handler must not repeat it.
+func TestHandleMetrics_TouchesLastSeenOnce(t *testing.T) {
+	s, agentID, secret, mock := newTestServer()
+
+	body, _ := json.Marshal([]RawEnvelope{
+		{Type: "cpu", Hostname: "test-host", Data: json.RawMessage(`{"usage": 50.0}`)},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	setAgentAuth(req, agentID, secret)
+	rec := httptest.NewRecorder()
+
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status: got %d, want 202", rec.Code)
+	}
+	if mock.TouchLastSeenCount != 1 {
+		t.Errorf("TouchLastSeenIfStale called %d times, want 1", mock.TouchLastSeenCount)
 	}
 }
 

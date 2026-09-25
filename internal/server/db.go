@@ -35,10 +35,10 @@ type MetricWriter interface {
 	// State upserts. Not caches, there is no history table behind these, so
 	// this row is the only record. Already idempotent under retry, but they
 	// belong in the same all-or-nothing contract.
-	UpsertProcess(ctx context.Context, arg database.UpsertProcessParams) error
+	UpsertProcesses(ctx context.Context, arg database.UpsertProcessesParams) error
 	DeleteStaleProcesses(ctx context.Context, arg database.DeleteStaleProcessesParams) error
-	UpsertService(ctx context.Context, arg database.UpsertServiceParams) error
-	UpsertApplication(ctx context.Context, arg database.UpsertApplicationParams) error
+	UpsertServices(ctx context.Context, arg database.UpsertServicesParams) error
+	UpsertApplications(ctx context.Context, arg database.UpsertApplicationsParams) error
 	UpsertUpdates(ctx context.Context, arg database.UpsertUpdatesParams) error
 }
 

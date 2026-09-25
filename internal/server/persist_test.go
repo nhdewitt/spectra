@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -134,8 +135,11 @@ func TestPersistMetric(t *testing.T) {
 				},
 			},
 			checkMock: func(t *testing.T, m *MockDB) {
-				if m.UpsertProcessCount != 2 {
-					t.Errorf("UpsertProcess called %d times, want 2", m.UpsertProcessCount)
+				if m.UpsertProcessesCount != 1 {
+					t.Errorf("UpsertProcess called %d times, want 1", m.UpsertProcessesCount)
+				}
+				if got := m.LastUpsertProcessesParams.Pids; !slices.Equal(got, []int32{1, 100}) {
+					t.Errorf("pids = %v, want [1 100]", got)
 				}
 			},
 		},
@@ -148,8 +152,11 @@ func TestPersistMetric(t *testing.T) {
 				},
 			},
 			checkMock: func(t *testing.T, m *MockDB) {
-				if m.UpsertServiceCount != 2 {
-					t.Errorf("UpsertService called %d times, want 2", m.UpsertServiceCount)
+				if m.UpsertServicesCount != 1 {
+					t.Errorf("UpsertService called %d times, want 1", m.UpsertServicesCount)
+				}
+				if got := m.LastUpsertServicesParams.Names; !slices.Equal(got, []string{"sshd", "nginx"}) {
+					t.Errorf("names = %v, want [sshd nginx]", got)
 				}
 			},
 		},
@@ -162,8 +169,11 @@ func TestPersistMetric(t *testing.T) {
 				},
 			},
 			checkMock: func(t *testing.T, m *MockDB) {
-				if m.UpsertApplicationCount != 2 {
-					t.Errorf("UpsertApplication called %d times, want 2", m.UpsertApplicationCount)
+				if m.UpsertApplicationsCount != 1 {
+					t.Errorf("UpsertApplications called %d times, want 1", m.UpsertApplicationsCount)
+				}
+				if got := m.LastUpsertApplicationsParams.Versions; !slices.Equal(got, []string{"9.0", "2.40"}) {
+					t.Errorf("versions = %v, want [9.0 2.40]", got)
 				}
 			},
 		},
@@ -235,7 +245,7 @@ func TestPersistMetric_UnknownMetricType(t *testing.T) {
 	if mock.InsertCPUCount+mock.InsertMemoryCount+mock.InsertDiskCount+mock.InsertDiskIOCount+
 		mock.InsertNetworkCount+mock.InsertTemperatureCount+mock.InsertWifiCount+
 		mock.InsertSystemCount+mock.InsertContainerCount+mock.InsertPiCount+
-		mock.UpsertProcessCount+mock.UpsertServiceCount+mock.UpsertApplicationCount != 0 {
+		mock.UpsertProcessesCount+mock.UpsertServicesCount+mock.UpsertApplicationsCount != 0 {
 		t.Error("unexpected DB call for unknown metric type")
 	}
 }
@@ -275,11 +285,11 @@ func TestPersistMetric_ProcessListDBError(t *testing.T) {
 		t.Fatal("expected an error so the batch is not acknowledged as durable")
 	}
 
-	// Stops at the first failure rather than working through the list. The
-	// remaining upserts would fail the same way, and the agent resends the
-	// whole batch regardless.
-	if mock.UpsertProcessCount != 1 {
-		t.Errorf("UpsertProcess called %d times, want 1", mock.UpsertProcessCount)
+	if mock.UpsertProcessesCount != 1 {
+		t.Errorf("UpsertProcesses called %d times, want 1", mock.UpsertProcessesCount)
+	}
+	if mock.DeleteStaleProcessesCount != 0 {
+		t.Error("the stale-process sweep ran after the upsert failed")
 	}
 }
 
@@ -299,8 +309,8 @@ func TestPersistMetric_ServiceListDBError(t *testing.T) {
 		t.Fatal("expected an error: service upserts used to log and report success, silently dropping rows during an outage")
 	}
 
-	if mock.UpsertServiceCount != 1 {
-		t.Errorf("UpsertService called %d times, want 1", mock.UpsertServiceCount)
+	if mock.UpsertServicesCount != 1 {
+		t.Errorf("UpsertServices called %d times, want 1", mock.UpsertServicesCount)
 	}
 }
 
@@ -323,5 +333,55 @@ func TestPersistMetric_ContainerListEmpty(t *testing.T) {
 
 	if mock.InsertContainerCount != 0 {
 		t.Errorf("InsertContainer called %d times for empty list, want 0", mock.InsertContainerCount)
+	}
+}
+
+// An empty list skips the upsert but still sweeps, so a host reporting no
+// processes does not keep showing the last set it reported.
+func TestPersistMetric_ProcessListEmpty(t *testing.T) {
+	s, _, _, mock := newTestServer()
+
+	err := s.persistMetric(context.Background(), mock, "00000000-0000-0000-0000-000000000001", time.Now(), &protocol.ProcessListMetric{})
+	if err != nil {
+		t.Fatalf("empty process list: got %v, want nil", err)
+	}
+	if mock.UpsertProcessesCount != 0 {
+		t.Errorf("UpsertProcesses called %d times for an empty list, want 0", mock.UpsertProcessesCount)
+	}
+	if mock.DeleteStaleProcessesCount != 1 {
+		t.Errorf("DeleteStaleProcesses called %d times, want 1", mock.DeleteStaleProcessesCount)
+	}
+}
+
+func TestRefreshCurrentBatch_OncePerType(t *testing.T) {
+	s, _, _, mock := newTestServer()
+
+	decoded := []decodedMetric{
+		{metric: &protocol.CPUMetric{Usage: 10}},
+		{metric: &protocol.NetworkMetric{Interface: "eth0"}},
+		{metric: &protocol.NetworkMetric{Interface: "eth1"}},
+		{metric: &protocol.TemperatureMetric{Sensor: "cpu"}},
+		{metric: &protocol.TemperatureMetric{Sensor: "gpu"}},
+		{metric: &protocol.DiskMetric{Mountpoint: "/"}},
+		{metric: &protocol.DiskMetric{Mountpoint: "/var"}},
+		{metric: &protocol.CPUMetric{Usage: 20}},
+	}
+	s.refreshCurrentBatch(context.Background(), "00000000-0000-0000-0000-000000000001", decoded)
+
+	counts := map[string]int{
+		"UpsertCurrentCPU":         mock.UpsertCurrentCPUCount,
+		"UpsertCurrentNetwork":     mock.UpsertCurrentNetworkCount,
+		"UpsertCurrentTemperature": mock.UpsertCurrentTemperatureCount,
+		"UpsertCurrentDiskMax":     mock.UpsertCurrentDiskMaxCount,
+	}
+	for name, got := range counts {
+		if got != 1 {
+			t.Errorf("%s called %d times, want 1", name, got)
+		}
+	}
+
+	// Value-copying refreshes take the newest sample in the batch.
+	if got := mock.LastUpsertCurrentCPUParams.CpuUsage.Float64; got != 20 {
+		t.Errorf("cpu_usage = %v, want 20 from the last CPU metric", got)
 	}
 }

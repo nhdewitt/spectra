@@ -1,6 +1,17 @@
--- name: UpsertProcess :exec
+-- name: UpsertProcesses :exec
+-- One statement per process list. DISTINCT ON drops a repeated pid, which ON CONFLICT DO UPDATE
+-- would reject, failing the batch on every retry.
 INSERT INTO current_processes (agent_id, pid, name, cpu_percent, mem_percent, mem_rss, status, threads, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+SELECT DISTINCT ON (p.pid) @agent_id::uuid, p.pid, p.name, p.cpu_percent, p.mem_percent, p.mem_rss, p.status, p.threads, NOW()
+FROM (
+    SELECT  unnest(@pids::integer[]) AS pid,
+            unnest(@names::text[]) AS name,
+            unnest(@cpu_percents::double precision[]) AS cpu_percent,
+            unnest(@mem_percents::double precision[]) AS mem_percent,
+            unnest(@mem_rss::bigint[]) AS mem_rss,
+            unnest(@statuses::text[]) AS status,
+            unnest(@threads::integer[]) AS threads
+) AS p
 ON CONFLICT (agent_id, pid) DO UPDATE
 SET name = EXCLUDED.name,
     cpu_percent = EXCLUDED.cpu_percent,
@@ -28,9 +39,15 @@ WHERE agent_id = $1
 ORDER BY mem_rss DESC
 LIMIT $2;
 
--- name: UpsertService :exec
+-- name: UpsertServices :exec
+-- One statement per service list; DISTINCT ON as in UpsertProcesses
 INSERT INTO current_services (agent_id, name, status, sub_status, updated_at)
-VALUES ($1, $2, $3, $4, NOW())
+SELECT DISTINCT ON (s.name) @agent_id::uuid, s.name, s.status, s.sub_status, NOW()
+FROM (
+    SELECT  unnest(@names::text[]) AS name,
+            unnest(@statuses::text[]) AS status,
+            unnest(@sub_statuses::text[]) AS sub_status
+) AS s
 ON CONFLICT (agent_id, name) DO UPDATE
 SET status = EXCLUDED.status,
     sub_status = EXCLUDED.sub_status,
@@ -42,9 +59,14 @@ FROM current_services
 WHERE agent_id = $1
 ORDER BY name;
 
--- name: UpsertApplication :exec
+-- name: UpsertApplications :exec
+-- One statement per application list; DISTINCT ON as in UpsertProcesses
 INSERT INTO current_applications (agent_id, name, version, updated_at)
-VALUES ($1, $2, $3, NOW())
+SELECT DISTINCT ON (a.name) @agent_id::uuid, a.name, a.version, NOW()
+FROM (
+    SELECT  unnest(@names::text[]) AS name,
+            unnest(@versions::text[]) AS version
+) AS a
 ON CONFLICT (agent_id, name) DO UPDATE
 SET version = EXCLUDED.version,
     updated_at = NOW();

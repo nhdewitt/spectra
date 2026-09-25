@@ -231,28 +231,42 @@ func (q *Queries) GetUpdates(ctx context.Context, agentID pgtype.UUID) (CurrentU
 	return i, err
 }
 
-const upsertApplication = `-- name: UpsertApplication :exec
+const upsertApplications = `-- name: UpsertApplications :exec
 INSERT INTO current_applications (agent_id, name, version, updated_at)
-VALUES ($1, $2, $3, NOW())
+SELECT DISTINCT ON (a.name) $1::uuid, a.name, a.version, NOW()
+FROM (
+    SELECT  unnest($2::text[]) AS name,
+            unnest($3::text[]) AS version
+) AS a
 ON CONFLICT (agent_id, name) DO UPDATE
 SET version = EXCLUDED.version,
     updated_at = NOW()
 `
 
-type UpsertApplicationParams struct {
-	AgentID pgtype.UUID `json:"agent_id"`
-	Name    string      `json:"name"`
-	Version pgtype.Text `json:"version"`
+type UpsertApplicationsParams struct {
+	AgentID  pgtype.UUID `json:"agent_id"`
+	Names    []string    `json:"names"`
+	Versions []string    `json:"versions"`
 }
 
-func (q *Queries) UpsertApplication(ctx context.Context, arg UpsertApplicationParams) error {
-	_, err := q.db.Exec(ctx, upsertApplication, arg.AgentID, arg.Name, arg.Version)
+// One statement per application list; DISTINCT ON as in UpsertProcesses
+func (q *Queries) UpsertApplications(ctx context.Context, arg UpsertApplicationsParams) error {
+	_, err := q.db.Exec(ctx, upsertApplications, arg.AgentID, arg.Names, arg.Versions)
 	return err
 }
 
-const upsertProcess = `-- name: UpsertProcess :exec
+const upsertProcesses = `-- name: UpsertProcesses :exec
 INSERT INTO current_processes (agent_id, pid, name, cpu_percent, mem_percent, mem_rss, status, threads, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+SELECT DISTINCT ON (p.pid) $1::uuid, p.pid, p.name, p.cpu_percent, p.mem_percent, p.mem_rss, p.status, p.threads, NOW()
+FROM (
+    SELECT  unnest($2::integer[]) AS pid,
+            unnest($3::text[]) AS name,
+            unnest($4::double precision[]) AS cpu_percent,
+            unnest($5::double precision[]) AS mem_percent,
+            unnest($6::bigint[]) AS mem_rss,
+            unnest($7::text[]) AS status,
+            unnest($8::integer[]) AS threads
+) AS p
 ON CONFLICT (agent_id, pid) DO UPDATE
 SET name = EXCLUDED.name,
     cpu_percent = EXCLUDED.cpu_percent,
@@ -263,53 +277,61 @@ SET name = EXCLUDED.name,
     updated_at = NOW()
 `
 
-type UpsertProcessParams struct {
-	AgentID    pgtype.UUID   `json:"agent_id"`
-	Pid        int32         `json:"pid"`
-	Name       pgtype.Text   `json:"name"`
-	CpuPercent pgtype.Float8 `json:"cpu_percent"`
-	MemPercent pgtype.Float8 `json:"mem_percent"`
-	MemRss     pgtype.Int8   `json:"mem_rss"`
-	Status     pgtype.Text   `json:"status"`
-	Threads    pgtype.Int4   `json:"threads"`
+type UpsertProcessesParams struct {
+	AgentID     pgtype.UUID `json:"agent_id"`
+	Pids        []int32     `json:"pids"`
+	Names       []string    `json:"names"`
+	CpuPercents []float64   `json:"cpu_percents"`
+	MemPercents []float64   `json:"mem_percents"`
+	MemRss      []int64     `json:"mem_rss"`
+	Statuses    []string    `json:"statuses"`
+	Threads     []int32     `json:"threads"`
 }
 
-func (q *Queries) UpsertProcess(ctx context.Context, arg UpsertProcessParams) error {
-	_, err := q.db.Exec(ctx, upsertProcess,
+// One statement per process list. DISTINCT ON drops a repeated pid, which ON CONFLICT DO UPDATE
+// would reject, failing the batch on every retry.
+func (q *Queries) UpsertProcesses(ctx context.Context, arg UpsertProcessesParams) error {
+	_, err := q.db.Exec(ctx, upsertProcesses,
 		arg.AgentID,
-		arg.Pid,
-		arg.Name,
-		arg.CpuPercent,
-		arg.MemPercent,
+		arg.Pids,
+		arg.Names,
+		arg.CpuPercents,
+		arg.MemPercents,
 		arg.MemRss,
-		arg.Status,
+		arg.Statuses,
 		arg.Threads,
 	)
 	return err
 }
 
-const upsertService = `-- name: UpsertService :exec
+const upsertServices = `-- name: UpsertServices :exec
 INSERT INTO current_services (agent_id, name, status, sub_status, updated_at)
-VALUES ($1, $2, $3, $4, NOW())
+SELECT DISTINCT ON (s.name) $1::uuid, s.name, s.status, s.sub_status, NOW()
+FROM (
+    SELECT  unnest($2::text[]) AS name,
+            unnest($3::text[]) AS status,
+            unnest($4::text[]) AS sub_status
+) AS s
 ON CONFLICT (agent_id, name) DO UPDATE
 SET status = EXCLUDED.status,
     sub_status = EXCLUDED.sub_status,
     updated_at = NOW()
 `
 
-type UpsertServiceParams struct {
-	AgentID   pgtype.UUID `json:"agent_id"`
-	Name      string      `json:"name"`
-	Status    pgtype.Text `json:"status"`
-	SubStatus pgtype.Text `json:"sub_status"`
+type UpsertServicesParams struct {
+	AgentID     pgtype.UUID `json:"agent_id"`
+	Names       []string    `json:"names"`
+	Statuses    []string    `json:"statuses"`
+	SubStatuses []string    `json:"sub_statuses"`
 }
 
-func (q *Queries) UpsertService(ctx context.Context, arg UpsertServiceParams) error {
-	_, err := q.db.Exec(ctx, upsertService,
+// One statement per service list; DISTINCT ON as in UpsertProcesses
+func (q *Queries) UpsertServices(ctx context.Context, arg UpsertServicesParams) error {
+	_, err := q.db.Exec(ctx, upsertServices,
 		arg.AgentID,
-		arg.Name,
-		arg.Status,
-		arg.SubStatus,
+		arg.Names,
+		arg.Statuses,
+		arg.SubStatuses,
 	)
 	return err
 }

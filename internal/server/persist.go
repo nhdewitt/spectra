@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -193,20 +194,29 @@ func (s *Server) persistMetric(ctx context.Context, tx MetricWriter, agentID str
 
 	case *protocol.ProcessListMetric:
 		cutoff := pgtype.Timestamptz{Time: ts.Add(-1 * time.Minute), Valid: true}
-		for _, p := range m.Processes {
-			if upsertErr := tx.UpsertProcess(ctx, database.UpsertProcessParams{
-				AgentID:    uid,
-				Pid:        int32(p.Pid),
-				Name:       pgText(p.Name),
-				CpuPercent: pgFloat8(p.CPUPercent),
-				MemPercent: pgFloat8(p.MemPercent),
-				MemRss:     pgInt8(int64(p.MemRSS)),
-				Status:     pgText(string(p.Status)),
-				Threads:    pgInt4(int32(p.ThreadsTotal)),
-			}); upsertErr != nil {
-				// Stop at the first failure: the rest of the list would fail
-				// the same way, and the agent resends the whole batch anyway.
-				return fmt.Errorf("upsert process %d: %w", p.Pid, upsertErr)
+		if n := len(m.Processes); n > 0 {
+			arg := database.UpsertProcessesParams{
+				AgentID:     uid,
+				Pids:        make([]int32, n),
+				Names:       make([]string, n),
+				CpuPercents: make([]float64, n),
+				MemPercents: make([]float64, n),
+				MemRss:      make([]int64, n),
+				Statuses:    make([]string, n),
+				Threads:     make([]int32, n),
+			}
+			for i := range m.Processes {
+				p := &m.Processes[i]
+				arg.Pids[i] = int32(p.Pid)
+				arg.Names[i] = p.Name
+				arg.CpuPercents[i] = p.CPUPercent
+				arg.MemPercents[i] = p.MemPercent
+				arg.MemRss[i] = int64(p.MemRSS)
+				arg.Statuses[i] = string(p.Status)
+				arg.Threads[i] = int32(p.ThreadsTotal)
+			}
+			if err := tx.UpsertProcesses(ctx, arg); err != nil {
+				return fmt.Errorf("upsert processes: %w", err)
 			}
 		}
 		// Remove processes that weren't in this batch
@@ -216,27 +226,44 @@ func (s *Server) persistMetric(ctx context.Context, tx MetricWriter, agentID str
 		})
 
 	case *protocol.ServiceListMetric:
-		for _, svc := range m.Services {
-			if upsertErr := tx.UpsertService(ctx, database.UpsertServiceParams{
-				AgentID:   uid,
-				Name:      svc.Name,
-				Status:    pgText(svc.Status),
-				SubStatus: pgText(svc.SubStatus),
-			}); upsertErr != nil {
-				return fmt.Errorf("upsert service %q: %w", svc.Name, upsertErr)
-			}
+		n := len(m.Services)
+		if n == 0 {
+			return nil
+		}
+		arg := database.UpsertServicesParams{
+			AgentID:     uid,
+			Names:       make([]string, n),
+			Statuses:    make([]string, n),
+			SubStatuses: make([]string, n),
+		}
+		for i := range m.Services {
+			svc := &m.Services[i]
+			arg.Names[i] = svc.Name
+			arg.Statuses[i] = svc.Status
+			arg.SubStatuses[i] = svc.SubStatus
+		}
+		if err := tx.UpsertServices(ctx, arg); err != nil {
+			return fmt.Errorf("upsert services: %w", err)
 		}
 		return nil
 
 	case *protocol.ApplicationListMetric:
-		for _, app := range m.Applications {
-			if upsertErr := tx.UpsertApplication(ctx, database.UpsertApplicationParams{
-				AgentID: uid,
-				Name:    app.Name,
-				Version: pgText(app.Version),
-			}); upsertErr != nil {
-				return fmt.Errorf("upsert application %q: %w", app.Name, upsertErr)
-			}
+		n := len(m.Applications)
+		if n == 0 {
+			return nil
+		}
+		arg := database.UpsertApplicationsParams{
+			AgentID:  uid,
+			Names:    make([]string, n),
+			Versions: make([]string, n),
+		}
+		for i := range m.Applications {
+			app := &m.Applications[i]
+			arg.Names[i] = app.Name
+			arg.Versions[i] = app.Version
+		}
+		if err := tx.UpsertApplications(ctx, arg); err != nil {
+			return fmt.Errorf("upsert applications: %w", err)
 		}
 		return nil
 
@@ -426,6 +453,24 @@ func (s *Server) refreshCurrent(ctx context.Context, agentID string, metric prot
 		for i := range m.Containers {
 			s.refreshCurrent(ctx, agentID, &m.Containers[i])
 		}
+	}
+}
+
+// refreshCurrentBatch runs refreshCurrent once per metric type, newest first.
+//
+// The disk, network and temperature upserts recompute an agent-wide aggregate from rows
+// already written, so one call covers every metric of that type in the batch. The others
+// copy values from the metric, so only the last one in the batch would survive anyway.
+func (s *Server) refreshCurrentBatch(ctx context.Context, agentID string, decoded []decodedMetric) {
+	seen := make([]string, 0, 16)
+	for i := len(decoded) - 1; i >= 0; i-- {
+		m := decoded[i].metric
+		t := m.MetricType()
+		if slices.Contains(seen, t) {
+			continue
+		}
+		seen = append(seen, t)
+		s.refreshCurrent(ctx, agentID, m)
 	}
 }
 

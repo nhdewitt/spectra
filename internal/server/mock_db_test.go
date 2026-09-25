@@ -103,20 +103,33 @@ type MockDB struct {
 	RolledBack        bool
 
 	// Counters for verifying calls
-	InsertCPUCount         int
-	InsertMemoryCount      int
-	InsertDiskCount        int
-	InsertDiskIOCount      int
-	InsertNetworkCount     int
-	InsertTemperatureCount int
-	InsertWifiCount        int
-	InsertSystemCount      int
-	InsertContainerCount   int
-	InsertPiCount          int
-	UpsertProcessCount     int
-	UpsertServiceCount     int
-	UpsertApplicationCount int
-	TouchLastSeenCount     int
+	InsertCPUCount          int
+	InsertMemoryCount       int
+	InsertDiskCount         int
+	InsertDiskIOCount       int
+	InsertNetworkCount      int
+	InsertTemperatureCount  int
+	InsertWifiCount         int
+	InsertSystemCount       int
+	InsertContainerCount    int
+	InsertPiCount           int
+	UpsertProcessesCount    int
+	UpsertServicesCount     int
+	UpsertApplicationsCount int
+	TouchLastSeenCount      int
+
+	// Last list passed to each batched upsert, and the stale-process sweep
+	LastUpsertProcessesParams    database.UpsertProcessesParams
+	LastUpsertServicesParams     database.UpsertServicesParams
+	LastUpsertApplicationsParams database.UpsertApplicationsParams
+	DeleteStaleProcessesCount    int
+
+	// current_metrics refresh calls
+	UpsertCurrentCPUCount         int
+	LastUpsertCurrentCPUParams    database.UpsertCurrentCPUParams
+	UpsertCurrentDiskMaxCount     int
+	UpsertCurrentNetworkCount     int
+	UpsertCurrentTemperatureCount int
 
 	// Auth
 	Users       map[string]mockUser    // username -> user
@@ -403,30 +416,34 @@ func (m *MockDB) InsertPi(_ context.Context, _ database.InsertPiParams) error {
 	return m.Err
 }
 
-func (m *MockDB) UpsertProcess(_ context.Context, _ database.UpsertProcessParams) error {
+func (m *MockDB) UpsertProcesses(_ context.Context, arg database.UpsertProcessesParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.UpsertProcessCount++
+	m.UpsertProcessesCount++
+	m.LastUpsertProcessesParams = arg
 	return m.Err
 }
 
 func (m *MockDB) DeleteStaleProcesses(_ context.Context, _ database.DeleteStaleProcessesParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.DeleteStaleProcessesCount++
 	return m.Err
 }
 
-func (m *MockDB) UpsertService(_ context.Context, _ database.UpsertServiceParams) error {
+func (m *MockDB) UpsertServices(_ context.Context, arg database.UpsertServicesParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.UpsertServiceCount++
+	m.UpsertServicesCount++
+	m.LastUpsertServicesParams = arg
 	return m.Err
 }
 
-func (m *MockDB) UpsertApplication(_ context.Context, _ database.UpsertApplicationParams) error {
+func (m *MockDB) UpsertApplications(_ context.Context, arg database.UpsertApplicationsParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.UpsertApplicationCount++
+	m.UpsertApplicationsCount++
+	m.LastUpsertApplicationsParams = arg
 	return m.Err
 }
 
@@ -436,9 +453,11 @@ func (m *MockDB) UpsertUpdates(_ context.Context, _ database.UpsertUpdatesParams
 	return m.Err
 }
 
-func (m *MockDB) UpsertCurrentCPU(_ context.Context, _ database.UpsertCurrentCPUParams) error {
+func (m *MockDB) UpsertCurrentCPU(_ context.Context, arg database.UpsertCurrentCPUParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.UpsertCurrentCPUCount++
+	m.LastUpsertCurrentCPUParams = arg
 	return m.Err
 }
 
@@ -451,18 +470,21 @@ func (m *MockDB) UpsertCurrentMemory(_ context.Context, _ database.UpsertCurrent
 func (m *MockDB) UpsertCurrentDiskMax(_ context.Context, _ pgtype.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.UpsertCurrentDiskMaxCount++
 	return m.Err
 }
 
 func (m *MockDB) UpsertCurrentNetwork(_ context.Context, _ pgtype.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.UpsertCurrentNetworkCount++
 	return m.Err
 }
 
 func (m *MockDB) UpsertCurrentTemperature(_ context.Context, _ pgtype.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.UpsertCurrentTemperatureCount++
 	return m.Err
 }
 

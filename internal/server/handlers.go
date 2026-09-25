@@ -12,7 +12,10 @@ import (
 	"github.com/nhdewitt/spectra/internal/database"
 	"github.com/nhdewitt/spectra/internal/labels"
 	"github.com/nhdewitt/spectra/internal/protocol"
+	"github.com/nhdewitt/spectra/internal/telemetry"
 	"github.com/nhdewitt/spectra/internal/version"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // RawEnvelope is used for unmarshalling metrics
@@ -105,6 +108,7 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	agentID := getAgentID(r)
 
 	if v := r.Header.Get("X-Spectra-Agent-Version"); v != "" {
@@ -114,29 +118,23 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	_, span := tracer.Start(ctx, "metrics.read_body")
 	var rawEnvelopes []RawEnvelope
-	if err := decodeJSONBody(r, &rawEnvelopes, maxMetricsBody); err != nil {
+	err := decodeJSONBody(r, &rawEnvelopes, maxMetricsBody)
+	span.SetAttributes(
+		attribute.Int64("spectra.body_bytes", r.ContentLength),
+		attribute.Int("spectra.envelopes", len(rawEnvelopes)),
+	)
+	telemetry.EndSpan(span, err)
+	if err != nil {
 		http.Error(w, err.Error(), badBodyStatus(err))
 		return
-	}
-
-	if s.DB != nil {
-		if err := s.DB.TouchLastSeenIfStale(r.Context(), database.TouchLastSeenIfStaleParams{
-			ID:         mustUUID(agentID),
-			IpAddress:  pgText(s.clientIP(r)),
-			Version:    r.Header.Get("X-Agent-Version"),
-			Commit:     r.Header.Get("X-Agent-Commit"),
-			BinaryHash: r.Header.Get("X-Agent-Binary-Hash"),
-		}); err != nil {
-			s.Logger.Error("database query error", "error", err, "handler", "handleMetrics")
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
 	}
 
 	// Decode first. An envelope that will not decode is dropped rather than failing the
 	// batch. It fails identically on every retry, so rejecting it would wedge this agent's
 	// pipeline behind a batch that can never succeed.
+	_, span = tracer.Start(ctx, "metrics.unmarshal")
 	decoded := make([]decodedMetric, 0, len(rawEnvelopes))
 	for _, env := range rawEnvelopes {
 		metric, err := protocol.UnmarshalMetric(env.Type, env.Data)
@@ -147,20 +145,26 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 		decoded = append(decoded, decodedMetric{metric: metric, ts: env.Timestamp})
 	}
+	span.SetAttributes(attribute.Int("spectra.dropped", len(rawEnvelopes)-len(decoded)))
+	span.End()
 
 	// Persist before acknowledging, and persist atomically. The agent treats any 2xx as
-	// "the whole batch is durable" and re-sends everything otherwise, so a partially
-	// applied batch turns each retry into duplicate history (these tables have no
-	// uniqueness constraints)./
+	// "the whole batch is durable" and re-sends everything otherwise. Since migration 024
+	// a replayed insert is ignored, except in metrics_temperature,m which has no unique
+	// index yet, so a partially applied batch would still duplicate its readings on retry.
 	if s.DB != nil {
-		if err := s.DB.WithMetricTx(r.Context(), func(tx MetricWriter) error {
+		persistCtx, persistSpan := tracer.Start(ctx, "metrics.persist",
+			trace.WithAttributes(attribute.Int("spectra.metrics", len(decoded))))
+		err = s.DB.WithMetricTx(persistCtx, func(tx MetricWriter) error {
 			for _, d := range decoded {
-				if err := s.persistMetric(r.Context(), tx, agentID, d.ts, d.metric); err != nil {
+				if err := s.persistMetric(persistCtx, tx, agentID, d.ts, d.metric); err != nil {
 					return err
 				}
 			}
 			return nil
-		}); err != nil {
+		})
+		telemetry.EndSpan(persistSpan, err)
+		if err != nil {
 			s.dbError(w, err, "handleMetrics")
 			return
 		}
@@ -169,9 +173,9 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	// Derived cache, after the commit. A failure here is logged, not returned. The
 	// next batch recomputes these rows from a few seconds later, and failing the
 	// request would make the agent replay history that stored correctly.
-	for _, d := range decoded {
-		s.refreshCurrent(r.Context(), agentID, d.metric)
-	}
+	refreshCtx, span := tracer.Start(ctx, "metrics.refresh_current")
+	s.refreshCurrentBatch(refreshCtx, agentID, decoded)
+	span.End()
 
 	w.WriteHeader(http.StatusAccepted)
 }
