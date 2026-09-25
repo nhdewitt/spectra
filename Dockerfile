@@ -13,7 +13,7 @@ RUN npm run build
 # produces web/dist, consumed by go:embed in the next step
 
 # Stage 2: go binaries
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 
 # Module cache layer
