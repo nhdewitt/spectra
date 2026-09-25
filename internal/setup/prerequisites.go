@@ -244,9 +244,9 @@ func CreateDatabase(dbName, dbUser, dbPass string) error {
 		return fmt.Errorf("invalid database user: %q", dbUser)
 	}
 
-	escapedPass := escapePassword(dbPass)
-
-	if _, err := runCmd("su", "-", "postgres", "-c", fmt.Sprintf(`psql -c "CREATE USER %s WITH PASSWORD '%s';"`, dbUser, escapedPass)); err != nil {
+	// Fed on stdin so the password never reaches a shell, arv, or error text.
+	createUser := fmt.Sprintf("CREATE USER %s WITH PASSWORD '%s';", dbUser, escapePassword(dbPass))
+	if err := runPsql(createUser); err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
 			return fmt.Errorf("create user: %w", err)
 		}
@@ -568,6 +568,18 @@ func runCmd(name string, args ...string) (string, error) {
 		return "", fmt.Errorf("%s %s: %w\n%s", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// runPsql runs SQL as the postgres user via stdin. ON_ERROR_STOP is required.
+// Without it, psql exits 0 on a failed statement read from stdin.
+func runPsql(sql string) error {
+	cmd := exec.Command("su", "-", "postgres", "-c", "psql -v ON_ERROR_STOP=1 -q")
+	cmd.Stdin = strings.NewReader(sql)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("psql: %w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // inContainer reports whether the process is running inside a container, so
