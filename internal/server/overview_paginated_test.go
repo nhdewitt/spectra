@@ -218,3 +218,33 @@ func TestParseIDFilters(t *testing.T) {
 		}
 	})
 }
+
+func TestHandleOverviewPage_PageAndSizeParams(t *testing.T) {
+	cases := []struct {
+		query              string
+		wantPage, wantSize int32
+	}{
+		{"page=3&size=50", 3, 50},
+		{"size=1000", 1, maxOverviewPageSizeReq},
+		{"page=0&size=-5", 1, defaultOverviewPageSize},
+		{"page=abc&size=1.5", 1, defaultOverviewPageSize},
+		{"page=99999999999", 1, defaultOverviewPageSize},
+		{"page=2147483647", maxOverviewPage, defaultOverviewPageSize},
+	}
+	for _, c := range cases {
+		s, _, _, mock := newTestServer()
+		mock.StatusThresholds = defaultThresholdsRow()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/overview/page?"+c.query, nil)
+		rec := httptest.NewRecorder()
+		s.handleOverviewPage(rec, req)
+
+		var resp overviewPage
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("%s: decode: %v", c.query, err)
+		}
+		if resp.Page != c.wantPage || resp.Size != c.wantSize {
+			t.Errorf("%s: page=%d size=%d, want page=%d size=%d",
+				c.query, resp.Page, resp.Size, c.wantPage, c.wantSize)
+		}
+	}
+}

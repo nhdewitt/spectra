@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +15,8 @@ import (
 const (
 	defaultOverviewPageSize = 25
 	maxOverviewPageSizeReq  = 200
+	// Keeps (page-1)*size within int32 at the largest page size.
+	maxOverviewPage = math.MaxInt32 / maxOverviewPageSizeReq
 )
 
 // overviewPage is the paginated response envelope.
@@ -43,8 +46,8 @@ type overviewPage struct {
 func (s *Server) handleOverviewPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	page := parsePositiveInt(q.Get("page"), 1)
-	size := parsePositiveInt(q.Get("size"), defaultOverviewPageSize)
+	page := parsePositiveInt32(q.Get("page"), 1, maxOverviewPage)
+	size := parsePositiveInt32(q.Get("size"), defaultOverviewPageSize, maxOverviewPageSizeReq)
 	if size > maxOverviewPageSizeReq {
 		size = maxOverviewPageSizeReq
 	}
@@ -70,8 +73,8 @@ func (s *Server) handleOverviewPage(w http.ResponseWriter, r *http.Request) {
 		IDs:       ids,
 		SortBy:    q.Get("sort"),
 		SortDir:   q.Get("order"),
-		Limit:     int32(size),
-		Offset:    int32((page - 1) * size),
+		Limit:     size,
+		Offset:    (page - 1) * size,
 		WithCount: q.Get("count") == "true",
 
 		CPUWarn:             tv.CPUWarn,
@@ -103,8 +106,8 @@ func (s *Server) handleOverviewPage(w http.ResponseWriter, r *http.Request) {
 
 	resp := overviewPage{
 		Agents: agents,
-		Page:   int32(page),
-		Size:   int32(size),
+		Page:   page,
+		Size:   size,
 	}
 	if res.Counted {
 		total := res.Total
@@ -116,16 +119,14 @@ func (s *Server) handleOverviewPage(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, resp)
 }
 
-// parsePositiveInt parses a positive int query param, falling back to def on
-// missing/invalid/non-positive input. Mirrors the top_n parsing style.
-func parsePositiveInt(val string, def int) int {
-	if val == "" {
+// parsePositiveInt32 parses a positive int32 query param, returning def on
+// missing, invalid, non-positive, or out-of-range input and clamping to limit.
+func parsePositiveInt32(val string, def, limit int32) int32 {
+	n, err := strconv.ParseInt(val, 10, 32)
+	if err != nil || n <= 0 {
 		return def
 	}
-	if n, err := strconv.Atoi(val); err != nil && n > 0 {
-		return n
-	}
-	return def
+	return min(int32(n), limit)
 }
 
 // emptyIfAll normalizes the sentinal "all" and "" to "" so the query treats it
