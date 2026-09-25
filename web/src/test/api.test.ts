@@ -55,23 +55,23 @@ describe('apiFetch intervals', () => {
         window.__spectraLogout = logout
         mockFetch.mockResolvedValueOnce(errorResponse(401))
 
-        await expect(api.me()).rejects.toThrow(HttpError)
+        await expect(api.agent('a1')).rejects.toThrow(HttpError)
         expect(logout).toHaveBeenCalled()
     })
 
     // The handler used to be cleared after firing, to stop a logout request
     // from 401ing back into itself. That capped a tab at one handled expiry:
-    // log in again, expire again, and nothing ran. App suppresses the
-    // self-recursion itself now, so the handler stays installed.
+    // log in again, expire again, and nothing ran. Logout opts out of the
+    // handler now, so it stays installed.
     it('keeps __spectraLogout installed across repeated 401s', async () => {
         const logout = vi.fn()
         window.__spectraLogout = logout
  
         mockFetch.mockResolvedValueOnce(errorResponse(401))
-        await expect(api.me()).rejects.toThrow(HttpError)
+        await expect(api.agent('a1')).rejects.toThrow(HttpError)
  
         mockFetch.mockResolvedValueOnce(errorResponse(401))
-        await expect(api.me()).rejects.toThrow(HttpError)
+        await expect(api.agent('a1')).rejects.toThrow(HttpError)
  
         expect(logout).toHaveBeenCalledTimes(2)
         expect(window.__spectraLogout).toBe(logout)
@@ -121,6 +121,22 @@ describe('auth endpoints', () => {
         const call = lastFetchCall()
         expect(call.url).toBe('/api/v1/auth/logout')
         expect(call.method).toBe('POST')
+    })
+
+
+    // A 401 here means "not signed in" or "wrong password". Reporting it as an
+    // expiry put "Your session has expired." on a fresh login page.
+    it.each([
+        ['me', () => api.me()],
+        ['login', () => api.login('admin', 'wrong-password')],
+        ['logout', () => api.logout()],
+    ])('%s 401 throws without calling __spectraLogout', async (_name, call) => {
+        const logout = vi.fn()
+        window.__spectraLogout = logout
+        mockFetch.mockResolvedValueOnce(errorResponse(401))
+
+        await expect(call()).rejects.toMatchObject({ status: 401 })
+        expect(logout).not.toHaveBeenCalled()
     })
 })
 

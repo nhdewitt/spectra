@@ -33,6 +33,30 @@ describe('useSession', () => {
         expect(result.current.user).toBeNull()
     })
 
+    // The mocked api.me above rejects directly, which hid this: the real
+    // apiFetch reported the probe's 401 to the handler this hook installs, so
+    // a plain visit to the login page said "Your session has expired."
+    it('reports no expiry when the first probe finds no session', async () => {
+        const actual = await vi.importActual<typeof import('../api')>('../api')
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: false,
+            status: 401,
+            statusText: 'Unauthorized',
+            text: () => Promise.resolve(''),
+        }))
+        mockMe.mockImplementation(actual.api.me)
+
+        try {
+            const { result } = renderHook(() => useSession())
+            await waitFor(() => expect(result.current.checking).toBe(false))
+
+            expect(result.current.user).toBeNull()
+            expect(result.current.logoutReason).toBeNull()
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+
     it('adopts an existing session', async () => {
         mockMe.mockResolvedValue(testUser)
 

@@ -52,8 +52,8 @@ export function useSession(onSignOut?: () => void): Session {
 	}, [clearSession]);
 
 	// Expired session: don't call api.logout() (invalid cookie, 401). The
-	// guard handles the other direction. An explicit logout 401 should not
-	// report an expiry the user never experienced.
+	// guard handles the other direction. Another request that 401s while an
+	// explicit logout is in flight should not report an expiry.
 	const handleSessionExpired = useCallback(() => {
 		if (loggingOut.current) return;
 		clearSession("Your session has expired.");

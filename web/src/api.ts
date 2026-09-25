@@ -99,6 +99,14 @@ export interface OverviewStats {
     reboot: number;
 }
 
+interface FetchBehavior {
+    /**
+     * Report a 401 to the registered session-expiry handler. Off for the
+     * auth endpoints, where a 401 means "not signed in" or "wrong password".
+     */
+    notifyUnauthorized?: boolean;
+}
+
 /**
  * Low-level fetch wrapper. Prepends API_BASE, includes credentials, and
  * surfaces non-2xx responses as HttpError. A 401 triggers the registered
@@ -110,7 +118,7 @@ export interface OverviewStats {
  * that case directly, and clearing meant only the first expiration of a tab's
  * life was ever handled.
  */
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function apiFetch<T>(path: string, options: RequestInit = {}, { notifyUnauthorized = true }: FetchBehavior = {}): Promise<T> {
     const res = await fetch(`${API_BASE}${path}`, {
         // options is spread before headers so that a caller's headers merge with
         // the default Content-Type rather than replacing the whole object.
@@ -120,7 +128,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     });
 
     if (res.status === 401) {
-        window.__spectraLogout?.();
+        if (notifyUnauthorized) window.__spectraLogout?.();
         throw new HttpError(401, "Unauthorized");
     }
 
@@ -184,16 +192,17 @@ export const api = {
 
     /** POST /auth/login - establishes a session cookie. */
     login: (username: string, password: string) =>
-        apiFetch<User>("/auth/login", {
-            method: "POST",
-            body: JSON.stringify({ username, password }),
-        }),
+        apiFetch<User>(
+            "/auth/login",
+            { method: "POST", body: JSON.stringify({ username, password }) },
+            { notifyUnauthorized: false },
+        ),
 
     /** POST /auth/logout - clears the session cookie server-side. */
-    logout: () => apiFetch<null>("/auth/logout", { method: "POST" }),
+    logout: () => apiFetch<null>("/auth/logout", { method: "POST" }, { notifyUnauthorized: false }),
 
     /** GET /auth/me - returns the current user, or 401 if not authenticated. */
-    me: () => apiFetch<User>("/auth/me"),
+    me: () => apiFetch<User>("/auth/me", {}, { notifyUnauthorized: false }),
 
     // Overview / fleet
 
