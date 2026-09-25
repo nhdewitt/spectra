@@ -2,11 +2,13 @@ package server
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -920,4 +922,94 @@ func TestGetCommandResult_AllowsAdmin(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("GET command result as admin: got %d, want 200", rec.Code)
 	}
+}
+
+// heavyMetricsBody returns a gzipped batch shaped like a heavy host's 15-second
+// send, encoded the way the agent's compressPayload encodes it.
+func heavyMetricsBody(b *testing.B) []byte {
+	b.Helper()
+
+	procs := make([]protocol.ProcessMetric, 600)
+	for i := range procs {
+		procs[i] = protocol.ProcessMetric{
+			Pid:          1000 + i,
+			Name:         fmt.Sprintf("synthetic-worker-%04d.exe", i),
+			CPUPercent:   float64(i%97) / 7,
+			MemPercent:   float64(i%89) / 11,
+			MemRSS:       uint64(i+1) * 151552,
+			Status:       protocol.ProcRunning,
+			ThreadsTotal: uint32(i%48 + 1),
+		}
+	}
+	svcs := make([]protocol.ServiceMetric, 160)
+	for i := range svcs {
+		svcs[i] = protocol.ServiceMetric{
+			Name:        fmt.Sprintf("synthetic-service-%03d", i),
+			Status:      "active",
+			SubStatus:   "running",
+			LoadState:   "loaded",
+			Description: "Synthetic service for the decode benchmark",
+		}
+	}
+
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	batch := []protocol.Envelope{
+		{Type: "process_list", Timestamp: ts, Hostname: "bench-host", Data: protocol.ProcessListMetric{Processes: procs}},
+		{Type: "service_list", Timestamp: ts, Hostname: "bench-host", Data: protocol.ServiceListMetric{Services: svcs}},
+		{Type: "cpu", Timestamp: ts, Hostname: "bench-host", Data: protocol.CPUMetric{Usage: 12.5}},
+		{Type: "memory", Timestamp: ts, Hostname: "bench-host", Data: protocol.MemoryMetric{Total: 16 << 30, Used: 9 << 30, UsedPct: 56.25}},
+	}
+
+	var buf bytes.Buffer
+	zw, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := json.NewEncoder(zw).Encode(batch); err != nil {
+		b.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		b.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// BenchmarkHandleMetrics_Decode runs the two stages handleMetrics traces as
+// metrics.read_body and metrics.unmarshal, with no network in the path. The
+// gap between these and the live spans is transfer time.
+func BenchmarkHandleMetrics_Decode(b *testing.B) {
+	body := heavyMetricsBody(b)
+	b.Logf("compressed body: %d bytes", len(body))
+
+	newRequest := func() *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/metrics", bytes.NewReader(body))
+		req.Header.Set("Content-Encoding", "gzip")
+		return req
+	}
+
+	b.Run("read_body", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			var envs []RawEnvelope
+			if err := decodeJSONBody(newRequest(), &envs, maxMetricsBody); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	var envs []RawEnvelope
+	if err := decodeJSONBody(newRequest(), &envs, maxMetricsBody); err != nil {
+		b.Fatal(err)
+	}
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			for _, env := range envs {
+				if _, err := protocol.UnmarshalMetric(env.Type, env.Data); err != nil {
+					b.Fatal(err)
+				}
+			}
+		}
+	})
 }
