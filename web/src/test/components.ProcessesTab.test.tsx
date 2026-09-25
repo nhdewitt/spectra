@@ -116,7 +116,7 @@ describe('ProcessesTab', () => {
     const sortSelect = screen.getAllByRole('combobox')[0]!
     fireEvent.change(sortSelect, { target: { value: 'memory' } })
 
-    await vi.advanceTimersByTimeAsync(10_000)
+    await vi.advanceTimersByTimeAsync(0) // no wait for the polling interval
 
     expect(mockAgentProcesses).toHaveBeenCalledWith('a1', 'memory', 20)
 
@@ -136,7 +136,7 @@ describe('ProcessesTab', () => {
     const limitSelect = screen.getAllByRole('combobox')[1]!
     fireEvent.change(limitSelect, { target: { value: '50' } })
 
-    await vi.advanceTimersByTimeAsync(10_000) // advance past polling interval
+    await vi.advanceTimersByTimeAsync(0) // no wait for the polling interval
 
     expect(mockAgentProcesses).toHaveBeenCalledWith('a1', 'cpu', 50)
 

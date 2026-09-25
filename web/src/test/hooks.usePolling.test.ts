@@ -73,7 +73,9 @@ describe('usePolling', () => {
         vi.useRealTimers()
     })
 
-    it('picks up a new fetcher on the next poll without restarting the interval', async () => {
+    // A new fetcher means a new resource: another agent, or a changed sort or
+    // limit. Waiting for the next tick showed the old one for a full interval.
+    it('fetches immediately when the fetcher changes and restarts the interval', async () => {
         vi.useFakeTimers()
         const fetcherA = vi.fn().mockResolvedValue({ value: 'a' })
         const fetcherB = vi.fn().mockResolvedValue({ value: 'b' })
@@ -89,13 +91,47 @@ describe('usePolling', () => {
         expect(result.current.data).toEqual({ value: 'a' })
 
         rerender({ fetcher: fetcherB })
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(0)
+        })
+        expect(fetcherB).toHaveBeenCalledTimes(1)
+        expect(result.current.data).toEqual({ value: 'b' })
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(10_000)
         })
+        expect(fetcherB).toHaveBeenCalledTimes(2)
+        expect(fetcherA).toHaveBeenCalledTimes(1)
 
-        expect(fetcherB).toHaveBeenCalledTimes(1)
-        expect(fetcherA).toHaveBeenCalledTimes(1) // never called again after the swap
+        vi.useRealTimers()
+    })
+
+    it("discards the previous fetcher's response once the fetcher changes", async () => {
+        vi.useFakeTimers()
+        let resolveA!: (v: { value: string }) => void
+        const fetcherA = vi.fn(() => new Promise<{ value: string }>((res) => { resolveA = res }))
+        const fetcherB = vi.fn().mockResolvedValue({ value: 'b' })
+
+        const { result, rerender } = renderHook(
+            ({ fetcher }: { fetcher: () => Promise<{ value: string }> }) => usePolling(fetcher, 10_000),
+            { initialProps: { fetcher: fetcherA } }
+        )
+
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(0)
+        })
+        expect(fetcherA).toHaveBeenCalledTimes(1)
+
+        rerender({ fetcher: fetcherB })
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(0)
+        })
+        expect(result.current.data).toEqual({ value: 'b' })
+
+        await act(async () => {
+            resolveA({ value: 'a' })
+            await vi.advanceTimersByTimeAsync(0)
+        })
         expect(result.current.data).toEqual({ value: 'b' })
 
         vi.useRealTimers()
