@@ -139,7 +139,7 @@ func (a *Agent) applyMemoryLimit() {
 	a.Logger.Info("memory limit set",
 		"mem_total", total,
 		"soft_limit", limit,
-		"cache_limit", cacheBytesFor(total))
+		"cache_limit", a.cache.maxBytes)
 }
 
 // Delay returns how long to wait before retry number attempt, capped at
@@ -215,7 +215,7 @@ func New(cfg Config) *Agent {
 		batch:         make([]protocol.Envelope, 0, 50),
 		cancel:        nil,
 		done:          make(chan struct{}),
-		cache:         newMetricsCache(defaultMaxCacheSize),
+		cache:         newMetricsCacheForBytes(cacheBytesFor(memory.Total())),
 		calibrateHeap: os.Getenv(heapCalibrateEnv) != "",
 		gzipW:         newGzipWriter(io.Discard),
 		commonHeaders: map[string]string{

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nhdewitt/spectra/internal/collector/memory"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
@@ -74,6 +75,23 @@ func TestNew(t *testing.T) {
 	}
 	if a.RetryConfig.Multiplier != 2.0 {
 		t.Errorf("RetryConfig.Multiplier: got %f, want 2.0", a.RetryConfig.Multiplier)
+	}
+}
+
+// The cache budget comes from host RAM, and an operator's GOMEMLIMIT only
+// suppresses the heap limit, not the sizing.
+func TestNew_SizesCacheFromRAM(t *testing.T) {
+	t.Setenv("GOMEMLIMIT", "1GiB")
+
+	a := New(Config{IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
+	a.applyMemoryLimit()
+
+	want := cacheBytesFor(memory.Total())
+	if a.cache.maxBytes != want {
+		t.Errorf("cache maxBytes = %d, want %d from host RAM", a.cache.maxBytes, want)
+	}
+	if got, wantSize := a.cache.maxSize, cacheSizeFor(want); got != wantSize {
+		t.Errorf("cache maxSize = %d, want %d", got, wantSize)
 	}
 }
 
