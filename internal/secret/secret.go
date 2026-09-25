@@ -99,7 +99,7 @@ func (c *Cipher) Decrypt(encoded string) ([]byte, error) {
 		return nil, errors.New("secret: missing scheme prefix")
 	}
 	if prefix != scheme {
-		return nil, fmt.Errorf("secret: unknown scheme %q", prefix)
+		return nil, errors.New("secret: unknown scheme")
 	}
 
 	sealed, err := base64.StdEncoding.DecodeString(b64)
