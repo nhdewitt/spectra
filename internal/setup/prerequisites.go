@@ -252,7 +252,12 @@ func CreateDatabase(dbName, dbUser, dbPass string) error {
 		}
 	}
 
-	if _, err := runCmd("su", "-", "postgres", "-c", fmt.Sprintf(`psql -c "CREATE DATABASE %s OWNER %s;"`, dbName, dbUser)); err != nil {
+	// Explicit encoding: otherwise the database inherits the cluster's, which is
+	// SQL_ASCII on a host with no locale set, and stores text unvalidated. C
+	// collation keeps byte-order sorting. template0 is required whenever the
+	// encoding differs from the cluster default.
+	createDB := fmt.Sprintf(`psql -c "CREATE DATABASE %s OWNER %s ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;"`, dbName, dbUser)
+	if _, err := runCmd("su", "-", "postgres", "-c", createDB); err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
 			return fmt.Errorf("create database: %w", err)
 		}
