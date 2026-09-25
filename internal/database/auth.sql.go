@@ -67,13 +67,25 @@ func (q *Queries) DeleteSession(ctx context.Context, token string) error {
 	return err
 }
 
-const deleteUser = `-- name: DeleteUser :exec
-DELETE FROM users WHERE id = $1
+const deleteUser = `-- name: DeleteUser :execrows
+WITH superadmins AS (
+	SELECT id FROM users WHERE role = 'superadmin' ORDER BY id FOR UPDATE
+)
+DELETE FROM users
+WHERE users.id = $1
+	AND (users.role <> 'superadmin' OR (SELECT count(*) FROM superadmins) > 1)
 `
 
-func (q *Queries) DeleteUser(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteUser, id)
-	return err
+// Refuses to delete the last superadmin. Zero rows means refused or not found.
+// Locking every superadmin row first serializes concurrent deletes and demotions.
+// A separate count would let two requests each see two superadmins and remove
+// one apiece.
+func (q *Queries) DeleteUser(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUser, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteUserSessions = `-- name: DeleteUserSessions :exec
@@ -254,17 +266,6 @@ func (q *Queries) ListUsersWithLastLogin(ctx context.Context) ([]ListUsersWithLa
 	return items, nil
 }
 
-const superAdminCount = `-- name: SuperAdminCount :one
-SELECT COUNT(*) FROM users WHERE role = 'superadmin'
-`
-
-func (q *Queries) SuperAdminCount(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, superAdminCount)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const updateUserPassword = `-- name: UpdateUserPassword :exec
 UPDATE users SET password = $1, updated_at = NOW()
 WHERE id = $2
@@ -280,9 +281,15 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 	return err
 }
 
-const updateUserRole = `-- name: UpdateUserRole :exec
+const updateUserRole = `-- name: UpdateUserRole :execrows
+WITH superadmins AS (
+	SELECT id FROM users WHERE role = 'superadmin' ORDER BY id FOR UPDATE
+)
 UPDATE users SET role = $1, updated_at = NOW()
-WHERE id = $2
+WHERE users.id = $2
+	AND (users.role <> 'superadmin'
+		OR $1::text = 'superadmin'
+		OR (SELECT count(*) FROM superadmins) > 1)
 `
 
 type UpdateUserRoleParams struct {
@@ -290,9 +297,13 @@ type UpdateUserRoleParams struct {
 	ID   pgtype.UUID `json:"id"`
 }
 
-func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error {
-	_, err := q.db.Exec(ctx, updateUserRole, arg.Role, arg.ID)
-	return err
+// Refuses to demote the last superadmin, the the same locking as DeleteUser.
+func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateUserRole, arg.Role, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertSuperadmin = `-- name: UpsertSuperadmin :exec

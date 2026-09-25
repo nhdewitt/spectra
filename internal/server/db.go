@@ -144,9 +144,8 @@ type DB interface {
 	CreateUser(ctx context.Context, arg database.CreateUserParams) error
 	UpsertSuperadmin(ctx context.Context, arg database.UpsertSuperadminParams) error
 	GetUserByID(ctx context.Context, id pgtype.UUID) (database.GetUserByIDRow, error)
-	SuperAdminCount(ctx context.Context) (int64, error)
-	DeleteUser(ctx context.Context, id pgtype.UUID) error
-	UpdateUserRole(ctx context.Context, arg database.UpdateUserRoleParams) error
+	DeleteUser(ctx context.Context, id pgtype.UUID) (int64, error)
+	UpdateUserRole(ctx context.Context, arg database.UpdateUserRoleParams) (int64, error)
 	GetUserConfig(ctx context.Context, id pgtype.UUID) ([]database.GetUserConfigRow, error)
 	SetUserConfig(ctx context.Context, arg database.SetUserConfigParams) error
 	DeleteUserConfig(ctx context.Context, arg database.DeleteUserConfigParams) error

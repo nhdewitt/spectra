@@ -1010,27 +1010,34 @@ func (m *MockDB) GetUserByID(_ context.Context, id pgtype.UUID) (database.GetUse
 	return database.GetUserByIDRow{}, fmt.Errorf("user not found")
 }
 
-func (m *MockDB) SuperAdminCount(_ context.Context) (int64, error) {
+// DeleteUser mimics the query's guard: a superadmin target is refused while
+// SuperAdmins is 1 or less.
+func (m *MockDB) DeleteUser(_ context.Context, id pgtype.UUID) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.QueryErr != nil {
-		return 0, m.QueryErr
+	if m.Err != nil {
+		return 0, m.Err
 	}
-	return m.SuperAdmins, nil
-}
-
-func (m *MockDB) DeleteUser(_ context.Context, _ pgtype.UUID) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	if row, ok := m.UserByID[id]; ok && row.Role == RoleSuperAdmin && m.SuperAdmins <= 1 {
+		return 0, nil
+	}
 	m.DeleteUserCount++
-	return m.Err
+	return 1, nil
 }
 
-func (m *MockDB) UpdateUserRole(_ context.Context, _ database.UpdateUserRoleParams) error {
+// UpdateUserRole mimics the query's guard, refusing to demote a superadmin
+// while SuperAdmins is 1 or less.
+func (m *MockDB) UpdateUserRole(_ context.Context, arg database.UpdateUserRoleParams) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.Err != nil {
+		return 0, m.Err
+	}
+	if row, ok := m.UserByID[arg.ID]; ok && row.Role == RoleSuperAdmin && arg.Role != RoleSuperAdmin && m.SuperAdmins <= 1 {
+		return 0, nil
+	}
 	m.UpdateUserRoleCount++
-	return m.Err
+	return 1, nil
 }
 
 func (m *MockDB) PurgeOfflineAgents(_ context.Context) (int64, error) {

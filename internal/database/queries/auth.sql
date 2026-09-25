@@ -45,19 +45,32 @@ SELECT id, username, role, created_at, updated_at
 FROM users
 WHERE id = @id;
 
--- name: DeleteUser :exec
-DELETE FROM users WHERE id = @id;
+-- name: DeleteUser :execrows
+-- Refuses to delete the last superadmin. Zero rows means refused or not found.
+-- Locking every superadmin row first serializes concurrent deletes and demotions.
+-- A separate count would let two requests each see two superadmins and remove
+-- one apiece.
+WITH superadmins AS (
+	SELECT id FROM users WHERE role = 'superadmin' ORDER BY id FOR UPDATE
+)
+DELETE FROM users
+WHERE users.id = @id
+	AND (users.role <> 'superadmin' OR (SELECT count(*) FROM superadmins) > 1);
 
--- name: UpdateUserRole :exec
+-- name: UpdateUserRole :execrows
+-- Refuses to demote the last superadmin, the the same locking as DeleteUser.
+WITH superadmins AS (
+	SELECT id FROM users WHERE role = 'superadmin' ORDER BY id FOR UPDATE
+)
 UPDATE users SET role = @role, updated_at = NOW()
-WHERE id = @id;
+WHERE users.id = @id
+	AND (users.role <> 'superadmin'
+		OR @role::text = 'superadmin'
+		OR (SELECT count(*) FROM superadmins) > 1);
 
 -- name: UpdateUserPassword :exec
 UPDATE users SET password = @password, updated_at = NOW()
 WHERE id = @id;
-
--- name: SuperAdminCount :one
-SELECT COUNT(*) FROM users WHERE role = 'superadmin';
 
 -- name: ListUsersWithLastLogin :many
 SELECT u.id, u.username, u.role, u.created_at, u.updated_at,

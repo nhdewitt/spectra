@@ -142,16 +142,6 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "only superadmins can delete superadmin accounts", http.StatusForbidden)
 			return
 		}
-
-		count, err := s.DB.SuperAdminCount(r.Context())
-		if err != nil {
-			s.dbError(w, err, "handleDeleteUser")
-			return
-		}
-		if count <= 1 {
-			http.Error(w, "cannot delete the last superadmin", http.StatusBadRequest)
-			return
-		}
 	case RoleAdmin:
 		if caller.Role != RoleSuperAdmin {
 			http.Error(w, "only superadmins can delete admin accounts", http.StatusForbidden)
@@ -164,12 +154,19 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Delete user's sessions, then delete user
-	if err := s.DB.DeleteUserSessions(r.Context(), mustUUID(targetID)); err != nil {
-		s.Logger.Warn("failed to delete user sessions", "user_id", targetID, "error", err)
-	}
-	if err := s.DB.DeleteUser(r.Context(), mustUUID(targetID)); err != nil {
+	// DeleteUser refuses the last superadmin itself, a separate count would race. Sessions go
+	// with the user (ON DELETE CASCADE), so a refused delete leaves them intact.
+	rows, err := s.DB.DeleteUser(r.Context(), mustUUID(targetID))
+	if err != nil {
 		s.dbError(w, err, "handleDeleteUser")
+		return
+	}
+	if rows == 0 {
+		if target.Role == RoleSuperAdmin {
+			http.Error(w, "cannot delete the last superadmin", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
 
@@ -212,23 +209,21 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if target.Role == RoleSuperAdmin && req.Role != RoleSuperAdmin {
-		count, err := s.DB.SuperAdminCount(r.Context())
-		if err != nil {
-			s.dbError(w, err, "handleUpdateUserRole")
-			return
-		}
-		if count <= 1 {
+	// UpdateUserRole refuses to demote the last superadmin itself.
+	rows, err := s.DB.UpdateUserRole(r.Context(), database.UpdateUserRoleParams{
+		ID:   mustUUID(targetID),
+		Role: req.Role,
+	})
+	if err != nil {
+		s.dbError(w, err, "handleUpdateUserRole")
+		return
+	}
+	if rows == 0 {
+		if target.Role == RoleSuperAdmin && req.Role != RoleSuperAdmin {
 			http.Error(w, "cannot demote the last superadmin", http.StatusBadRequest)
 			return
 		}
-	}
-
-	if err := s.DB.UpdateUserRole(r.Context(), database.UpdateUserRoleParams{
-		ID:   mustUUID(targetID),
-		Role: req.Role,
-	}); err != nil {
-		s.dbError(w, err, "handleUpdateUserRole")
+		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
 
