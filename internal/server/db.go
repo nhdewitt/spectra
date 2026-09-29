@@ -38,7 +38,9 @@ type MetricWriter interface {
 	UpsertProcesses(ctx context.Context, arg database.UpsertProcessesParams) error
 	DeleteStaleProcesses(ctx context.Context, arg database.DeleteStaleProcessesParams) error
 	UpsertServices(ctx context.Context, arg database.UpsertServicesParams) error
+	DeleteStaleServices(ctx context.Context, arg database.DeleteStaleServicesParams) error
 	UpsertApplications(ctx context.Context, arg database.UpsertApplicationsParams) error
+	DeleteStaleApplications(ctx context.Context, arg database.DeleteStaleApplicationsParams) error
 	UpsertUpdates(ctx context.Context, arg database.UpsertUpdatesParams) error
 }
 

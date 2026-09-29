@@ -245,6 +245,12 @@ func (s *Server) persistMetric(ctx context.Context, tx MetricWriter, agentID str
 		if err := tx.UpsertServices(ctx, arg); err != nil {
 			return fmt.Errorf("upsert services: %w", err)
 		}
+		if err := tx.DeleteStaleServices(ctx, database.DeleteStaleServicesParams{
+			AgentID: uid,
+			Names:   arg.Names,
+		}); err != nil {
+			return fmt.Errorf("delete stale services: %w", err)
+		}
 		return nil
 
 	case *protocol.ApplicationListMetric:
@@ -264,6 +270,12 @@ func (s *Server) persistMetric(ctx context.Context, tx MetricWriter, agentID str
 		}
 		if err := tx.UpsertApplications(ctx, arg); err != nil {
 			return fmt.Errorf("upsert applications: %w", err)
+		}
+		if err := tx.DeleteStaleApplications(ctx, database.DeleteStaleApplicationsParams{
+			AgentID: uid,
+			Names:   arg.Names,
+		}); err != nil {
+			return fmt.Errorf("delete stale applications: %w", err)
 		}
 		return nil
 

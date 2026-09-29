@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteStaleApplications = `-- name: DeleteStaleApplications :exec
+DELETE FROM current_applications
+WHERE agent_id = $1 AND name <> ALL($2::text[])
+`
+
+type DeleteStaleApplicationsParams struct {
+	AgentID pgtype.UUID `json:"agent_id"`
+	Names   []string    `json:"names"`
+}
+
+// Removes applications missing from the latest list. Callers skip an empty list.
+func (q *Queries) DeleteStaleApplications(ctx context.Context, arg DeleteStaleApplicationsParams) error {
+	_, err := q.db.Exec(ctx, deleteStaleApplications, arg.AgentID, arg.Names)
+	return err
+}
+
 const deleteStaleProcesses = `-- name: DeleteStaleProcesses :exec
 DELETE FROM current_processes
 WHERE agent_id = $1 AND updated_at < $2
@@ -23,6 +39,23 @@ type DeleteStaleProcessesParams struct {
 
 func (q *Queries) DeleteStaleProcesses(ctx context.Context, arg DeleteStaleProcessesParams) error {
 	_, err := q.db.Exec(ctx, deleteStaleProcesses, arg.AgentID, arg.UpdatedAt)
+	return err
+}
+
+const deleteStaleServices = `-- name: DeleteStaleServices :exec
+DELETE FROM current_services
+WHERE agent_id = $1 AND name <> ALL($2::text[])
+`
+
+type DeleteStaleServicesParams struct {
+	AgentID pgtype.UUID `json:"agent_id"`
+	Names   []string    `json:"names"`
+}
+
+// Removes services missing from the latest list. An empty list would delete
+// every row, so callers skip it.
+func (q *Queries) DeleteStaleServices(ctx context.Context, arg DeleteStaleServicesParams) error {
+	_, err := q.db.Exec(ctx, deleteStaleServices, arg.AgentID, arg.Names)
 	return err
 }
 

@@ -119,10 +119,14 @@ type MockDB struct {
 	TouchLastSeenCount      int
 
 	// Last list passed to each batched upsert, and the stale-process sweep
-	LastUpsertProcessesParams    database.UpsertProcessesParams
-	LastUpsertServicesParams     database.UpsertServicesParams
-	LastUpsertApplicationsParams database.UpsertApplicationsParams
-	DeleteStaleProcessesCount    int
+	LastUpsertProcessesParams         database.UpsertProcessesParams
+	LastUpsertServicesParams          database.UpsertServicesParams
+	LastUpsertApplicationsParams      database.UpsertApplicationsParams
+	DeleteStaleProcessesCount         int
+	DeleteStaleServicesCount          int
+	DeleteStaleApplicationsCount      int
+	LastDeleteStaleServicesParams     database.DeleteStaleServicesParams
+	LastDeleteStaleApplicationsParams database.DeleteStaleApplicationsParams
 
 	// current_metrics refresh calls
 	UpsertCurrentCPUCount         int
@@ -439,11 +443,27 @@ func (m *MockDB) UpsertServices(_ context.Context, arg database.UpsertServicesPa
 	return m.Err
 }
 
+func (m *MockDB) DeleteStaleServices(_ context.Context, arg database.DeleteStaleServicesParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.DeleteStaleServicesCount++
+	m.LastDeleteStaleServicesParams = arg
+	return m.Err
+}
+
 func (m *MockDB) UpsertApplications(_ context.Context, arg database.UpsertApplicationsParams) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.UpsertApplicationsCount++
 	m.LastUpsertApplicationsParams = arg
+	return m.Err
+}
+
+func (m *MockDB) DeleteStaleApplications(_ context.Context, arg database.DeleteStaleApplicationsParams) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.DeleteStaleApplicationsCount++
+	m.LastDeleteStaleApplicationsParams = arg
 	return m.Err
 }
 

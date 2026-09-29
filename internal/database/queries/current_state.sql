@@ -53,6 +53,12 @@ SET status = EXCLUDED.status,
     sub_status = EXCLUDED.sub_status,
     updated_at = NOW();
 
+-- name: DeleteStaleServices :exec
+-- Removes services missing from the latest list. An empty list would delete
+-- every row, so callers skip it.
+DELETE FROM current_services
+WHERE agent_id = @agent_id AND name <> ALL(@names::text[]);
+
 -- name: GetServices :many
 SELECT agent_id, name, status, sub_status, updated_at
 FROM current_services
@@ -70,6 +76,11 @@ FROM (
 ON CONFLICT (agent_id, name) DO UPDATE
 SET version = EXCLUDED.version,
     updated_at = NOW();
+
+-- name: DeleteStaleApplications :exec
+-- Removes applications missing from the latest list. Callers skip an empty list.
+DELETE FROM current_applications
+WHERE agent_id = @agent_id AND name <> ALL(@names::text[]);
 
 -- name: GetApplications :many
 SELECT agent_id, name, version, updated_at

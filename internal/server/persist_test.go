@@ -158,6 +158,12 @@ func TestPersistMetric(t *testing.T) {
 				if got := m.LastUpsertServicesParams.Names; !slices.Equal(got, []string{"sshd", "nginx"}) {
 					t.Errorf("names = %v, want [sshd nginx]", got)
 				}
+				if m.DeleteStaleServicesCount != 1 {
+					t.Errorf("DeleteStaleServices called %d times, want 1", m.DeleteStaleServicesCount)
+				}
+				if got := m.LastDeleteStaleServicesParams.Names; !slices.Equal(got, []string{"sshd", "nginx"}) {
+					t.Errorf("stale-sweep names = %v, want [sshd nginx]", got)
+				}
 			},
 		},
 		{
@@ -174,6 +180,12 @@ func TestPersistMetric(t *testing.T) {
 				}
 				if got := m.LastUpsertApplicationsParams.Versions; !slices.Equal(got, []string{"9.0", "2.40"}) {
 					t.Errorf("versions = %v, want [9.0 2.40]", got)
+				}
+				if m.DeleteStaleApplicationsCount != 1 {
+					t.Errorf("DeleteStaleApplications called %d times, want 1", m.DeleteStaleApplicationsCount)
+				}
+				if got := m.LastDeleteStaleApplicationsParams.Names; !slices.Equal(got, []string{"vim", "git"}) {
+					t.Errorf("stale-sweep names = %v, want [vim git]", got)
 				}
 			},
 		},
@@ -312,6 +324,9 @@ func TestPersistMetric_ServiceListDBError(t *testing.T) {
 	if mock.UpsertServicesCount != 1 {
 		t.Errorf("UpsertServices called %d times, want 1", mock.UpsertServicesCount)
 	}
+	if mock.DeleteStaleServicesCount != 0 {
+		t.Error("the stale-service sweep ran after the upsert failed")
+	}
 }
 
 func TestPersistMetric_UnknownMetricTypeReturnsNil(t *testing.T) {
@@ -350,6 +365,26 @@ func TestPersistMetric_ProcessListEmpty(t *testing.T) {
 	}
 	if mock.DeleteStaleProcessesCount != 1 {
 		t.Errorf("DeleteStaleProcesses called %d times, want 1", mock.DeleteStaleProcessesCount)
+	}
+}
+
+// An empty service or application list must not sweep: deleting against no
+// names would clear every row for the agent.
+func TestPersistMetric_ServiceAndApplicationListEmpty(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	agentID := "00000000-0000-0000-0000-000000000001"
+
+	if err := s.persistMetric(context.Background(), mock, agentID, time.Now(), &protocol.ServiceListMetric{}); err != nil {
+		t.Fatalf("empty service list: got %v, want nil", err)
+	}
+	if err := s.persistMetric(context.Background(), mock, agentID, time.Now(), &protocol.ApplicationListMetric{}); err != nil {
+		t.Fatalf("empty application list: got %v, want nil", err)
+	}
+	if n := mock.UpsertServicesCount + mock.DeleteStaleServicesCount; n != 0 {
+		t.Errorf("service writes = %d for an empty list, want 0", n)
+	}
+	if n := mock.UpsertApplicationsCount + mock.DeleteStaleApplicationsCount; n != 0 {
+		t.Errorf("application writes = %d for an empty list, want 0", n)
 	}
 }
 
