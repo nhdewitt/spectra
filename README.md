@@ -478,7 +478,7 @@ agents at 30-day retention.
 Core:
 - `golang.org/x/sys` — Low-level system calls
 - `github.com/tklauser/go-sysconf` — System configuration values
-- `github.com/docker/docker` — Docker API client
+- `github.com/moby/moby/client` — Docker API client
 - `github.com/jackc/pgx/v5` — PostgreSQL driver
 - `golang.org/x/crypto` — bcrypt for user passwords
 - `github.com/wneessen/go-mail` — SMTP delivery for alert email

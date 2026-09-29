@@ -8,23 +8,28 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 type mockDockerClient struct {
 	containers []container.Summary
 	statsDelay time.Duration
+	oneShot    atomic.Bool // set if any stats call skipped the previous sample
 }
 
-func (m *mockDockerClient) ContainerList(ctx context.Context, opts container.ListOptions) ([]container.Summary, error) {
-	return m.containers, nil
+func (m *mockDockerClient) ContainerList(ctx context.Context, opts client.ContainerListOptions) (client.ContainerListResult, error) {
+	return client.ContainerListResult{Items: m.containers}, nil
 }
 
-func (m *mockDockerClient) ContainerStats(ctx context.Context, id string, stream bool) (container.StatsResponseReader, error) {
+func (m *mockDockerClient) ContainerStats(ctx context.Context, id string, opts client.ContainerStatsOptions) (client.ContainerStatsResult, error) {
+	if !opts.IncludePreviousSample {
+		m.oneShot.Store(true)
+	}
 	time.Sleep(m.statsDelay)
 
 	stats := DockerStats{
@@ -54,7 +59,7 @@ func (m *mockDockerClient) ContainerStats(ctx context.Context, id string, stream
 	}
 
 	data, _ := json.Marshal(stats)
-	return container.StatsResponseReader{
+	return client.ContainerStatsResult{
 		Body: io.NopCloser(bytes.NewReader(data)),
 	}, nil
 }
@@ -336,7 +341,7 @@ func TestCollectDocker_NoDocker(t *testing.T) {
 	defer func() { dockerCli = oldCli }()
 
 	// Create a client that will fail to connect
-	badCli, _ := client.NewClientWithOpts(client.WithHost("tcp://localhost:99999"))
+	badCli, _ := client.New(client.WithHost("tcp://localhost:99999"))
 	dockerCli = badCli
 
 	ctx := context.Background()
@@ -346,6 +351,27 @@ func TestCollectDocker_NoDocker(t *testing.T) {
 		t.Logf("collectDocker error: %v", err)
 	}
 	t.Logf("Returned %v containers", len(containers))
+}
+
+func TestCollectDocker_RequestsPreviousSample(t *testing.T) {
+	oldCli := dockerCli
+	mock := &mockDockerClient{containers: makeMockContainers(3)}
+	dockerCli = mock
+	defer func() { dockerCli = oldCli }()
+
+	metrics, err := collectDocker(context.Background())
+	if err != nil {
+		t.Fatalf("collectDocker: %v", err)
+	}
+	if len(metrics) != 3 {
+		t.Fatalf("got %d metrics, want 3", len(metrics))
+	}
+	if mock.oneShot.Load() {
+		t.Error("stats requested without the previous sample; CPU percent needs PreCPUStats")
+	}
+	if metrics[0].State != "running" {
+		t.Errorf("State = %q, want running", metrics[0].State)
+	}
 }
 
 func TestCollectDocker_ContextCancel(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
@@ -23,8 +23,8 @@ const (
 )
 
 type DockerClient interface {
-	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
-	ContainerStats(ctx context.Context, containerID string, stream bool) (container.StatsResponseReader, error)
+	ContainerList(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error)
+	ContainerStats(ctx context.Context, containerID string, options client.ContainerStatsOptions) (client.ContainerStatsResult, error)
 	Close() error
 }
 
@@ -61,7 +61,7 @@ type DockerNetworkStats struct {
 
 func InitDocker() error {
 	var err error
-	dockerCli, err = client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	dockerCli, err = client.New(client.FromEnv)
 	return err
 }
 
@@ -76,7 +76,7 @@ func collectDocker(ctx context.Context) ([]protocol.ContainerMetric, error) {
 	}
 
 	// List Containers
-	containers, err := dockerCli.ContainerList(ctx, container.ListOptions{})
+	list, err := dockerCli.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
 		if dockerHealthy.Load() {
 			slog.Warn("Docker was previously reachable but is now failing", "error", err)
@@ -84,7 +84,7 @@ func collectDocker(ctx context.Context) ([]protocol.ContainerMetric, error) {
 		}
 
 		if client.IsErrConnectionFailed(err) {
-			// Avoid error spamming on agents where Docker isn't installed/running
+			// avoid spamming on agents where Docker isn't installed or running
 			return nil, nil
 		}
 
@@ -92,6 +92,7 @@ func collectDocker(ctx context.Context) ([]protocol.ContainerMetric, error) {
 	}
 	dockerHealthy.Store(true)
 
+	containers := list.Items
 	if len(containers) == 0 {
 		return []protocol.ContainerMetric{}, nil
 	}
@@ -109,7 +110,9 @@ func collectDocker(ctx context.Context) ([]protocol.ContainerMetric, error) {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			statsReader, err := dockerCli.ContainerStats(ctx, c.ID, false)
+			statsReader, err := dockerCli.ContainerStats(ctx, c.ID, client.ContainerStatsOptions{
+				IncludePreviousSample: true,
+			})
 			if err != nil {
 				results <- result{ok: false}
 				return
@@ -150,7 +153,7 @@ func collectDocker(ctx context.Context) ([]protocol.ContainerMetric, error) {
 					ID:            id,
 					Name:          strings.TrimPrefix(c.Names[0], "/"),
 					Image:         c.Image,
-					State:         c.State,
+					State:         string(c.State),
 					Source:        dockerSource,
 					Kind:          kindContainer,
 					CPUPercent:    cpuPercent,
