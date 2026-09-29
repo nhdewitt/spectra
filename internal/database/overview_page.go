@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	maxOverviewPageSize = 200
+	maxOverviewPageSize = 250
 	maxSearchLen        = 128
 )
 

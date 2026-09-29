@@ -14,7 +14,7 @@ import (
 
 const (
 	defaultOverviewPageSize = 25
-	maxOverviewPageSizeReq  = 200
+	maxOverviewPageSizeReq  = 250
 	// Keeps (page-1)*size within int32 at the largest page size.
 	maxOverviewPage = math.MaxInt32 / maxOverviewPageSizeReq
 )
@@ -32,7 +32,7 @@ type overviewPage struct {
 //
 // Query params:
 //
-//	page, size			pagination (1-based page; size clamped to [1,200])
+//	page, size			pagination (1-based page; size clamped to [1,250])
 //	sort, order			sort key + asc|desc
 //	status, os, arch		equality filters
 //	search				hostname substring (LIKE-escaped)
@@ -48,9 +48,6 @@ func (s *Server) handleOverviewPage(w http.ResponseWriter, r *http.Request) {
 
 	page := parsePositiveInt32(q.Get("page"), 1, maxOverviewPage)
 	size := parsePositiveInt32(q.Get("size"), defaultOverviewPageSize, maxOverviewPageSizeReq)
-	if size > maxOverviewPageSizeReq {
-		size = maxOverviewPageSizeReq
-	}
 
 	tv, err := s.getThresholds(r.Context())
 	if err != nil {

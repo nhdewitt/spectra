@@ -22,7 +22,7 @@ import type { AgentStatus } from "../utils";
 type SortOption = OverviewSortKey;
 type SortDir = OverviewSortDir;
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100, 250];
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 150, 200, 250];
 const DEFAULT_PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
 const POLL_INTERVAL_MS = 10_000;
