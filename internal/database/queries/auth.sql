@@ -46,6 +46,8 @@ FROM users
 WHERE id = @id;
 
 -- name: DeleteUser :execrows
+-- Deletes only a user whose role is in @roles, the roles the caller may delete,
+-- so a promotion after the handler's read can't widen what the caller removes.
 -- Refuses to delete the last superadmin. Zero rows means refused or not found.
 -- Locking every superadmin row first serializes concurrent deletes and demotions.
 -- A separate count would let two requests each see two superadmins and remove
@@ -55,6 +57,7 @@ WITH superadmins AS (
 )
 DELETE FROM users
 WHERE users.id = @id
+	AND users.role = ANY(@roles::text[])
 	AND (users.role <> 'superadmin' OR (SELECT count(*) FROM superadmins) > 1);
 
 -- name: UpdateUserRole :execrows

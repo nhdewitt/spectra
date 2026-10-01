@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -492,6 +493,43 @@ func TestHandleDeleteUser_NotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status: got %d, want 404", rec.Code)
+	}
+}
+
+func TestHandleDeleteUser_AdminPassesOnlyViewerRole(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupAdminSession(mock)
+	seedUser(mock, viewerUID, "viewer", RoleViewer)
+
+	req := adminRequest(httptest.NewRequest(http.MethodDelete, "/api/v1/admin/users/"+viewerID, nil))
+	rec := httptest.NewRecorder()
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status: got %d, want 204: %s", rec.Code, rec.Body.String())
+	}
+	if got := mock.LastDeleteUserParams.Roles; !slices.Equal(got, []string{RoleViewer}) {
+		t.Errorf("DeleteUser roles = %v, want [viewer]", got)
+	}
+}
+
+// A viewer promoted between the handler's read and the delete must survive an
+// admin's delete, and the refusal reports as forbidden.
+func TestHandleDeleteUser_PromotedDuringDeleteIsForbidden(t *testing.T) {
+	s, _, _, mock := newTestServer()
+	setupAdminSession(mock)
+	seedUser(mock, viewerUID, "viewer", RoleViewer)
+	mock.RoleChangeBeforeDelete = map[pgtype.UUID]string{viewerUID: RoleAdmin}
+
+	req := adminRequest(httptest.NewRequest(http.MethodDelete, "/api/v1/admin/users/"+viewerID, nil))
+	rec := httptest.NewRecorder()
+	s.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status: got %d, want 403: %s", rec.Code, rec.Body.String())
+	}
+	if mock.DeleteUserCount != 0 {
+		t.Errorf("DeleteUser removed %d users, want 0", mock.DeleteUserCount)
 	}
 }
 

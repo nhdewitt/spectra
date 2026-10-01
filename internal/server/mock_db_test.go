@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -177,8 +178,14 @@ type MockDB struct {
 	UserByID              map[pgtype.UUID]database.GetUserByIDRow
 	SuperAdmins           int64
 	DeleteUserCount       int
+	LastDeleteUserParams  database.DeleteUserParams
 	UpdateUserRoleCount   int
 	OfflineAgentCount     int64
+
+	// RoleChangeBeforeDelete applies a role change inside DeleteUser,
+	// standing in for a promotion that commits between the handler's
+	// read and delete.
+	RoleChangeBeforeDelete map[pgtype.UUID]string
 
 	AlertChannels   map[string]database.AlertChannel // UUID -> channel
 	AlertChannelErr error
@@ -1052,15 +1059,24 @@ func (m *MockDB) GetUserByID(_ context.Context, id pgtype.UUID) (database.GetUse
 	return database.GetUserByIDRow{}, fmt.Errorf("user not found")
 }
 
-// DeleteUser mimics the query's guard: a superadmin target is refused while
-// SuperAdmins is 1 or less.
-func (m *MockDB) DeleteUser(_ context.Context, id pgtype.UUID) (int64, error) {
+// DeleteUser mimics the query's guards: the target's role must be in
+// arg.Roles, and a superadmin target is refused while SuperAdmins is 1 or less.
+func (m *MockDB) DeleteUser(_ context.Context, arg database.DeleteUserParams) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.Err != nil {
 		return 0, m.Err
 	}
-	if row, ok := m.UserByID[id]; ok && row.Role == RoleSuperAdmin && m.SuperAdmins <= 1 {
+	m.LastDeleteUserParams = arg
+	row, ok := m.UserByID[arg.ID]
+	if role, changed := m.RoleChangeBeforeDelete[arg.ID]; ok && changed {
+		row.Role = role
+		m.UserByID[arg.ID] = row
+	}
+	if ok && !slices.Contains(arg.Roles, row.Role) {
+		return 0, nil
+	}
+	if ok && row.Role == RoleSuperAdmin && m.SuperAdmins <= 1 {
 		return 0, nil
 	}
 	m.DeleteUserCount++

@@ -23,6 +23,21 @@ func hasMinRole(userRole, minRole string) bool {
 	return roleLevel[userRole] >= roleLevel[minRole]
 }
 
+// deletableRoles returns the roles a caller may delete:
+//   - any role for a superadmin
+//   - viewers for an admin
+//   - none otherwise
+func deletableRoles(callerRole string) []string {
+	switch callerRole {
+	case RoleSuperAdmin:
+		return []string{RoleSuperAdmin, RoleAdmin, RoleViewer}
+	case RoleAdmin:
+		return []string{RoleViewer}
+	default:
+		return nil
+	}
+}
+
 // requireRole checks that the authenticated user has at least the given role.
 // Must be used after requireUserAuth.
 func requireRole(minRole string) func(http.HandlerFunc) http.HandlerFunc {

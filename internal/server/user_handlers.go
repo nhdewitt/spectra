@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/nhdewitt/spectra/internal/database"
 	"golang.org/x/crypto/bcrypt"
@@ -135,38 +136,36 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Permission checks based on caller and target roles
-	switch target.Role {
-	case RoleSuperAdmin:
-		if caller.Role != RoleSuperAdmin {
-			http.Error(w, "only superadmins can delete superadmin accounts", http.StatusForbidden)
-			return
-		}
-	case RoleAdmin:
-		if caller.Role != RoleSuperAdmin {
-			http.Error(w, "only superadmins can delete admin accounts", http.StatusForbidden)
-			return
-		}
-	case RoleViewer:
-		if !hasMinRole(caller.Role, RoleAdmin) {
-			http.Error(w, "insufficient permissions", http.StatusForbidden)
-			return
-		}
+	roles := deletableRoles(caller.Role)
+	if !slices.Contains(roles, target.Role) {
+		http.Error(w, "cannot delete "+target.Role+" accounts", http.StatusForbidden)
+		return
 	}
 
-	// DeleteUser refuses the last superadmin itself, a separate count would race. Sessions go
-	// with the user (ON DELETE CASCADE), so a refused delete leaves them intact.
-	rows, err := s.DB.DeleteUser(r.Context(), mustUUID(targetID))
+	// DeleteUser enforces roles and the last-superadmin rule itself, since the target's
+	// role can change after the read above. Sessions go with the user (ON DELETE CASCADE),
+	// so a refused delete leaves them intact.
+	rows, err := s.DB.DeleteUser(r.Context(), database.DeleteUserParams{
+		ID:    mustUUID(targetID),
+		Roles: roles,
+	})
 	if err != nil {
 		s.dbError(w, err, "handleDeleteUser")
 		return
 	}
 	if rows == 0 {
-		if target.Role == RoleSuperAdmin {
+		// re-read so a role changed since the check reports as forbidden
+		current, err := s.DB.GetUserByID(r.Context(), mustUUID(targetID))
+		switch {
+		case err != nil:
+			http.Error(w, "user not found", http.StatusNotFound)
+		case !slices.Contains(roles, current.Role):
+			http.Error(w, "cannot delete "+target.Role+" accounts", http.StatusForbidden)
+		case current.Role == RoleSuperAdmin:
 			http.Error(w, "cannot delete the last superadmin", http.StatusBadRequest)
-			return
+		default:
+			http.Error(w, "user changed during delete, retry", http.StatusConflict)
 		}
-		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
 

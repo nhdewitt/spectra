@@ -73,15 +73,23 @@ WITH superadmins AS (
 )
 DELETE FROM users
 WHERE users.id = $1
+	AND users.role = ANY($2::text[])
 	AND (users.role <> 'superadmin' OR (SELECT count(*) FROM superadmins) > 1)
 `
 
+type DeleteUserParams struct {
+	ID    pgtype.UUID `json:"id"`
+	Roles []string    `json:"roles"`
+}
+
+// Deletes only a user whose role is in @roles, the roles the caller may delete,
+// so a promotion after the handler's read can't widen what the caller removes.
 // Refuses to delete the last superadmin. Zero rows means refused or not found.
 // Locking every superadmin row first serializes concurrent deletes and demotions.
 // A separate count would let two requests each see two superadmins and remove
 // one apiece.
-func (q *Queries) DeleteUser(ctx context.Context, id pgtype.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteUser, id)
+func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUser, arg.ID, arg.Roles)
 	if err != nil {
 		return 0, err
 	}
