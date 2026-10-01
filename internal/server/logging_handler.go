@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+const (
+	// requestTimeout bounds every request except the command long-poll, which
+	// CommandQueue.Wait bounds with Config.CommandTimeout.
+	requestTimeout = 15 * time.Second
+)
+
 type statusWriter struct {
 	http.ResponseWriter
 	status int
@@ -20,9 +26,11 @@ func (sw *statusWriter) WriteHeader(code int) {
 
 func (s *Server) requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-		defer cancel()
-		r = r.WithContext(ctx)
+		if r.URL.Path != commandPollPath {
+			ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+			defer cancel()
+			r = r.WithContext(ctx)
+		}
 
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w, status: 200}
