@@ -267,10 +267,9 @@ func (q *Queries) GetUpdates(ctx context.Context, agentID pgtype.UUID) (CurrentU
 const upsertApplications = `-- name: UpsertApplications :exec
 INSERT INTO current_applications (agent_id, name, version, updated_at)
 SELECT DISTINCT ON (a.name) $1::uuid, a.name, a.version, NOW()
-FROM (
-    SELECT  unnest($2::text[]) AS name,
-            unnest($3::text[]) AS version
-) AS a
+FROM ROWS FROM (unnest($2::text[]), unnest($3::text[]))
+    WITH ORDINALITY AS a(name, version, ord)
+ORDER BY a.name, a.ord DESC
 ON CONFLICT (agent_id, name) DO UPDATE
 SET version = EXCLUDED.version,
     updated_at = NOW()
@@ -291,15 +290,15 @@ func (q *Queries) UpsertApplications(ctx context.Context, arg UpsertApplications
 const upsertProcesses = `-- name: UpsertProcesses :exec
 INSERT INTO current_processes (agent_id, pid, name, cpu_percent, mem_percent, mem_rss, status, threads, updated_at)
 SELECT DISTINCT ON (p.pid) $1::uuid, p.pid, p.name, p.cpu_percent, p.mem_percent, p.mem_rss, p.status, p.threads, NOW()
-FROM (
-    SELECT  unnest($2::integer[]) AS pid,
-            unnest($3::text[]) AS name,
-            unnest($4::double precision[]) AS cpu_percent,
-            unnest($5::double precision[]) AS mem_percent,
-            unnest($6::bigint[]) AS mem_rss,
-            unnest($7::text[]) AS status,
-            unnest($8::integer[]) AS threads
-) AS p
+FROM ROWS FROM (
+    unnest($2::integer[]),
+    unnest($3::text[]),
+    unnest($4::double precision[]),
+    unnest($5::double precision[]),
+    unnest($6::bigint[]),
+    unnest($7::text[]),
+    unnest($8::integer[])
+) WITH ORDINALITY AS p(pid, name, cpu_percent, mem_percent, mem_rss, status, threads, ord)
 ON CONFLICT (agent_id, pid) DO UPDATE
 SET name = EXCLUDED.name,
     cpu_percent = EXCLUDED.cpu_percent,
@@ -322,7 +321,7 @@ type UpsertProcessesParams struct {
 }
 
 // One statement per process list. DISTINCT ON drops a repeated pid, which ON CONFLICT DO UPDATE
-// would reject, failing the batch on every retry.
+// would reject, failing the batch on every retry. Ordering by ordinality keeps the last entry.
 func (q *Queries) UpsertProcesses(ctx context.Context, arg UpsertProcessesParams) error {
 	_, err := q.db.Exec(ctx, upsertProcesses,
 		arg.AgentID,
@@ -340,11 +339,8 @@ func (q *Queries) UpsertProcesses(ctx context.Context, arg UpsertProcessesParams
 const upsertServices = `-- name: UpsertServices :exec
 INSERT INTO current_services (agent_id, name, status, sub_status, updated_at)
 SELECT DISTINCT ON (s.name) $1::uuid, s.name, s.status, s.sub_status, NOW()
-FROM (
-    SELECT  unnest($2::text[]) AS name,
-            unnest($3::text[]) AS status,
-            unnest($4::text[]) AS sub_status
-) AS s
+FROM ROWS FROM (unnest($2::text[]), unnest($3::text[]), unnest($4::text[]))
+    WITH ORDINALITY AS s(name, status, sub_status, ord)
 ON CONFLICT (agent_id, name) DO UPDATE
 SET status = EXCLUDED.status,
     sub_status = EXCLUDED.sub_status,

@@ -1,17 +1,17 @@
 -- name: UpsertProcesses :exec
 -- One statement per process list. DISTINCT ON drops a repeated pid, which ON CONFLICT DO UPDATE
--- would reject, failing the batch on every retry.
+-- would reject, failing the batch on every retry. Ordering by ordinality keeps the last entry.
 INSERT INTO current_processes (agent_id, pid, name, cpu_percent, mem_percent, mem_rss, status, threads, updated_at)
 SELECT DISTINCT ON (p.pid) @agent_id::uuid, p.pid, p.name, p.cpu_percent, p.mem_percent, p.mem_rss, p.status, p.threads, NOW()
-FROM (
-    SELECT  unnest(@pids::integer[]) AS pid,
-            unnest(@names::text[]) AS name,
-            unnest(@cpu_percents::double precision[]) AS cpu_percent,
-            unnest(@mem_percents::double precision[]) AS mem_percent,
-            unnest(@mem_rss::bigint[]) AS mem_rss,
-            unnest(@statuses::text[]) AS status,
-            unnest(@threads::integer[]) AS threads
-) AS p
+FROM ROWS FROM (
+    unnest(@pids::integer[]),
+    unnest(@names::text[]),
+    unnest(@cpu_percents::double precision[]),
+    unnest(@mem_percents::double precision[]),
+    unnest(@mem_rss::bigint[]),
+    unnest(@statuses::text[]),
+    unnest(@threads::integer[])
+) WITH ORDINALITY AS p(pid, name, cpu_percent, mem_percent, mem_rss, status, threads, ord)
 ON CONFLICT (agent_id, pid) DO UPDATE
 SET name = EXCLUDED.name,
     cpu_percent = EXCLUDED.cpu_percent,
@@ -43,11 +43,8 @@ LIMIT $2;
 -- One statement per service list; DISTINCT ON as in UpsertProcesses
 INSERT INTO current_services (agent_id, name, status, sub_status, updated_at)
 SELECT DISTINCT ON (s.name) @agent_id::uuid, s.name, s.status, s.sub_status, NOW()
-FROM (
-    SELECT  unnest(@names::text[]) AS name,
-            unnest(@statuses::text[]) AS status,
-            unnest(@sub_statuses::text[]) AS sub_status
-) AS s
+FROM ROWS FROM (unnest(@names::text[]), unnest(@statuses::text[]), unnest(@sub_statuses::text[]))
+    WITH ORDINALITY AS s(name, status, sub_status, ord)
 ON CONFLICT (agent_id, name) DO UPDATE
 SET status = EXCLUDED.status,
     sub_status = EXCLUDED.sub_status,
@@ -69,10 +66,9 @@ ORDER BY name;
 -- One statement per application list; DISTINCT ON as in UpsertProcesses
 INSERT INTO current_applications (agent_id, name, version, updated_at)
 SELECT DISTINCT ON (a.name) @agent_id::uuid, a.name, a.version, NOW()
-FROM (
-    SELECT  unnest(@names::text[]) AS name,
-            unnest(@versions::text[]) AS version
-) AS a
+FROM ROWS FROM (unnest(@names::text[]), unnest(@versions::text[]))
+    WITH ORDINALITY AS a(name, version, ord)
+ORDER BY a.name, a.ord DESC
 ON CONFLICT (agent_id, name) DO UPDATE
 SET version = EXCLUDED.version,
     updated_at = NOW();
