@@ -19,10 +19,6 @@ func isValidRole(role string) bool {
 	return ok
 }
 
-func hasMinRole(userRole, minRole string) bool {
-	return roleLevel[userRole] >= roleLevel[minRole]
-}
-
 // deletableRoles returns the roles a caller may delete:
 //   - any role for a superadmin
 //   - viewers for an admin
