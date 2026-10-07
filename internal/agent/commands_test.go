@@ -532,3 +532,30 @@ func TestUpdateExecTimeout_CoversASlowDownload(t *testing.T) {
 			updateExecTimeout, binarySize, slowLink, needed)
 	}
 }
+
+func TestRunNightly_RunsAtStartup(t *testing.T) {
+	a := newTestAgentWithLogger()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var calls atomic.Int32
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// Schedule for an hour from now so only the startup run can fire.
+		next := time.Now().Add(time.Hour)
+		a.runNightly(ctx, next.Hour(), next.Minute(), func() {
+			calls.Add(1)
+			cancel()
+		})
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runNightly did not run fn at startup")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("fn ran %d times, want 1", got)
+	}
+}

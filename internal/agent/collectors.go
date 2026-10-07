@@ -65,34 +65,52 @@ func (a *Agent) startCollectors(ctx context.Context) {
 		}
 	}
 
-	// Nightly tasks
+	// Inventory: at startup, then nightly. The startup run can still be
+	// in flight at shutdown, so a cancelled run is dropped quietly.
 	go a.runNightly(ctx, 2, 0, func() {
 		apps, err := inventory.GetInstalledApps(ctx)
-		if err != nil {
-			a.Logger.Warn("nightly apps collection failed", "error", err)
+		if ctx.Err() != nil {
 			return
 		}
-		a.metricsCh <- protocol.Envelope{
+		if err != nil {
+			a.Logger.Warn("applications collection failed", "error", err)
+			return
+		}
+		a.sendEnvelope(ctx, protocol.Envelope{
 			Type:      "application_list",
 			Timestamp: time.Now(),
 			Hostname:  a.Config.Hostname,
 			Data:      &protocol.ApplicationListMetric{Applications: apps},
-		}
+		})
 	})
 
 	go a.runNightly(ctx, 2, 5, func() {
 		metrics, err := inventory.GetUpdates(ctx)
+		if ctx.Err() != nil {
+			return
+		}
 		if err != nil {
-			a.Logger.Warn("nightly updates collection failed", "error", err)
+			a.Logger.Warn("updates collection failed", "error", err)
 			return
 		}
 		for _, m := range metrics {
-			a.metricsCh <- protocol.Envelope{
+			a.sendEnvelope(ctx, protocol.Envelope{
 				Type:      m.MetricType(),
 				Timestamp: time.Now(),
 				Hostname:  a.Config.Hostname,
 				Data:      m,
-			}
+			})
 		}
 	})
+}
+
+// sendEnvelope quyeues env for the sender unless ctx is done.
+func (a *Agent) sendEnvelope(ctx context.Context, env protocol.Envelope) {
+	if ctx.Err() != nil {
+		return
+	}
+	select {
+	case a.metricsCh <- env:
+	case <-ctx.Done():
+	}
 }

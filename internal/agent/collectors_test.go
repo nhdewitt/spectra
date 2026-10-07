@@ -8,6 +8,7 @@ import (
 
 	"github.com/nhdewitt/spectra/internal/collector/cpu"
 	"github.com/nhdewitt/spectra/internal/collector/disk"
+	"github.com/nhdewitt/spectra/internal/protocol"
 )
 
 func TestJob_Struct(t *testing.T) {
@@ -53,6 +54,44 @@ func TestStartCollectors_ContextCancelled(t *testing.T) {
 
 	if lastCount > finalCount {
 		t.Errorf("metrics still arriving: %d new after stabilization", lastCount-finalCount)
+	}
+}
+
+func TestSendEnvelope(t *testing.T) {
+	a := New(Config{Hostname: "test-agent", IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
+	env := protocol.Envelope{Type: "application_list", Hostname: "test-agent"}
+
+	a.sendEnvelope(context.Background(), env)
+	if got := len(a.metricsCh); got != 1 {
+		t.Fatalf("queued %d envelopes, want 1", got)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	a.sendEnvelope(ctx, env)
+	if got := len(a.metricsCh); got != 1 {
+		t.Errorf("queued %d envelopes after cancel, want 1", got)
+	}
+}
+
+func TestSendEnvelope_FullChannelUnblocksOnCancel(t *testing.T) {
+	a := New(Config{Hostname: "test-agent", IdentityPath: filepath.Join(t.TempDir(), "agent-id.json")})
+	for range cap(a.metricsCh) {
+		a.metricsCh <- protocol.Envelope{}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		a.sendEnvelope(ctx, protocol.Envelope{Type: "application_list"})
+	}()
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("sendEnvelope stayed blocked on a full channel after cancel")
 	}
 }
 

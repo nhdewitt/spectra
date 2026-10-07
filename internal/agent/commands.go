@@ -235,7 +235,10 @@ func (a *Agent) uploadCommandResult(ctx context.Context, cmd protocol.Command, d
 	return nil
 }
 
+// runNightly runs fn once at startup, so a new or restarted agent reports right away, then every
+// day at hour:minute local time.
 func (a *Agent) runNightly(ctx context.Context, hour, minute int, fn func()) {
+	fn()
 	for {
 		now := time.Now()
 		next := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
