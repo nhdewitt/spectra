@@ -47,6 +47,7 @@ func main() {
 	sc := &setup.SetupConfig{
 		DBConfig:    dbCfg,
 		CreateDB:    local,
+		SkipPrereqs: !local, // a remote server already runs PostgreSQL and TimescaleDB
 		Admin:       admin,
 		Port:        port,
 		TLS:         tlsCfg,
