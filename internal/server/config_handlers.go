@@ -114,7 +114,6 @@ func (s *Server) handleDeleteAgentConfig(w http.ResponseWriter, r *http.Request)
 var validConfigKeys = map[string]struct{}{
 	"ignored_filesystems": {},
 	"ignored_interfaces":  {},
-	"labels":              {},
 	"log_level":           {},
 }
 

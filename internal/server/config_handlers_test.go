@@ -140,7 +140,7 @@ func TestHandleSetAgentConfig_InvalidAgentID(t *testing.T) {
 	s, _, _, mock := newTestServer()
 	setupTestSession(mock)
 
-	body := `{"key": "labels", "value": {"env": "prod"}}`
+	body := `  {"key": "log_level", "value": "debug"}`
 	req := httptest.NewRequest("PUT", "/api/v1/agents/bad-id/config", strings.NewReader(body))
 	req = authedRequest(req)
 	w := httptest.NewRecorder()
@@ -157,7 +157,7 @@ func TestHandleSetAgentConfig_DBError(t *testing.T) {
 	setupTestSession(mock)
 	mock.ConfigErr = errFake
 
-	body := `{"key": "labels", "value": {"env": "prod"}}`
+	body := `  {"key": "log_level", "value": "debug"}`
 	req := httptest.NewRequest("PUT", "/api/v1/agents/"+testAgentUUID+"/config", strings.NewReader(body))
 	req = authedRequest(req)
 	w := httptest.NewRecorder()
@@ -172,7 +172,7 @@ func TestHandleSetAgentConfig_DBError(t *testing.T) {
 func TestHandleSetAgentConfig_Unauthenticated(t *testing.T) {
 	s, _, _, _ := newTestServer()
 
-	body := `{"key": "labels", "value": {"env": "prod"}}`
+	body := `  {"key": "log_level", "value": "debug"}`
 	req := httptest.NewRequest("PUT", "/api/v1/agents/"+testAgentUUID+"/config", strings.NewReader(body))
 	w := httptest.NewRecorder()
 
@@ -289,14 +289,14 @@ func TestHandleGetAgentSelfConfig(t *testing.T) {
 }
 
 func TestIsValidConfigKey(t *testing.T) {
-	valid := []string{"ignored_filesystems", "ignored_interfaces", "labels", "log_level"}
+	valid := []string{"ignored_filesystems", "ignored_interfaces", "log_level"}
 	for _, k := range valid {
 		if !isValidConfigKey(k) {
 			t.Errorf("expected %q to be valid", k)
 		}
 	}
 
-	invalid := []string{"", "foo", "password", "ignored_filesystem", "LOG_LEVEL"}
+	invalid := []string{"", "foo", "password", "ignored_filesystem", "LOG_LEVEL", "labels"}
 	for _, k := range invalid {
 		if isValidConfigKey(k) {
 			t.Errorf("expected %q to be invalid", k)
