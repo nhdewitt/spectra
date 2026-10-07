@@ -283,3 +283,94 @@ func TestFetchAndApplyConfig_NoContentEncoding(t *testing.T) {
 		t.Errorf("expected no Content-Encoding header, got %q", capturedEncoding)
 	}
 }
+
+// configServer serves whatever *body holds at the time of each request.
+func configServer(t *testing.T, status *int, body *string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(*status)
+		w.Write([]byte(*body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestFetchAndApplyConfig_IgnoreLists(t *testing.T) {
+	status := http.StatusOK
+	body := `{"ignored_filesystems": ["nfs", "cifs"], "ignored_interfaces": ["docker0"]}`
+	srv := configServer(t, &status, &body)
+
+	a := newTestAgentWithLogger()
+	a.Config.BaseURL = srv.URL
+
+	if a.ignore.Load() != nil {
+		t.Fatal("expected no ignore lists before the first poll")
+	}
+
+	a.fetchAndApplyConfig(context.Background())
+
+	want := newIgnoreLists([]string{"nfs", "cifs"}, []string{"docker0"})
+	if got := a.ignore.Load(); got == nil || !got.equal(want) {
+		t.Fatalf("ignore lists = %+v, want %+v", got, want)
+	}
+}
+
+func TestFetchAndApplyConfig_IgnoreListsClearedWhenKeysRemoved(t *testing.T) {
+	status := http.StatusOK
+	body := `{"ignored_filesystems": ["nfs"], "ignored_interfaces": ["docker0"]}`
+	srv := configServer(t, &status, &body)
+
+	a := newTestAgentWithLogger()
+	a.Config.BaseURL = srv.URL
+	a.fetchAndApplyConfig(context.Background())
+
+	body = `{"ignored_interfaces": ["docker0"]}`
+	a.fetchAndApplyConfig(context.Background())
+
+	want := newIgnoreLists(nil, []string{"docker0"})
+	if got := a.ignore.Load(); got == nil || !got.equal(want) {
+		t.Fatalf("after removing ignored_filesystems: ignore lists = %+v, want %+v", got, want)
+	}
+
+	body = `{}`
+	a.fetchAndApplyConfig(context.Background())
+
+	if got := a.ignore.Load(); got == nil || !got.equal(newIgnoreLists(nil, nil)) {
+		t.Fatalf("after removing both keys: ignore lists = %+v, want empty", got)
+	}
+}
+
+func TestFetchAndApplyConfig_IgnoreListsKeptOnFailedPoll(t *testing.T) {
+	status := http.StatusOK
+	body := `{"ignored_filesystems": ["nfs"]}`
+	srv := configServer(t, &status, &body)
+
+	a := newTestAgentWithLogger()
+	a.Config.BaseURL = srv.URL
+	a.fetchAndApplyConfig(context.Background())
+
+	status = http.StatusInternalServerError
+	body = `{}`
+	a.fetchAndApplyConfig(context.Background())
+
+	want := newIgnoreLists([]string{"nfs"}, nil)
+	if got := a.ignore.Load(); got == nil || !got.equal(want) {
+		t.Fatalf("a failed poll changed the ignore lists to %+v, want %+v", got, want)
+	}
+}
+
+func TestFetchAndApplyConfig_MalformedIgnoreListSkipped(t *testing.T) {
+	status := http.StatusOK
+	body := `{"ignored_filesystems": "nfs", "ignored_interfaces": ["docker0"]}`
+	srv := configServer(t, &status, &body)
+
+	a := newTestAgentWithLogger()
+	a.Config.BaseURL = srv.URL
+	a.fetchAndApplyConfig(context.Background())
+
+	want := newIgnoreLists(nil, []string{"docker0"})
+	if got := a.ignore.Load(); got == nil || !got.equal(want) {
+		t.Fatalf("ignore lists = %+v, want %+v", got, want)
+	}
+}

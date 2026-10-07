@@ -38,9 +38,9 @@ func (a *Agent) startCollectors(ctx context.Context) {
 	jobs := []job{
 		{"cpu", 5 * time.Second, cpu.Collect},
 		{"memory", 10 * time.Second, memory.Collect},
-		{"network", 5 * time.Second, network.Collect},
+		{"network", 5 * time.Second, a.withIgnoreFilter(network.Collect)},
 		{"system", 300 * time.Second, system.Collect},
-		{"disk", 60 * time.Second, diskCol},
+		{"disk", 60 * time.Second, a.withIgnoreFilter(diskCol)},
 		{"disk_io", 5 * time.Second, diskIOCol},
 		{"services", 60 * time.Second, svcCol},
 		{"processes", 15 * time.Second, processes.Collect},

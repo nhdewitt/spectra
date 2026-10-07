@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nhdewitt/spectra/internal/collector/disk"
@@ -66,6 +67,10 @@ type Agent struct {
 	done      chan struct{}
 
 	cache *metricsCache
+
+	// ignore is replaced by each remote config poll and read by the disk and
+	// network collectors. Nil until the first successful poll.
+	ignore atomic.Pointer[ignoreLists]
 
 	gzipMu  sync.Mutex
 	gzipBuf bytes.Buffer

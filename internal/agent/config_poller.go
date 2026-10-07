@@ -11,6 +11,10 @@ import (
 )
 
 func (a *Agent) runConfigPoller(ctx context.Context) {
+	// Fetch once right away so the ignore lists are normally in
+	// place before the collectors start at the next minute boundary.
+	a.fetchAndApplyConfig(ctx)
+
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
@@ -65,4 +69,40 @@ func (a *Agent) fetchAndApplyConfig(ctx context.Context) {
 			}
 		}
 	}
+	a.applyIgnoreLists(config)
+}
+
+// applyIgnoreLists replaces the agent's ignore lists from the ignored_filesystems
+// and ignored_interfacces keys. A missing key means nothing is ignored for that
+// kind, since the UI deletes the key when the list is emptied.
+func (a *Agent) applyIgnoreLists(config map[string]json.RawMessage) {
+	filesystems := a.stringList(config, "ignored_filesystems")
+	interfaces := a.stringList(config, "ignored_interfaces")
+
+	next := newIgnoreLists(filesystems, interfaces)
+	if current := a.ignore.Load(); current != nil && current.equal(next) {
+		return
+	}
+	if a.ignore.Swap(next) == nil && len(filesystems) == 0 && len(interfaces) == 0 {
+		return
+	}
+	a.Logger.Info("ignore lists updated from remote config",
+		"filesystems", filesystems, "interfaces", interfaces)
+}
+
+// stringList decodes config[key] as a list of strings. A missing key or a value of
+// the wrong shape yields nil.
+func (a *Agent) stringList(config map[string]json.RawMessage, key string) []string {
+	raw, ok := config[key]
+	if !ok {
+		return nil
+	}
+
+	var list []string
+	if err := json.Unmarshal(raw, &list); err != nil {
+		a.Logger.Warn("ignoring malformed remote config value", "key", key, "error", err)
+		return nil
+	}
+
+	return list
 }
