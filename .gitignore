@@ -26,6 +26,7 @@ releases/
 bin/
 *.cov
 vite.config.ts
+!docker/*.sh
 !scripts/*.sh
 collector-bench*
 bench/*

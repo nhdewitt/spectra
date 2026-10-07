@@ -12,7 +12,6 @@ admin:
   password: changeme123
 server:
   port: 8080
-  migrations: /app/internal/database/migrations
   external_url: http://localhost:8080
 tls:
   enabled: false

@@ -1,0 +1,12 @@
+# Keep host state out of the build context. A host web/node_modules copied over
+# the one npm ci installs carries glibc native binaries (esbuild, rollup) that
+# fail on Alpine. With .git present, go build tries VCS stamping and fails,
+# because the golang Alpine image has no git.
+.git
+web/node_modules
+web/dist
+web/coverage
+perf/node_modules
+releases
+dist
+bin
