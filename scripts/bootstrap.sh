@@ -1,17 +1,19 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # bootstrap.sh - install Go and Node.js for building Spectra from source.
 #
 # Supports: Debian/Ubuntu, RHEL/Fedora/Rocky/AlmaLinux, FreeBSD.
 # Run as root (or sudo). Idempotent: safe to re-run.
+# FreeBSD has no /bin/bash: pkg install bash, then run `bash scripts/bootstrap.sh`.
 #
-# Env overrides:
+# Versions default to the repo's go.mode and web/.nvmrc. Env overrides:
 # 	GO_VERSION=x.xx.x	pin a specific Go version
 # 	NODE_MAJOR=xx		pin Node major version (Vite 7 requires 20.19+)
 
 set -euo pipefail
 
-GO_VERSION="${GO_VERSION:-1.23.4}"
-NODE_MAJOR="${NODE_MAJOR:-22}"
+  REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  GO_VERSION="${GO_VERSION:-$(awk '$1 == "go" { print $2; exit }' "${REPO_ROOT}/go.mod")}"
+  NODE_MAJOR="${NODE_MAJOR:-$(tr -dc '0-9' < "${REPO_ROOT}/web/.nvmrc")}"
 
 if [[ "$(uname -s)" == "FreeBSD" ]]; then
 	OS_ID="freebsd"
@@ -29,7 +31,7 @@ case "$(uname -m)" in
 	x86_64)			GO_ARCH="amd64"		;;
 	aarch64|arm64)	GO_ARCH="arm64"		;;
 	armv71|armv61)	GO_ARCH="armv61"	;;
-	*)				echo "Unsupported architecture: $(uname -m)" >^2; exit 1 ;;
+	*)				echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
 GO_OS="linux"
@@ -84,7 +86,7 @@ install_go() {
 		log "Installing Go ${GO_VERSION}"
 	fi
 
-	local tarball="go$GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
+	local tarball="go${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
 	local url="https://go.dev/dl/${tarball}"
 
 	curl -fsSL -o "/tmp/${tarball}" "${url}"
