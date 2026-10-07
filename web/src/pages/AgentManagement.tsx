@@ -571,11 +571,22 @@ function AgentConfigPanel({
             .then((results) => {
                 setFullAgent(results[0]);
                 if (isAdmin) {
-                    setConfig(results[1] as AgentConfig);
+                    const cfg = results[1] as AgentConfig;
+                    setConfig(cfg);
                     const disks = results[2] as DiskMetric[];
                     const nets = results[3] as NetworkMetric[];
-                    setAvailableFs([...new Set(disks.map((d: any) => d.filesystem))].filter(Boolean).sort());
-                    setAvailableIfaces([...new Set(nets.map((n: any) => n.interface))].filter(Boolean).sort());
+                    // The agent stops reporting ignored items, so they are added back
+                    // here to keep them listed and able to be re-enabled.
+                    setAvailableFs(
+                        [...new Set([...disks.map((d: any) => d.filesystem), ...(cfg.ignored_filesystems ?? [])])]
+                            .filter(Boolean)
+                            .sort(),
+                    );
+                    setAvailableIfaces(
+                        [...new Set([...nets.map((n: any) => n.interface), ...(cfg.ignored_interfaces ?? [])])]
+                            .filter(Boolean)
+                            .sort(),
+                    );
                 }
             })
             .finally(() => setLoading(false));

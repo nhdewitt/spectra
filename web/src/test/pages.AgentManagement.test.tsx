@@ -391,6 +391,19 @@ describe('AgentManagement - AgentConfigPanel', () => {
         await waitFor(() => expect(mockDeleteAgentConfig).toHaveBeenCalledWith('a1', 'ignored_filesystems'))
     })
 
+    it('keeps listing an ignored item the agent no longer reports so it can be re-enabled', async () => {
+        mockAgentDisk.mockResolvedValue([{ filesystem: 'ext4' }])
+        mockAgentNetwork.mockResolvedValue([{ interface: 'eth0' }])
+        mockAgentConfig.mockResolvedValue({ ignored_filesystems: ['nfs'], ignored_interfaces: ['docker0'] })
+
+        await openConfigModal(makeAgent({ id: 'a1', hostname: 'test-host-1' }))
+        await waitFor(() => expect(screen.getByText('nfs')).toBeInTheDocument())
+        expect(screen.getByText('docker0')).toBeInTheDocument()
+
+        fireEvent.click(screen.getByText('nfs'))
+        await waitFor(() => expect(mockDeleteAgentConfig).toHaveBeenCalledWith('a1', 'ignored_filesystems'))
+    })
+
     it('changes the log level', async () => {
         mockAgentConfig.mockResolvedValue({ log_level: 'info' })
         await openConfigModal(makeAgent({ id: 'a1', hostname: 'test-host-1' }))
