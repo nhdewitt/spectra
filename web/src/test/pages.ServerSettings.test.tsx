@@ -31,15 +31,16 @@ describe('ServerSettings', () => {
         expect(screen.queryByTestId('thresholds-settings')).not.toBeInTheDocument()
     })
 
-    it('refuses an admin', () => {
+    it('opens for an admin', () => {
         render(<ServerSettings user={makeUser({ role: 'admin' })} />)
-        expect(screen.getByText('Server settings require the superadmin role.')).toBeInTheDocument()
-        expect(screen.queryByTestId('thresholds-settings')).not.toBeInTheDocument()
-        expect(screen.queryByTestId('smtp-settings')).not.toBeInTheDocument()
+        expect(screen.getByTestId('thresholds-settings')).toBeInTheDocument()
+        expect(screen.queryByText('Server settings require the admin role.')).not.toBeInTheDocument()
     })
 
     it('refuses a viewer', () => {
         render(<ServerSettings user={makeUser({ role: 'viewer' })} />)
-        expect(screen.getByText('Server settings require the superadmin role.')).toBeInTheDocument()
+        expect(screen.getByText('Server settings require the admin role.')).toBeInTheDocument()
+        expect(screen.queryByTestId('thresholds-settings')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('smtp-settings')).not.toBeInTheDocument()
     })
 })

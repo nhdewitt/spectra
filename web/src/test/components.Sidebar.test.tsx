@@ -79,11 +79,13 @@ describe('Sidebar', () => {
         expect(screen.getByText('Tags')).toBeInTheDocument()
         expect(screen.getByText('Alerts')).toBeInTheDocument()
         expect(screen.getByText('User Mgmt')).toBeInTheDocument()
+        expect(screen.getByText('Server Settings')).toBeInTheDocument()
         expect(screen.queryByText('Diagnostics')).not.toBeInTheDocument()
     })
 
-    it('hides User Mgmt for a non-admin user', () => {
+    it('hides User Mgmt and Server Settings for a non-admin user', () => {
         renderSidebar({ user: makeUser({ role: 'viewer' }) })
+        expect(screen.queryByText('User Mgmt')).not.toBeInTheDocument()
         expect(screen.queryByText('User Mgmt')).not.toBeInTheDocument()
     })
 

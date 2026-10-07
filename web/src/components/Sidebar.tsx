@@ -23,7 +23,6 @@ interface NavItem {
     label: string;
     indent?: boolean;
     adminOnly?: boolean;
-    superadminOnly?: boolean;
 }
 
 export function Sidebar({
@@ -67,7 +66,7 @@ export function Sidebar({
         { key: "tags", label: "Tags" },
         { key: "alerts", label: "Alerts" },
         { key: "users", label: "User Mgmt", adminOnly: true },
-        { key: "server", label: "Server Settings", superadminOnly: true },
+        { key: "server", label: "Server Settings", adminOnly: true },
     ];
 
     const isAdmin = user.role === "admin" || user.role === "superadmin";
@@ -129,7 +128,6 @@ export function Sidebar({
     
                 {navItems.map((item) => {
                 if (item.adminOnly && !isAdmin) return null;
-                if (item.superadminOnly && user.role !== "superadmin") return null;
     
                 // Hide diagnostics when detail is collapsed
                 if (item.key === "diagnostics" && !detailExpanded) return null;

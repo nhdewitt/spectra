@@ -11,10 +11,10 @@ const TABS = ["thresholds", "email"] as const;
 export function ServerSettings({ user }: { user: User }) {
 	const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("thresholds");
 
-	if (user.role !== "superadmin") {
+	if (user.role !== "admin" && user.role !== "superadmin") {
 		return (
 			<div style={{ padding: 24, fontFamily: themeVars.font, fontSize: 12, color: themeVars.textMuted }}>
-				Server settings require the superadmin role.
+				Server settings require the admin role.
 			</div>
 		);
 	}
